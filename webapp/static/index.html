@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Transaction Insight</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator_midnight.min.css" />
+</head>
+<body>
+  <header>
+    <h1>Transaction Insight</h1>
+    <p id="status-line">Loading…</p>
+  </header>
+
+  <nav class="tabs">
+    <button type="button" class="tab active" data-tab="chat">Chat</button>
+    <button type="button" class="tab" data-tab="review">Review Inbox</button>
+    <button type="button" class="tab" data-tab="edit">Edit Transactions</button>
+    <button type="button" class="tab" data-tab="actions">Import &amp; Categorize</button>
+    <button type="button" class="tab" data-tab="settings">Settings</button>
+  </nav>
+
+  <main>
+    <section id="panel-chat" class="panel active">
+      <div id="chat-layout" class="chat-layout">
+        <div class="chat-main">
+          <div id="chat-log"></div>
+          <form id="chat-form" class="chat-form">
+            <div class="chat-composer">
+              <button type="button" id="btn-chat-mic" class="btn-chat-mic" title="Voice input (Chrome / Edge)" aria-label="Voice input">Mic</button>
+              <input type="text" id="chat-input" placeholder="e.g. How much did I spend last month?" autocomplete="off" />
+              <button type="button" id="btn-chat-help" class="btn-chat-help" title="Example commands" aria-expanded="false" aria-controls="chat-help-panel">Help</button>
+              <button type="submit" id="btn-chat-send">Send</button>
+            </div>
+          </form>
+        </div>
+        <aside id="chat-help-panel" class="chat-help-panel hidden" aria-label="Chat commands" aria-hidden="true">
+          <div class="chat-help-header">
+            <h2>Commands</h2>
+            <button type="button" id="btn-chat-help-close" class="btn-chat-help-close" aria-label="Close help">×</button>
+          </div>
+          <p class="hint chat-help-hint">Click a command for details. Use <strong>+</strong> to insert into the chat box.</p>
+          <ul id="chat-help-list" class="chat-help-list"></ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="panel-review" class="panel">
+      <p class="hint">Merchants the AI is unsure about. One fix applies to all matching transactions in a group. <strong>Check Payment</strong> is split into one card per check (different amounts). Use <strong>Custom rules</strong> for repeating patterns, then <strong>Compile &amp; apply</strong>.</p>
+      <div class="review-layout">
+        <div class="review-main">
+          <div id="review-datalists" class="sr-only" aria-hidden="true"></div>
+          <div id="review-list"></div>
+        </div>
+        <aside class="custom-rules-panel" aria-label="Custom rules">
+          <h2>Custom rules</h2>
+          <p class="hint custom-rules-hint">Saved to <code>transaction-lookups.xlsx</code> → CustomRules sheet. Use <code>contains "check"</code> or <code>*check*</code> to match any description that includes that text (e.g. Check Payment).</p>
+          <div id="custom-rules-list-wrap" class="custom-rules-list-wrap">
+            <ul id="custom-rules-list" class="custom-rules-list"></ul>
+          </div>
+          <button type="button" id="btn-custom-rules-toggle" class="btn-link hidden">Show all rules</button>
+          <label class="custom-rules-add-label" for="custom-rule-input">New rule (plain English)</label>
+          <textarea id="custom-rule-input" rows="4" placeholder='If Generated Description contains "check" and Amount is 60, AI Category = Education, AI Sub-Category = Music Lessons'></textarea>
+          <div class="custom-rules-actions">
+            <button type="button" id="btn-custom-rule-add">Add rule</button>
+            <button type="button" id="btn-custom-rules-apply">Compile &amp; apply</button>
+          </div>
+          <pre id="custom-rules-result" class="custom-rules-result"></pre>
+        </aside>
+      </div>
+    </section>
+
+    <section id="panel-edit" class="panel">
+      <p class="hint">Search any transaction and change <strong>AI Category</strong> / <strong>Sub-category</strong>. Pick how broadly to apply, then review the checkbox list before saving.</p>
+      <div class="edit-layout">
+        <div class="edit-main">
+          <form id="edit-search-form" class="edit-search-form">
+            <input type="search" id="edit-search-q" placeholder="Merchant or description…" autocomplete="off" />
+            <select id="edit-search-month" aria-label="Budget month">
+              <option value="">All months</option>
+            </select>
+            <select id="edit-search-category" aria-label="AI category filter">
+              <option value="">All categories</option>
+            </select>
+            <button type="submit">Search</button>
+          </form>
+          <details id="edit-advanced-filters" class="edit-advanced-filters">
+            <summary>More filters</summary>
+            <div class="edit-advanced-grid">
+              <label class="edit-advanced-field">
+                <span>AI Sub-category</span>
+                <select id="edit-search-sub" aria-label="AI sub-category filter">
+                  <option value="">All sub-categories</option>
+                </select>
+              </label>
+              <label class="edit-advanced-field">
+                <span>Expense type</span>
+                <select id="edit-search-expense-type" aria-label="Expense type filter">
+                  <option value="">All expense types</option>
+                </select>
+              </label>
+              <label class="edit-advanced-field">
+                <span>Classification</span>
+                <select id="edit-search-classification" aria-label="Classification filter">
+                  <option value="">All classifications</option>
+                </select>
+              </label>
+            </div>
+          </details>
+          <p id="edit-search-meta" class="edit-search-meta"></p>
+          <div id="edit-results" class="edit-results"></div>
+          <div id="edit-pagination" class="edit-pagination hidden">
+            <button type="button" id="btn-edit-prev" class="btn-secondary">Previous</button>
+            <span id="edit-page-info" class="edit-page-info"></span>
+            <button type="button" id="btn-edit-next" class="btn-secondary">Next</button>
+          </div>
+        </div>
+        <aside id="edit-side-panel" class="edit-side-panel hidden" aria-label="Edit transaction labels">
+          <div class="edit-side-header">
+            <h2>Edit labels</h2>
+            <button type="button" id="btn-edit-close" class="btn-edit-close" aria-label="Close editor">×</button>
+          </div>
+          <p id="edit-source-summary" class="edit-source-summary"></p>
+          <form id="edit-label-form" class="edit-label-form">
+            <label class="edit-field">
+              <span>AI Category</span>
+              <div class="combo-field" data-combo="edit-ai-category">
+                <input type="text" id="edit-ai-category" required placeholder="Select or type…" autocomplete="off" />
+                <button type="button" class="combo-toggle" tabindex="-1" aria-label="Show all categories">▾</button>
+                <ul class="combo-menu hidden" role="listbox" aria-label="Categories"></ul>
+              </div>
+            </label>
+            <label class="edit-field">
+              <span>Sub-category</span>
+              <div class="combo-field" data-combo="edit-ai-sub">
+                <input type="text" id="edit-ai-sub" placeholder="Select or type…" autocomplete="off" />
+                <button type="button" class="combo-toggle" tabindex="-1" aria-label="Show all sub-categories">▾</button>
+                <ul class="combo-menu hidden" role="listbox" aria-label="Sub-categories"></ul>
+              </div>
+            </label>
+            <label class="edit-field">
+              <span>Expense type</span>
+              <select id="edit-label-expense-type" aria-label="Expense type">
+                <option value="Fixed">Fixed</option>
+                <option value="Variable">Variable</option>
+              </select>
+            </label>
+            <label class="edit-field">
+              <span>Classification</span>
+              <select id="edit-label-classification" aria-label="Classification">
+                <option value="Personal">Personal</option>
+                <option value="Business">Business</option>
+              </select>
+            </label>
+            <fieldset class="edit-scope-fieldset">
+              <legend>Apply to</legend>
+              <label class="edit-scope-option">
+                <input type="radio" name="edit-scope" value="single" checked />
+                This transaction only
+              </label>
+              <label class="edit-scope-option">
+                <input type="radio" name="edit-scope" value="merchant_amount" />
+                Same merchant <strong>and</strong> amount
+              </label>
+              <label class="edit-scope-option">
+                <input type="radio" name="edit-scope" value="merchant" />
+                Same merchant (all amounts)
+              </label>
+            </fieldset>
+            <div class="edit-match-toolbar">
+              <span id="edit-match-count" class="edit-match-count"></span>
+              <button type="button" id="btn-edit-select-all" class="btn-link">Select all</button>
+              <button type="button" id="btn-edit-select-none" class="btn-link">Clear</button>
+            </div>
+            <ul id="edit-match-list" class="edit-match-list"></ul>
+            <div class="edit-form-actions">
+              <button type="submit" id="btn-edit-apply">Apply to selected</button>
+              <button type="button" id="btn-edit-cancel" class="btn-secondary">Cancel</button>
+            </div>
+            <pre id="edit-apply-result" class="edit-apply-result"></pre>
+          </form>
+        </aside>
+      </div>
+    </section>
+
+    <section id="panel-actions" class="panel">
+      <div class="card">
+        <h2>Inbox</h2>
+        <p>Choose bank CSV exports from your computer. Files are copied to <code id="inbox-path"></code>, then scanned into the database. After <strong>Run processing</strong>, the CSV is moved to <code id="processed-path">processed/</code>.</p>
+        <div class="inbox-upload-row">
+          <input type="file" id="inbox-file-input" accept=".csv,text/csv" multiple hidden />
+          <button type="button" id="btn-choose-scan" class="btn-primary">Choose CSV files &amp; scan</button>
+          <button type="button" id="btn-scan-existing" class="btn-secondary">Scan existing inbox</button>
+        </div>
+        <p id="inbox-selected-files" class="hint inbox-selected-files hidden"></p>
+        <pre id="scan-result"></pre>
+      </div>
+      <div class="card">
+        <h2>Process transactions</h2>
+        <p>Runs the <strong>same pipeline as the CLI script</strong>: descriptions, lookup rules, AI review rows, business/custom rules, and cadence. Saves results to the database and updates <code>transaction-lookups.xlsx</code> when enabled.</p>
+        <p class="hint">Prefer this over scan. Keep one CSV in <code>input/</code> (or specify a file via API). Processed files are archived automatically.</p>
+        <button type="button" id="btn-categorize">Run processing</button>
+        <div id="categorize-progress" class="progress-panel hidden" aria-live="polite">
+          <div class="progress-bar-track">
+            <div id="categorize-progress-fill" class="progress-bar-fill" style="width: 0%"></div>
+          </div>
+          <p id="categorize-progress-text" class="progress-text">Starting…</p>
+          <ul id="categorize-progress-log" class="progress-log"></ul>
+        </div>
+        <pre id="categorize-result"></pre>
+      </div>
+    </section>
+
+    <section id="panel-settings" class="panel">
+      <div class="card">
+        <h2>Data store</h2>
+        <p>SQLite database used by the web app (transactions, labels, chat history).</p>
+        <pre id="settings-counts" class="settings-pre">Loading…</pre>
+        <p class="hint">Path: <code id="settings-db-path"></code></p>
+      </div>
+      <div class="card card-danger">
+        <h2>Clear all data</h2>
+        <p>Deletes all transactions, merchant labels, chat messages, ingest history, and imported lookup snapshots. Does not modify <code>transaction-lookups.xlsx</code> or CSV files in <code>input/</code>.</p>
+        <button type="button" id="btn-clear-data" class="btn-danger">Clear data store</button>
+        <pre id="clear-result"></pre>
+      </div>
+      <div class="card">
+        <h2>Import from Excel lookups</h2>
+        <p>Load labels and rules from the CLI lookup workbook into the web database.</p>
+        <p class="hint">File: <code id="settings-lookup-path"></code> <span id="settings-lookup-status"></span></p>
+        <ul class="hint settings-import-list">
+          <li><strong>BusinessCategoryRules</strong> → merchant labels</li>
+          <li><strong>DescriptionLookup</strong> → merchant names (description cache)</li>
+          <li><strong>Categories</strong> → labels where sub-category matches a merchant</li>
+          <li><strong>CategoryRules</strong> → updates rows by bank category</li>
+          <li><strong>CustomRules</strong> / <strong>ExpenseCadenceRules</strong> → saved for later (snapshot)</li>
+        </ul>
+        <button type="button" id="btn-import-lookups">Import transaction-lookups.xlsx</button>
+        <pre id="import-lookups-result"></pre>
+      </div>
+    </section>
+  </main>
+
+  <div id="edit-insight-overlay" class="modal-overlay hidden" role="presentation" aria-hidden="true">
+    <div
+      id="edit-insight-modal"
+      class="modal-card"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-insight-title"
+    >
+      <div class="modal-header">
+        <h2 id="edit-insight-title">AI insight</h2>
+        <button type="button" id="btn-edit-insight-close" class="btn-edit-close" aria-label="Close">×</button>
+      </div>
+      <div id="edit-insight-body" class="modal-body">
+        <p class="hint">Analyzing your edit…</p>
+      </div>
+      <div id="edit-insight-actions" class="modal-actions hidden">
+        <label class="edit-insight-compile">
+          <input type="checkbox" id="edit-insight-compile" checked />
+          Compile &amp; apply after saving rule
+        </label>
+        <div class="modal-action-row">
+          <button type="button" id="btn-edit-insight-dismiss" class="btn-secondary">Dismiss</button>
+          <button type="button" id="btn-edit-insight-save" class="btn-primary">Save as custom rule</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
+  <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

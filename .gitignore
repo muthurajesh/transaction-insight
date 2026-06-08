@@ -1,0 +1,15 @@
+.DS_Store
+.venv/
+config/.env
+__pycache__/
+*.pyc
+*.xlsx
+*.bkp
+*.csv
+data/finance.db
+data/finance.db-journal
+ollama.log
+output/*
+!output/.gitkeep
+processed/*
+!processed/.gitkeep
