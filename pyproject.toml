@@ -1,0 +1,17 @@
+[project]
+name = "transaction-insight"
+version = "0.1.0"
+description = "Personal finance CSV processing with shared CLI and web pipeline"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.0.0",
+    "openpyxl>=3.1.0",
+    "openai>=1.0.0",
+    "python-dotenv>=1.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["transaction_insight*"]
