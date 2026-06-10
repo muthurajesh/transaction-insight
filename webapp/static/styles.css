@@ -740,8 +740,13 @@ button:hover { background: var(--accent-hover); }
   text-align: center;
 }
 
+.edit-results {
+  overflow-x: auto;
+}
+
 .edit-results-table {
   width: 100%;
+  min-width: 1040px;
   border-collapse: collapse;
   font-size: 0.88rem;
 }
@@ -779,6 +784,12 @@ button:hover { background: var(--accent-hover); }
 }
 
 .edit-results-table td.amount { text-align: right; white-space: nowrap; }
+
+.edit-results-table td.cadence-col {
+  white-space: nowrap;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
 
 .edit-results-table tr:hover td { background: rgba(61, 139, 253, 0.06); }
 
@@ -851,6 +862,82 @@ button:hover { background: var(--accent-hover); }
   font-size: 0.82rem;
   margin-bottom: 0.25rem;
   color: var(--muted);
+}
+
+.edit-cadence-section {
+  margin: 0.85rem 0 0.75rem;
+  padding: 0.75rem 0 0;
+  border-top: 1px solid var(--border);
+}
+
+.edit-cadence-heading {
+  margin: 0 0 0.5rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.edit-cadence-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+}
+
+.edit-cadence-preset {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.edit-cadence-preset:hover {
+  border-color: var(--accent);
+  background: rgba(61, 139, 253, 0.08);
+}
+
+.edit-cadence-period-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.edit-cadence-period-row.hidden { display: none; }
+
+.edit-field-inline {
+  flex: 1;
+  min-width: 0;
+}
+
+.edit-cadence-runrate {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.edit-cadence-runrate span {
+  margin-bottom: 0;
+}
+
+.edit-cadence-runrate.hidden { display: none; }
+
+.edit-cadence-scope-fieldset {
+  margin-top: 0.35rem;
+}
+
+.edit-cadence-preview {
+  margin: 0.55rem 0 0;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.78rem;
+  font-family: var(--mono, ui-monospace, monospace);
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  line-height: 1.4;
+  word-break: break-word;
 }
 
 .combo-field {
@@ -1186,6 +1273,26 @@ button:disabled {
   font-size: 0.82rem;
 }
 
+.edit-insight-existing-rule {
+  margin: 0.75rem 0 0;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  background: rgba(61, 139, 253, 0.08);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.edit-insight-existing-rule-text {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .edit-insight-rule-label {
   display: block;
   margin: 0.85rem 0 0.35rem;
@@ -1217,6 +1324,24 @@ button:disabled {
 .modal-actions {
   padding: 0.75rem 1.1rem 1rem;
   border-top: 1px solid var(--border);
+}
+
+.chat-cadence-proposal {
+  margin-top: 0.75rem;
+}
+
+.btn-cadence-proposal {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.btn-cadence-proposal:hover {
+  background: var(--accent-hover);
 }
 
 .edit-insight-compile {

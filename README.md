@@ -58,7 +58,7 @@ uvicorn webapp.main:app --reload --host 127.0.0.1 --port 8000
 
 **Shared core:** [`transaction_insight/`](transaction_insight/) holds the processing logic; [`scripts/process_transactions.py`](scripts/process_transactions.py) is the CLI entry; the web app calls [`transaction_insight/pipeline.py`](transaction_insight/pipeline.py).
 
-Configure the same Ollama/LM Studio API via `config/.env` (`LLM_BASE_URL`, `LLM_MODEL`). Optional: `FINANCE_DB_PATH`, `FINANCE_INBOX_DIR` (defaults to `input/`), `AUTO_CONFIDENCE`, `REVIEW_CONFIDENCE`.
+Configure the same Ollama/LM Studio API via `config/.env` (`LLM_BASE_URL`, `LLM_MODEL`). Optional: `FINANCE_DB_PATH`, `FINANCE_INBOX_DIR` (defaults to `input/`).
 
 ## What the CLI script does
 

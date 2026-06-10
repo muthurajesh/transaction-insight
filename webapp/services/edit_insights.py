@@ -4,6 +4,8 @@ import json
 import sqlite3
 from typing import Any
 
+from webapp.services.custom_rule_similarity import suppress_duplicate_rule_suggestion
+from webapp.services.custom_rules import list_custom_rules
 from webapp.services.llm import chat_completion, extract_json
 
 EDIT_INSIGHT_SYSTEM_PROMPT = """You are a personal finance assistant helping a user refine transaction labels.
@@ -36,6 +38,7 @@ Guidelines:
 - recommend_save_rule=true when scope is merchant or merchant_amount, or many similar rows exist.
 - recommend_save_rule=false for a single one-off correction with no repeating pattern.
 - If update_merchant_label was true, mention merchant_labels already covers future LLM categorization for that merchant.
+- If existing_custom_rules already covers this merchant/pattern, set recommend_save_rule=false and suggested_rule="".
 - Be concise and practical; no filler."""
 
 
@@ -201,6 +204,16 @@ def analyze_edit(
     }
 
     stats = _gather_stats(conn, merchant_key=merchant_key, amount=amount, before=before_norm)
+    existing_rules = list_custom_rules().get("rules") or []
+
+    def _finalize(result: dict[str, Any]) -> dict[str, Any]:
+        return suppress_duplicate_rule_suggestion(
+            result,
+            merchant_key=merchant_key,
+            after_labels=after_norm,
+            amount=amount,
+            existing_rules=existing_rules,
+        )
 
     if not _labels_changed(before_norm, after_norm):
         return {
@@ -224,6 +237,11 @@ def analyze_edit(
         "after_labels": after_norm,
         "amount": amount,
         "data_stats": stats,
+        "existing_custom_rules": [
+            {"rule": r.get("rule"), "status": r.get("status")}
+            for r in existing_rules[:25]
+            if r.get("rule")
+        ],
     }
 
     try:
@@ -259,14 +277,16 @@ def analyze_edit(
         }
         if not result["insight"]:
             raise ValueError("Empty insight from LLM")
-        return result
+        return _finalize(result)
     except Exception:
-        return _fallback_insight(
-            merchant_key=merchant_key,
-            scope=scope,
-            before=before_norm,
-            after=after_norm,
-            rows_updated=rows_updated,
-            update_merchant_label=update_merchant_label,
-            stats=stats,
+        return _finalize(
+            _fallback_insight(
+                merchant_key=merchant_key,
+                scope=scope,
+                before=before_norm,
+                after=after_norm,
+                rows_updated=rows_updated,
+                update_merchant_label=update_merchant_label,
+                stats=stats,
+            )
         )

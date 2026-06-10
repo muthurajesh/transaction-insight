@@ -30,13 +30,14 @@ from webapp.services.categorize import (
     list_merchant_transactions,
     list_review_items,
 )
-from webapp.services.process import process_csv_file
+from webapp.services.process import list_inbox_csv_paths, process_inbox_files
 from webapp.services.review_options import get_review_options
 from webapp.services.data_store import clear_data_store, table_counts
 from webapp.services.inbox_upload import save_upload_to_inbox, scan_uploaded_files
 from webapp.services.ingest import ingest_csv, scan_inbox
 from webapp.services.custom_rules import add_custom_rule, compile_and_apply_custom_rules, list_custom_rules
 from webapp.services.lookups_import import default_lookup_workbook_path, import_lookup_workbook
+from webapp.services.cadence_insights import propose_cadence, propose_cadence_batch
 from webapp.services.edit_insights import analyze_edit
 from webapp.services.expense_cadence import (
     effective_amount,
@@ -95,6 +96,14 @@ class CustomRuleCreateRequest(BaseModel):
     rule: str = Field(min_length=1)
 
 
+class TransactionCadencePayload(BaseModel):
+    cadence_kind: str = Field(min_length=1)
+    period_count: int | None = Field(default=None, ge=1)
+    period_unit: str | None = None
+    include_in_run_rate: bool | None = None
+    cadence_note: str = ""
+
+
 class TransactionBulkLabelRequest(BaseModel):
     transaction_ids: list[str] = Field(min_length=1)
     ai_category: str = Field(min_length=1)
@@ -104,6 +113,8 @@ class TransactionBulkLabelRequest(BaseModel):
     classification: str | None = None
     update_merchant_label: bool = False
     merchant_key: str | None = None
+    cadence: TransactionCadencePayload | None = None
+    cadence_scope: str = "transaction"
 
 
 class EditLabelsSnapshot(BaseModel):
@@ -133,6 +144,16 @@ class CadenceRuleRequest(BaseModel):
     enabled: bool = True
 
 
+class CadenceProposeRequest(BaseModel):
+    merchant_key: str | None = None
+    transaction_id: str | None = None
+    hint: str = ""
+
+
+class CadenceProposeBatchRequest(BaseModel):
+    limit: int = Field(default=10, ge=1, le=25)
+
+
 @app.get("/api/status")
 def api_status() -> dict[str, Any]:
     conn = _conn()
@@ -142,14 +163,16 @@ def api_status() -> dict[str, Any]:
             "SELECT COUNT(DISTINCT merchant_key) AS c FROM transactions WHERE label_status IN ('needs_review', 'pending')"
         ).fetchone()["c"]
         months = conn.execute(
-            "SELECT DISTINCT budget_month FROM transactions ORDER BY budget_month DESC LIMIT 12"
+            "SELECT DISTINCT budget_month FROM transactions ORDER BY budget_month DESC"
         ).fetchall()
         counts = table_counts(conn)
         lookup_path = default_lookup_workbook_path()
+        inbox_csv_files = sorted(p.name for p in INBOX_DIR.glob("*.csv"))
         return {
             "db_path": str(DB_PATH),
             "inbox_dir": str(INBOX_DIR),
             "processed_dir": str(PROCESSED_DIR),
+            "inbox_csv_files": inbox_csv_files,
             "lookup_file": str(LOOKUP_FILE),
             "lookup_file_exists": lookup_path.is_file(),
             "llm_provider": LLM_PROVIDER,
@@ -237,22 +260,26 @@ class ProcessRequest(BaseModel):
 @app.post("/api/process")
 def api_process(body: ProcessRequest | None = None) -> dict[str, Any]:
     body = body or ProcessRequest()
-    path = INBOX_DIR / body.filename if body.filename else None
-    if body.filename and (not path or not path.is_file()):
-        raise HTTPException(404, f"Not found in inbox: {body.filename}")
-    if not body.filename:
-        csvs = sorted(INBOX_DIR.glob("*.csv"))
-        if len(csvs) != 1:
-            raise HTTPException(400, "Specify filename or keep exactly one CSV in input/")
-        path = csvs[0]
+    try:
+        paths = list_inbox_csv_paths(INBOX_DIR, filename=body.filename)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    if not paths:
+        raise HTTPException(400, "No CSV files in input/")
     conn = _conn()
     try:
-        return process_csv_file(
+        results = process_inbox_files(
             conn,
-            path,
+            paths,
             skip_lookup_update=body.skip_lookup_update,
+            skip_cadence_detection=True,
             update_lookup_workbook=body.update_lookup_workbook,
         )
+        return {
+            "file_count": len(results),
+            "results": results,
+            "message": f"Processed {len(results)} file(s).",
+        }
     except Exception as exc:
         raise HTTPException(500, str(exc)) from exc
     finally:
@@ -270,14 +297,12 @@ def api_process_stream(
     import queue
     import threading
 
-    path = INBOX_DIR / filename if filename else None
-    if filename and (not path or not path.is_file()):
-        raise HTTPException(404, f"Not found in inbox: {filename}")
-    if not filename:
-        csvs = sorted(INBOX_DIR.glob("*.csv"))
-        if len(csvs) != 1:
-            raise HTTPException(400, "Specify filename or keep exactly one CSV in input/")
-        path = csvs[0]
+    try:
+        paths = list_inbox_csv_paths(INBOX_DIR, filename=filename)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    if not paths:
+        raise HTTPException(400, "No CSV files in input/")
 
     def generate():
         event_q: queue.Queue[dict[str, Any] | None] = queue.Queue()
@@ -291,13 +316,19 @@ def api_process_stream(
                 def on_progress(ev: dict[str, Any]) -> None:
                     event_q.put(ev)
 
-                result_box["data"] = process_csv_file(
+                results = process_inbox_files(
                     conn,
-                    path,
+                    paths,
                     skip_lookup_update=skip_lookup_update,
+                    skip_cadence_detection=True,
                     update_lookup_workbook=update_lookup_workbook,
                     on_progress=on_progress,
                 )
+                result_box["data"] = {
+                    "file_count": len(results),
+                    "results": results,
+                    "message": f"Processed {len(results)} file(s).",
+                }
             except Exception as exc:
                 error_box["message"] = str(exc)
             finally:
@@ -315,7 +346,15 @@ def api_process_stream(
         if error_box:
             yield f"data: {json.dumps({'type': 'error', 'message': error_box['message']})}\n\n"
         elif result_box:
-            yield f"data: {json.dumps({'type': 'done', 'result': result_box['data']})}\n\n"
+            payload = {
+                "type": "done",
+                "file_count": result_box["data"]["file_count"],
+                "results": result_box["data"]["results"],
+                "message": result_box["data"]["message"],
+            }
+            if result_box["data"]["file_count"] == 1:
+                payload["result"] = result_box["data"]["results"][0]
+            yield f"data: {json.dumps(payload)}\n\n"
 
     return StreamingResponse(
         generate(),
@@ -364,6 +403,37 @@ def api_cadence_rules_list() -> dict[str, Any]:
         conn.close()
 
 
+@app.post("/api/cadence-rules/propose")
+def api_cadence_rules_propose(body: CadenceProposeRequest) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        try:
+            return propose_cadence(
+                conn,
+                merchant_key=body.merchant_key,
+                transaction_id=body.transaction_id,
+                hint=body.hint,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.post("/api/cadence-rules/propose-batch")
+def api_cadence_rules_propose_batch(body: CadenceProposeBatchRequest | None = None) -> dict[str, Any]:
+    body = body or CadenceProposeBatchRequest()
+    conn = _conn()
+    try:
+        return propose_cadence_batch(conn, limit=body.limit)
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
+
+
 @app.post("/api/cadence-rules")
 def api_cadence_rules_upsert(body: CadenceRuleRequest) -> dict[str, Any]:
     conn = _conn()
@@ -401,13 +471,32 @@ def api_cadence_rule_get(merchant_key: str) -> dict[str, Any]:
 
 
 @app.get("/api/transactions/{transaction_id}/cadence")
-def api_transaction_cadence(transaction_id: str) -> dict[str, Any]:
+def api_transaction_cadence(
+    transaction_id: str,
+    cadence_kind: str | None = None,
+    period_count: int | None = None,
+    period_unit: str | None = None,
+    include_in_run_rate: bool | None = None,
+) -> dict[str, Any]:
     conn = _conn()
     try:
         tx = get_transaction(conn, transaction_id)
         if not tx:
             raise HTTPException(404, "Transaction not found")
-        effective = resolve_effective_cadence(conn, transaction_id=transaction_id, tx_row=tx)
+        resolved = resolve_effective_cadence(conn, transaction_id=transaction_id, tx_row=tx)
+        preview = cadence_kind is not None and str(cadence_kind).strip() != ""
+        if preview:
+            effective = {
+                "cadence_kind": cadence_kind,
+                "period_count": period_count,
+                "period_unit": period_unit,
+                "include_in_run_rate": include_in_run_rate,
+                "cadence_source": "preview",
+                "cadence_note": "",
+                "layer": "preview",
+            }
+        else:
+            effective = resolved
         amount = float(tx.get("amount") or 0)
         views = {
             view: effective_amount(
@@ -425,7 +514,9 @@ def api_transaction_cadence(transaction_id: str) -> dict[str, Any]:
             "merchant_key": tx.get("merchant_key"),
             "amount": amount,
             "effective_cadence": effective,
+            "resolved_cadence": resolved,
             "effective_amounts": views,
+            "preview": preview,
         }
     finally:
         conn.close()
@@ -470,6 +561,9 @@ def api_transactions_search(
     sub_category: str = "",
     expense_type: str = "",
     classification: str = "",
+    cadence_kind: str = "",
+    cadence_period: str = "",
+    include_in_run_rate: str = "",
     limit: int = 50,
     offset: int = 0,
     sort_by: str = "date",
@@ -477,19 +571,25 @@ def api_transactions_search(
 ) -> dict[str, Any]:
     conn = _conn()
     try:
-        return search_transactions(
-            conn,
-            q=q,
-            month=month,
-            category=category,
-            sub_category=sub_category,
-            expense_type=expense_type,
-            classification=classification,
-            limit=limit,
-            offset=offset,
-            sort_by=sort_by,
-            sort_dir=sort_dir,
-        )
+        try:
+            return search_transactions(
+                conn,
+                q=q,
+                month=month,
+                category=category,
+                sub_category=sub_category,
+                expense_type=expense_type,
+                classification=classification,
+                cadence_kind=cadence_kind,
+                cadence_period=cadence_period,
+                include_in_run_rate=include_in_run_rate,
+                limit=limit,
+                offset=offset,
+                sort_by=sort_by,
+                sort_dir=sort_dir,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
     finally:
         conn.close()
 
@@ -527,6 +627,7 @@ def api_transactions_bulk_label(body: TransactionBulkLabelRequest) -> dict[str, 
     conn = _conn()
     try:
         try:
+            cadence_payload = body.cadence.model_dump() if body.cadence else None
             return bulk_update_labels(
                 conn,
                 transaction_ids=body.transaction_ids,
@@ -537,6 +638,8 @@ def api_transactions_bulk_label(body: TransactionBulkLabelRequest) -> dict[str, 
                 classification=body.classification,
                 update_merchant_label=body.update_merchant_label,
                 merchant_key=body.merchant_key,
+                cadence=cadence_payload,
+                cadence_scope=body.cadence_scope,
             )
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc

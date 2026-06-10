@@ -22,6 +22,8 @@ After you **Apply** label changes in **Edit Transactions**, the app calls the LL
 
 If the LLM is unavailable, a **fallback** heuristic still suggests a rule when scope or volume warrants it.
 
+Before showing **Save as custom rule**, the app compares the suggestion against existing **CustomRules** in `transaction-lookups.xlsx`. If a similar rule already exists (same merchant pattern and category, or near-identical text), the save action is hidden and the existing rule is shown instead.
+
 ## What edits do *not* do automatically
 
 - **SQLite edits** do not modify `transaction-lookups.xlsx` unless you save a custom rule.

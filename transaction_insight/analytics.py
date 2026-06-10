@@ -11,6 +11,7 @@ def month_total(
     month: str | None,
     *,
     flow: str = "Expense",
+    expense_view: str = "cash",
 ) -> dict[str, Any]:
     """Total spend or income for one budget month (CLI-aligned expense rules)."""
     if not month:
@@ -19,6 +20,24 @@ def month_total(
         if not full:
             raise ValueError("No full months in database — run processing on inbox CSV first.")
         month = full[0]
+
+    if flow == "Expense" and (expense_view or "cash").strip().lower() != "cash":
+        from webapp.services.expense_cadence import (
+            expense_view_label,
+            sum_expenses_for_view,
+            validate_expense_view,
+        )
+
+        view = validate_expense_view(expense_view)
+        total, count = sum_expenses_for_view(conn, view=view, budget_month=month)
+        return {
+            "month": month,
+            "flow_type": flow,
+            "expense_view": view,
+            "expense_view_label": expense_view_label(view),
+            "transaction_count": count,
+            "total": total,
+        }
 
     if flow == "Expense":
         row = conn.execute(
@@ -56,11 +75,26 @@ def flow_totals_by_month(
     *,
     flow: str = "Income",
     full_months_only: bool = True,
+    expense_view: str = "cash",
 ) -> dict[str, Any]:
     """
     Totals for every budget month. Income uses flow_type=Income and budget_month
     (paycheck spillover is already shifted into budget_month during processing).
     """
+    if flow == "Expense" and (expense_view or "cash").strip().lower() != "cash":
+        from webapp.services.expense_cadence import (
+            expense_view_label,
+            flow_totals_expense_by_view,
+            validate_expense_view,
+        )
+
+        view = validate_expense_view(expense_view)
+        result = flow_totals_expense_by_view(
+            conn, view=view, full_months_only=full_months_only
+        )
+        result["expense_view_label"] = expense_view_label(view)
+        return result
+
     if flow == "Expense":
         rows = conn.execute(
             """
@@ -117,8 +151,22 @@ def flow_totals_by_month(
 
 
 def top_categories(
-    conn: sqlite3.Connection, month: str, *, limit: int = 10
+    conn: sqlite3.Connection,
+    month: str,
+    *,
+    limit: int = 10,
+    expense_view: str = "cash",
 ) -> list[dict[str, Any]]:
+    if (expense_view or "cash").strip().lower() != "cash":
+        from webapp.services.expense_cadence import (
+            top_categories_for_view,
+            validate_expense_view,
+        )
+
+        return top_categories_for_view(
+            conn, month, limit=limit, view=validate_expense_view(expense_view)
+        )
+
     rows = conn.execute(
         """
         SELECT ai_category AS category,

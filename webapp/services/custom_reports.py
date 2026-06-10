@@ -10,7 +10,8 @@ from typing import Any
 from webapp.agent.db_query import execute_readonly_sql, validate_readonly_sql
 
 _PARAM_NAME = re.compile(r":([a-zA-Z_][a-zA-Z0-9_]*)")
-_ALLOWED_PARAMS = frozenset({"month", "months", "limit", "category"})
+_ALLOWED_PARAMS = frozenset({"month", "months", "limit", "category", "expense_view"})
+_EXPENSE_VIEWS = frozenset({"cash", "core", "normalized"})
 
 
 def _utc_now() -> str:
@@ -70,6 +71,11 @@ def _coerce_params(raw: dict[str, Any] | None) -> dict[str, Any]:
             out[k] = _validate_limit(value)
         elif k == "category":
             out[k] = _validate_category(value)
+        elif k == "expense_view":
+            text = str(value or "cash").strip().lower()
+            if text not in _EXPENSE_VIEWS:
+                raise ValueError("expense_view must be cash, core, or normalized")
+            out[k] = text
     return out
 
 

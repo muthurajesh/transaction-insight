@@ -500,6 +500,315 @@ def sync_cadence_rules_from_lookup_records(
     return synced
 
 
+EXPENSE_VIEW_LABELS = {
+    "cash": "Cash",
+    "core": "Core (run-rate)",
+    "normalized": "Normalized monthly",
+}
+
+CADENCE_KIND_LABELS = {
+    CADENCE_KIND_RECURRING: "Recurring",
+    CADENCE_KIND_LUMP: "Lump sum",
+    CADENCE_KIND_ONE_TIME: "One-time",
+    CADENCE_KIND_EXCLUDE: "Exclude",
+    CADENCE_KIND_UNKNOWN: "Unknown",
+}
+
+CADENCE_PERIOD_PRESETS: list[tuple[str, str]] = [
+    ("unset", "Unset / unknown"),
+    ("1:months", "Every 1 month"),
+    ("12:months", "Every 12 months"),
+    ("6:months", "Every 6 months"),
+    ("2:weeks", "Every 2 weeks"),
+]
+
+RUN_RATE_FILTER_OPTIONS: list[tuple[str, str]] = [
+    ("yes", "Included in core"),
+    ("no", "Excluded from core"),
+]
+
+
+def cadence_kind_label(kind: Any) -> str:
+    k = _normalize_kind(kind)
+    return CADENCE_KIND_LABELS.get(k, str(kind or CADENCE_KIND_UNKNOWN).title())
+
+
+def include_in_run_rate_label(
+    kind: Any,
+    explicit: bool | int | None = None,
+) -> str:
+    """Display label for whether a row counts in the core (run-rate) view."""
+    flag: bool | None
+    if explicit is None or explicit == "":
+        flag = None
+    else:
+        flag = bool(explicit)
+    return "Yes" if include_in_run_rate_value(_normalize_kind(kind), flag) else "No"
+
+
+def expense_cadence_period_label(
+    kind: Any,
+    period_count: int | None = None,
+    period_unit: str | None = None,
+) -> str:
+    """Human-readable expense cadence period (every N units)."""
+    k = _normalize_kind(kind)
+    if k in (CADENCE_KIND_UNKNOWN, CADENCE_KIND_ONE_TIME, CADENCE_KIND_EXCLUDE):
+        return "—"
+    if period_count is None or not period_unit:
+        return "—"
+    unit = str(period_unit).strip().lower()
+    count = int(period_count)
+    if unit == "months":
+        noun = "month" if count == 1 else "months"
+    elif unit == "weeks":
+        noun = "week" if count == 1 else "weeks"
+    elif unit == "days":
+        noun = "day" if count == 1 else "days"
+    else:
+        noun = unit
+    return f"Every {count} {noun}"
+
+
+def validate_expense_view(view: str | None) -> str:
+    v = (view or "cash").strip().lower()
+    if v not in EXPENSE_VIEWS:
+        raise ValueError(f"expense_view must be one of: {', '.join(sorted(EXPENSE_VIEWS))}")
+    return v
+
+
+def expense_view_label(view: str | None) -> str:
+    v = validate_expense_view(view)
+    return EXPENSE_VIEW_LABELS.get(v, v.title())
+
+
+def _load_cadence_rules_map(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT merchant_key, cadence_kind, period_count, period_unit,
+               include_in_run_rate, source, notes
+        FROM cadence_rules
+        WHERE enabled = 1
+        """
+    ).fetchall()
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        mk = str(row["merchant_key"] or "").strip()
+        if mk:
+            out[mk] = dict(row)
+    return out
+
+
+def _resolve_cadence_for_expense_row(
+    row: sqlite3.Row | dict[str, Any],
+    rules_by_merchant: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    data = dict(row)
+    tx_cadence = _row_to_cadence_dict(data)
+    mk = str(data.get("merchant_key") or "").strip()
+    rule = rules_by_merchant.get(mk)
+    rule_cadence = None
+    if rule:
+        explicit = rule.get("include_in_run_rate")
+        include_flag = None if explicit is None else bool(int(explicit))
+        rule_cadence = {
+            "cadence_kind": rule["cadence_kind"],
+            "period_count": rule["period_count"],
+            "period_unit": rule["period_unit"],
+            "include_in_run_rate": include_flag,
+            "cadence_source": rule.get("source") or "rule",
+            "cadence_note": rule.get("notes") or "",
+        }
+
+    if tx_cadence and tx_cadence.get("cadence_kind") not in (None, "", CADENCE_KIND_UNKNOWN):
+        return tx_cadence
+    if rule_cadence:
+        return rule_cadence
+    if tx_cadence:
+        return tx_cadence
+    return {
+        "cadence_kind": CADENCE_KIND_UNKNOWN,
+        "period_count": 1,
+        "period_unit": "months",
+        "include_in_run_rate": True,
+        "cadence_source": "default",
+        "cadence_note": "",
+    }
+
+
+def _iter_expense_rows(
+    conn: sqlite3.Connection,
+    *,
+    budget_month: str | None = None,
+    budget_months: list[str] | None = None,
+    category: str | None = None,
+) -> list[sqlite3.Row]:
+    clauses = ["flow_type = 'Expense'", "amount < 0"]
+    params: list[Any] = []
+
+    if budget_month:
+        clauses.append("budget_month = ?")
+        params.append(budget_month)
+    elif budget_months:
+        placeholders = ",".join("?" * len(budget_months))
+        clauses.append(f"budget_month IN ({placeholders})")
+        params.extend(budget_months)
+
+    if category:
+        clauses.append("ai_category = ?")
+        params.append(category)
+
+    sql = f"""
+        SELECT transaction_id, amount, merchant_key, ai_category, budget_month,
+               cadence_kind, period_count, period_unit, include_in_run_rate
+        FROM transactions
+        WHERE {' AND '.join(clauses)}
+    """
+    return conn.execute(sql, params).fetchall()
+
+
+def sum_expenses_for_view(
+    conn: sqlite3.Connection,
+    *,
+    view: str = "cash",
+    budget_month: str | None = None,
+    budget_months: list[str] | None = None,
+    category: str | None = None,
+) -> tuple[float, int]:
+    """Sum effective expense amounts for a cadence view."""
+    v = validate_expense_view(view)
+    rules = _load_cadence_rules_map(conn)
+    rows = _iter_expense_rows(
+        conn,
+        budget_month=budget_month,
+        budget_months=budget_months,
+        category=category,
+    )
+    total = 0.0
+    for row in rows:
+        cadence = _resolve_cadence_for_expense_row(row, rules)
+        total += effective_amount(
+            float(row["amount"] or 0),
+            view=v,
+            kind=cadence["cadence_kind"],
+            period_count=cadence.get("period_count"),
+            period_unit=cadence.get("period_unit"),
+            include_in_run_rate=cadence.get("include_in_run_rate"),
+        )
+    return round(total, 2), len(rows)
+
+
+def top_categories_for_view(
+    conn: sqlite3.Connection,
+    month: str,
+    *,
+    limit: int = 10,
+    view: str = "cash",
+) -> list[dict[str, Any]]:
+    v = validate_expense_view(view)
+    rules = _load_cadence_rules_map(conn)
+    rows = _iter_expense_rows(conn, budget_month=month)
+    by_cat: dict[str, dict[str, Any]] = {}
+
+    for row in rows:
+        cat = str(row["ai_category"] or "").strip()
+        if not cat:
+            continue
+        cadence = _resolve_cadence_for_expense_row(row, rules)
+        spend = effective_amount(
+            float(row["amount"] or 0),
+            view=v,
+            kind=cadence["cadence_kind"],
+            period_count=cadence.get("period_count"),
+            period_unit=cadence.get("period_unit"),
+            include_in_run_rate=cadence.get("include_in_run_rate"),
+        )
+        bucket = by_cat.setdefault(cat, {"category": cat, "transaction_count": 0, "spend": 0.0})
+        bucket["transaction_count"] += 1
+        bucket["spend"] += spend
+
+    ranked = sorted(by_cat.values(), key=lambda x: x["spend"], reverse=True)[:limit]
+    return [
+        {
+            "category": item["category"],
+            "transaction_count": int(item["transaction_count"]),
+            "spend": round(float(item["spend"]), 2),
+        }
+        for item in ranked
+    ]
+
+
+def flow_totals_expense_by_view(
+    conn: sqlite3.Connection,
+    *,
+    view: str = "cash",
+    full_months_only: bool = True,
+) -> dict[str, Any]:
+    from transaction_insight.analytics import available_months
+
+    v = validate_expense_view(view)
+    overview = available_months(conn)
+    months_list = overview.get("months") or []
+    if full_months_only:
+        full_set = set(overview.get("full_months") or [])
+        month_keys = [str(m["month"]) for m in months_list if str(m["month"]) in full_set]
+    else:
+        month_keys = [str(m["month"]) for m in months_list]
+
+    if not month_keys:
+        return {
+            "flow_type": "Expense",
+            "expense_view": v,
+            "full_months_only": full_months_only,
+            "months": [],
+            "grand_total": 0.0,
+        }
+
+    rules = _load_cadence_rules_map(conn)
+    rows = _iter_expense_rows(conn, budget_months=month_keys)
+    by_month: dict[str, dict[str, Any]] = {
+        m: {"month": m, "transaction_count": 0, "total": 0.0} for m in month_keys
+    }
+
+    for row in rows:
+        month = str(row["budget_month"] or "")
+        if month not in by_month:
+            continue
+        cadence = _resolve_cadence_for_expense_row(row, rules)
+        amt = effective_amount(
+            float(row["amount"] or 0),
+            view=v,
+            kind=cadence["cadence_kind"],
+            period_count=cadence.get("period_count"),
+            period_unit=cadence.get("period_unit"),
+            include_in_run_rate=cadence.get("include_in_run_rate"),
+        )
+        by_month[month]["transaction_count"] += 1
+        by_month[month]["total"] += amt
+
+    months_out = []
+    grand_total = 0.0
+    for month in sorted(by_month.keys()):
+        entry = by_month[month]
+        total = round(float(entry["total"]), 2)
+        months_out.append(
+            {
+                "month": month,
+                "transaction_count": int(entry["transaction_count"]),
+                "total": total,
+            }
+        )
+        grand_total += total
+
+    return {
+        "flow_type": "Expense",
+        "expense_view": v,
+        "full_months_only": full_months_only,
+        "months": months_out,
+        "grand_total": round(grand_total, 2),
+    }
+
+
 def sync_cadence_rules_from_lookup_snapshot(conn: sqlite3.Connection) -> int:
     row = conn.execute(
         "SELECT payload_json FROM lookup_snapshots WHERE sheet_name = ?",

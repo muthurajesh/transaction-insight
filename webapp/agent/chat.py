@@ -10,6 +10,11 @@ from pathlib import Path
 
 from webapp.agent.display import display_from_trace
 from webapp.agent.tools import TOOL_DEFINITIONS, available_months, run_tool
+from webapp.services.cadence_insights import (
+    cadence_proposal_from_trace,
+    find_merchant_key_from_text,
+    propose_cadence,
+)
 from webapp.config import INBOX_DIR
 from webapp.services.llm import chat_completion, extract_json
 
@@ -33,7 +38,20 @@ Never invent dollar amounts. Pull data with tools before answering.
 - Expense spend: `flow_type = 'Expense' AND amount < 0`; use `SUM(-amount)` for totals.
 - Income: `flow_type = 'Income'`.
 - Categories: `ai_category`, detail: `ai_sub_category`, merchant: `merchant_key`.
+
+## Expense cadence views (Expense analytics tools)
+- **cash** — raw bank outflows (default).
+- **core** — run-rate only (excludes annual/lump/one-time per cadence rules).
+- **normalized** — monthly equivalent (spreads yearly/semi-annual charges).
+- Pass `expense_view` on `month_total`, `top_categories`, `flow_totals_by_month` when user asks for
+  "normalized monthly", "run-rate", "core spending", or "spread annual" expenses.
+- Raw SQL `SUM(-amount)` is always **cash**; use helper tools for core/normalized.
 - Top expenses (largest outflows): `ORDER BY amount ASC` (more negative first).
+
+## Expense cadence rules
+- When the user explains how a merchant charge should be treated (yearly insurance, bi-weekly gym, one-time repair),
+  call **`propose_cadence_rule`** with `merchant_key` and/or `hint` — do not invent cadence without the tool.
+- The app shows a confirm modal; cadence saves to `cadence_rules` only after user approval.
 
 ## Data model cheat sheet
 {data_cheatsheet}
@@ -64,6 +82,9 @@ def _chat_payload(answer: str, trace: list[dict[str, Any]] | None = None) -> dic
     payload: dict[str, Any] = {"answer": answer, "tool_trace": trace}
     if display:
         payload["display"] = display
+    proposal = cadence_proposal_from_trace(trace)
+    if proposal:
+        payload["cadence_proposal"] = proposal
     return payload
 
 
@@ -109,11 +130,21 @@ _MONTH_NAMES = {
 }
 
 
-def _format_top_categories(result: list[dict[str, Any]], month: str = "") -> str:
+def _format_top_categories(
+    result: list[dict[str, Any]],
+    month: str = "",
+    *,
+    expense_view_label: str = "",
+) -> str:
     if not result:
         label = f" for {month}" if month else ""
         return f"No spending categories found{label}."
-    title = f"**Top spending categories — {month}**\n" if month else "**Top spending categories**\n"
+    view_suffix = f" ({expense_view_label})" if expense_view_label else ""
+    title = (
+        f"**Top spending categories — {month}{view_suffix}**\n"
+        if month
+        else f"**Top spending categories{view_suffix}**\n"
+    )
     lines = [title, "| Category | Spend | Transactions |", "| --- | ---: | ---: |"]
     for row in result:
         lines.append(
@@ -124,10 +155,15 @@ def _format_top_categories(result: list[dict[str, Any]], month: str = "") -> str
 
 def _format_flow_totals(result: dict[str, Any]) -> str:
     flow = result.get("flow_type", "Total")
+    view_label = result.get("expense_view_label") or ""
     months = result.get("months") or []
     if not months:
         return f"No {flow.lower()} data for full months in the database yet."
-    lines = [f"**{flow} by month** (full exports only)\n", "| Month | Total | Transactions |", "| --- | ---: | ---: |"]
+    heading = f"**{flow} by month**"
+    if view_label:
+        heading += f" — {view_label}"
+    heading += " (full exports only)\n"
+    lines = [heading, "| Month | Total | Transactions |", "| --- | ---: | ---: |"]
     for row in months:
         lines.append(
             f"| {row['month']} | ${row['total']:,.2f} | {row['transaction_count']} |"
@@ -218,6 +254,25 @@ def _format_custom_reports_list(reports: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _format_cadence_proposal(proposal: dict[str, Any]) -> str:
+    lines = [str(proposal.get("insight") or "").strip()]
+    amounts = proposal.get("effective_amounts") or {}
+    if amounts:
+        lines.append(
+            "\n**Effective amounts:** "
+            f"cash ${amounts.get('cash', 0):,.2f} · "
+            f"core ${amounts.get('core', 0):,.2f} · "
+            f"normalized ${amounts.get('normalized', 0):,.2f}/mo"
+        )
+    if proposal.get("recommend_save_rule"):
+        lines.append("\n_Use **Review & save cadence** below to confirm._")
+    elif proposal.get("existing_similar_rule"):
+        lines.append(
+            f"\n_Existing cadence rule: {proposal.get('existing_similar_rule')}_"
+        )
+    return "\n".join(line for line in lines if line)
+
+
 def _format_custom_report_run(result: dict[str, Any]) -> str:
     title = result.get("name") or "Custom report"
     used = result.get("parameters_used") or {}
@@ -301,8 +356,10 @@ def _answer_from_trace(trace: list[dict[str, Any]]) -> str | None:
         if tool == "month_total" and "total" in result:
             m = result.get("month", "")
             flow = result.get("flow_type", "Total")
+            view = result.get("expense_view_label") or ""
+            view_part = f" ({view})" if view else ""
             return (
-                f"**{flow} for {m}:** ${result['total']:,.2f} "
+                f"**{flow} for {m}{view_part}:** ${result['total']:,.2f} "
                 f"({result.get('transaction_count', 0)} transactions)"
             )
         if tool == "available_months":
@@ -313,11 +370,18 @@ def _answer_from_trace(trace: list[dict[str, Any]]) -> str | None:
             return _format_transaction_list(result)
         if tool == "top_categories" and isinstance(result, list):
             month = ""
+            view_label = ""
             for entry in trace:
                 if entry.get("tool") == "top_categories":
-                    month = str((entry.get("args") or {}).get("month") or "")
+                    args = entry.get("args") or {}
+                    month = str(args.get("month") or "")
+                    view = str(args.get("expense_view") or "cash")
+                    if view != "cash":
+                        from webapp.services.expense_cadence import expense_view_label
+
+                        view_label = expense_view_label(view)
                     break
-            return _format_top_categories(result, month)
+            return _format_top_categories(result, month, expense_view_label=view_label)
         if tool == "list_custom_reports":
             reports = result if isinstance(result, list) else []
             return _format_custom_reports_list(reports)
@@ -330,6 +394,8 @@ def _answer_from_trace(trace: list[dict[str, Any]]) -> str | None:
                 f"Parameters: {', '.join(result.get('parameters') or []) or 'none'}. "
                 "Ask me to run it for any month."
             )
+        if tool == "propose_cadence_rule" and result.get("insight"):
+            return _format_cadence_proposal(result)
     return None
 
 
@@ -340,6 +406,52 @@ def _detect_flow(user_message: str) -> str | None:
     if any(w in msg for w in ("spend", "expense", "spending", "outflow")):
         return "Expense"
     return None
+
+
+def _has_category_intent(user_message: str) -> bool:
+    msg = user_message.lower()
+    return any(
+        p in msg
+        for p in (
+            "top categor",
+            "categories",
+            "by category",
+            "spending by category",
+            "expense categor",
+            "breakdown",
+            "group by category",
+            "high expense categor",
+        )
+    )
+
+
+def _detect_expense_view(user_message: str) -> str:
+    msg = user_message.lower()
+    if any(
+        p in msg
+        for p in (
+            "normalized",
+            "monthly equivalent",
+            "spread annual",
+            "spread yearly",
+            "budget impact",
+            "per month average",
+        )
+    ):
+        return "normalized"
+    if any(
+        p in msg
+        for p in (
+            "run-rate",
+            "run rate",
+            "runrate",
+            "core spending",
+            "core expense",
+            "monthly run",
+        )
+    ):
+        return "core"
+    return "cash"
 
 
 def _is_multi_month_question(user_message: str) -> bool:
@@ -359,10 +471,35 @@ def _is_multi_month_question(user_message: str) -> bool:
     )
 
 
+def _maybe_top_categories_answer(
+    conn: sqlite3.Connection, user_message: str
+) -> dict[str, Any] | None:
+    if not _has_category_intent(user_message):
+        return None
+    month = _resolve_month_from_message(conn, user_message)
+    if not month:
+        return None
+    limit = _parse_limit_from_message(user_message, default=10)
+    expense_view = _detect_expense_view(user_message)
+    args: dict[str, Any] = {
+        "month": month,
+        "limit": limit,
+        "expense_view": expense_view,
+    }
+    result = run_tool(conn, "top_categories", args)
+    trace = [{"tool": "top_categories", "args": args, "result": result}]
+    from webapp.services.expense_cadence import expense_view_label
+
+    view_label = expense_view_label(expense_view) if expense_view != "cash" else ""
+    return _chat_payload(_format_top_categories(result, month, expense_view_label=view_label), trace)
+
+
 def _maybe_list_transactions_answer(
     conn: sqlite3.Connection, user_message: str
 ) -> dict[str, Any] | None:
     msg = user_message.lower()
+    if _has_category_intent(user_message):
+        return None
     if not any(
         w in msg
         for w in (
@@ -370,11 +507,14 @@ def _maybe_list_transactions_answer(
             "transactions",
             "show all",
             "list all",
-            "show me",
+            "list transactions",
+            "transactions for",
             "table format",
             "in a table",
         )
     ):
+        return None
+    if "show me" in msg and "transaction" not in msg and "list" not in msg:
         return None
     month = _resolve_month_from_message(conn, user_message)
     if not month:
@@ -388,6 +528,49 @@ def _maybe_list_transactions_answer(
     result = run_tool(conn, "list_transactions", args)
     trace = [{"tool": "list_transactions", "args": args, "result": result}]
     return _chat_payload(_format_transaction_list(result), trace)
+
+
+def _has_cadence_intent(user_message: str) -> bool:
+    msg = user_message.lower()
+    return any(
+        p in msg
+        for p in (
+            "cadence",
+            "annual",
+            "yearly",
+            "semi-annual",
+            "semi annual",
+            "bi-weekly",
+            "biweekly",
+            "every 12",
+            "every 6",
+            "lump sum",
+            "run-rate",
+            "run rate",
+            "spread monthly",
+            "once a year",
+            "one-time charge",
+            "recurring charge",
+            "normalized monthly",
+        )
+    )
+
+
+def _maybe_cadence_propose_answer(
+    conn: sqlite3.Connection, user_message: str
+) -> dict[str, Any] | None:
+    if not _has_cadence_intent(user_message):
+        return None
+    merchant_key = find_merchant_key_from_text(conn, user_message)
+    if not merchant_key:
+        return None
+    try:
+        result = propose_cadence(conn, merchant_key=merchant_key, hint=user_message)
+    except ValueError:
+        return None
+    args = {"merchant_key": merchant_key, "hint": user_message}
+    trace = [{"tool": "propose_cadence_rule", "args": args, "result": result}]
+    return _chat_payload(_format_cadence_proposal(result), trace)
 
 
 def _maybe_list_custom_reports_answer(
@@ -413,9 +596,17 @@ def _maybe_list_custom_reports_answer(
 
 
 def _maybe_direct_answer(conn: sqlite3.Connection, user_message: str) -> dict[str, Any] | None:
+    cadence = _maybe_cadence_propose_answer(conn, user_message)
+    if cadence:
+        return cadence
+
     reports = _maybe_list_custom_reports_answer(conn, user_message)
     if reports:
         return reports
+
+    categories = _maybe_top_categories_answer(conn, user_message)
+    if categories:
+        return categories
 
     listed = _maybe_list_transactions_answer(conn, user_message)
     if listed:
@@ -426,7 +617,9 @@ def _maybe_direct_answer(conn: sqlite3.Connection, user_message: str) -> dict[st
     flow = _detect_flow(user_message)
     if not flow:
         return None
-    args = {"flow": flow, "full_months_only": True}
+    args: dict[str, Any] = {"flow": flow, "full_months_only": True}
+    if flow == "Expense":
+        args["expense_view"] = _detect_expense_view(user_message)
     result = run_tool(conn, "flow_totals_by_month", args)
     trace = [{"tool": "flow_totals_by_month", "args": args, "result": result}]
     return _chat_payload(_format_flow_totals(result), trace)
@@ -542,6 +735,9 @@ def list_chat_history(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         }
         if display:
             item["display"] = display
+        proposal = cadence_proposal_from_trace(trace)
+        if proposal:
+            item["cadence_proposal"] = proposal
         messages.append(item)
     return messages
 
@@ -602,7 +798,13 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
 
         if tool_name == "top_categories" and isinstance(result, list):
             month = str(args.get("month") or "")
-            answer = _format_top_categories(result, month)
+            view = str(args.get("expense_view") or "cash")
+            view_label = ""
+            if view != "cash":
+                from webapp.services.expense_cadence import expense_view_label
+
+                view_label = expense_view_label(view)
+            answer = _format_top_categories(result, month, expense_view_label=view_label)
             _save_message(conn, "assistant", answer, json.dumps(trace))
             return _chat_payload(answer, trace)
 
@@ -623,6 +825,11 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
 
         if tool_name == "save_custom_report" and isinstance(result, dict) and result.get("report_id"):
             answer = _answer_from_trace(trace) or json.dumps(result)
+            _save_message(conn, "assistant", answer, json.dumps(trace))
+            return _chat_payload(answer, trace)
+
+        if tool_name == "propose_cadence_rule" and isinstance(result, dict) and result.get("insight"):
+            answer = _format_cadence_proposal(result)
             _save_message(conn, "assistant", answer, json.dumps(trace))
             return _chat_payload(answer, trace)
 

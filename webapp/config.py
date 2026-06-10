@@ -40,7 +40,3 @@ LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", os.getenv("REQUEST_TIMEOUT", "120")
 
 def get_llm_client():
     return create_client(LLM_PROVIDER, base_url=LLM_BASE_URL)
-
-AUTO_CONFIDENCE = float(os.getenv("AUTO_CONFIDENCE", "0.85"))
-REVIEW_CONFIDENCE = float(os.getenv("REVIEW_CONFIDENCE", "0.60"))
-CATEGORIZE_BATCH_SIZE = int(os.getenv("CATEGORIZE_BATCH_SIZE", "12"))

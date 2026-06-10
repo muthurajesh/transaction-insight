@@ -37,35 +37,25 @@ def should_archive_inbox_csv(path: Path, inbox_dir: Path) -> bool:
     return len(rel.parts) == 1
 
 
-def unique_destination(dest_dir: Path, filename: str) -> Path:
-    candidate = dest_dir / filename
-    if not candidate.exists():
-        return candidate
-    stem = Path(filename).stem
-    suffix = Path(filename).suffix
-    n = 1
-    while True:
-        candidate = dest_dir / f"{stem}_{n}{suffix}"
-        if not candidate.exists():
-            return candidate
-        n += 1
-
-
 def move_csv_to_processed(
     path: Path,
     *,
     inbox_dir: Path,
     processed_dir: Path | None = None,
+    overwrite: bool = True,
 ) -> Path | None:
     """
     Move a successfully processed inbox CSV into the processed folder.
     Returns the new path, or None if the file was not archived.
+    When overwrite is True (default), replaces an existing file of the same name.
     """
     if not should_archive_inbox_csv(path, inbox_dir):
         return None
 
     dest_dir = processed_dir or resolve_processed_dir()
     dest_dir.mkdir(parents=True, exist_ok=True)
-    destination = unique_destination(dest_dir, path.name)
+    destination = dest_dir / path.name
+    if destination.exists() and overwrite:
+        destination.unlink()
     shutil.move(str(path), str(destination))
     return destination
