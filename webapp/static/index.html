@@ -47,7 +47,7 @@
     </section>
 
     <section id="panel-review" class="panel">
-      <p class="hint">Merchants the AI is unsure about. One fix applies to all matching transactions in a group. <strong>Check Payment</strong> is split into one card per check (different amounts). Use <strong>Custom rules</strong> for repeating patterns, then <strong>Compile &amp; apply</strong>.</p>
+      <p class="hint">Merchants the AI is unsure about. One fix applies to all matching transactions in a group. <strong>Check Payment</strong> is split into one card per check (different amounts). Use <strong>Custom rules</strong> for repeating patterns, then <strong>Save &amp; apply rule</strong>.</p>
       <div class="review-layout">
         <div class="review-main">
           <div id="review-datalists" class="sr-only" aria-hidden="true"></div>
@@ -63,11 +63,18 @@
           <label class="custom-rules-add-label" for="custom-rule-input">New rule (plain English)</label>
           <textarea id="custom-rule-input" rows="4" placeholder='If Generated Description contains "check" and Amount is 60, AI Category = Education, AI Sub-Category = Music Lessons'></textarea>
           <div class="custom-rules-actions">
-            <button type="button" id="btn-custom-rule-add">Add rule</button>
-            <button type="button" id="btn-custom-rules-apply">Compile &amp; apply</button>
+            <button type="button" id="btn-custom-rule-save-apply">Save &amp; apply rule</button>
+            <button type="button" id="btn-custom-rules-reapply" class="btn-link custom-rules-reapply">Re-apply all rules</button>
           </div>
-          <pre id="custom-rules-result" class="custom-rules-result"></pre>
+          <pre id="custom-rules-result" class="custom-rules-result" aria-live="polite"></pre>
         </aside>
+      </div>
+      <div id="review-busy-overlay" class="review-busy-overlay hidden" aria-hidden="true">
+        <div class="review-busy-card" role="status">
+          <div class="review-busy-spinner" aria-hidden="true"></div>
+          <p class="review-busy-title">Saving and applying rule…</p>
+          <p class="review-busy-hint">Please wait. Do not leave this page.</p>
+        </div>
       </div>
     </section>
 

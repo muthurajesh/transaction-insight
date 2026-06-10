@@ -11,6 +11,7 @@ async function api(path, options = {}) {
 }
 
 function setTab(name) {
+  if (customRulesBusy) return;
   document.querySelectorAll(".tab").forEach((t) => {
     t.classList.toggle("active", t.dataset.tab === name);
   });
@@ -507,12 +508,13 @@ function ensureReviewDatalists(options) {
 }
 
 function reviewField(name, label, tooltip, controlHtml, { fullWidth = false } = {}) {
+  const helpLabel = tooltip ? `Help: ${tooltip}` : "Help";
   return `
     <div class="review-field${fullWidth ? " review-field-full" : ""}">
-      <label for="${name}" title="${escapeAttr(tooltip)}">
-        <span>${escapeHtml(label)}</span>
-        <span class="field-tip" title="${escapeAttr(tooltip)}" aria-hidden="true">?</span>
-      </label>
+      <div class="review-field-head">
+        <label for="${name}">${escapeHtml(label)}</label>
+        <button type="button" class="field-tip" title="${escapeAttr(tooltip)}" aria-label="${escapeAttr(helpLabel)}">?</button>
+      </div>
       ${controlHtml}
     </div>
   `;
@@ -616,6 +618,100 @@ function buildSelectOptions(values, selected, { allowEmpty = false } = {}) {
 }
 
 let customRulesExpanded = false;
+let customRulesBusy = false;
+
+function setCustomRulesBusy(busy, { title, hint } = {}) {
+  customRulesBusy = busy;
+  const overlay = $("#review-busy-overlay");
+  const panel = $("#panel-review");
+  document.querySelectorAll(".tab").forEach((t) => {
+    t.disabled = busy;
+  });
+  if (overlay) {
+    overlay.classList.toggle("hidden", !busy);
+    overlay.setAttribute("aria-hidden", busy ? "false" : "true");
+    const titleEl = overlay.querySelector(".review-busy-title");
+    const hintEl = overlay.querySelector(".review-busy-hint");
+    if (busy) {
+      if (titleEl) titleEl.textContent = title || "Working…";
+      if (hintEl) hintEl.textContent = hint || "Please wait. Do not leave this page.";
+    }
+  }
+  if (panel) panel.setAttribute("aria-busy", busy ? "true" : "false");
+
+  const saveBtn = $("#btn-custom-rule-save-apply");
+  const reapplyBtn = $("#btn-custom-rules-reapply");
+  const input = $("#custom-rule-input");
+  const toggle = $("#btn-custom-rules-toggle");
+  if (saveBtn) saveBtn.disabled = busy;
+  if (reapplyBtn) reapplyBtn.disabled = busy;
+  if (input) input.disabled = busy;
+  if (toggle) toggle.disabled = busy;
+}
+
+function showCustomRulesResult(res) {
+  const resultEl = $("#custom-rules-result");
+  if (!resultEl) return;
+  resultEl.dataset.sticky = "1";
+  let msg = res.message || "Done.";
+  if (res.compile_errors?.length && res.ok !== false) {
+    msg += `\n\nCompile errors:\n${res.compile_errors
+      .map((e) => `• ${e.rule}: ${e.error}`)
+      .join("\n")}`;
+  }
+  resultEl.textContent = msg;
+  resultEl.classList.remove("custom-rules-result-ok", "custom-rules-result-err");
+  resultEl.classList.add(res.ok === false ? "custom-rules-result-err" : "custom-rules-result-ok");
+}
+
+async function runCustomRulesWorkflow(mode, { ruleText } = {}) {
+  const isSave = mode === "save-apply";
+  if (isSave && !(ruleText || "").trim()) {
+    alert("Enter rule text first.");
+    return;
+  }
+
+  setCustomRulesBusy(true, {
+    title: isSave ? "Saving and applying rule…" : "Re-applying all rules…",
+    hint: isSave
+      ? "Compiling your rule and updating matching transactions. Please wait."
+      : "Compiling pending rules and updating transactions. Please wait.",
+  });
+
+  const input = $("#custom-rule-input");
+  const resultEl = $("#custom-rules-result");
+  if (resultEl) {
+    resultEl.classList.remove("custom-rules-result-ok", "custom-rules-result-err");
+    resultEl.textContent = isSave ? "Saving and applying rule…" : "Applying rules…";
+    resultEl.dataset.sticky = "1";
+  }
+
+  try {
+    const res = isSave
+      ? await api("/api/custom-rules/save-apply", {
+          method: "POST",
+          body: JSON.stringify({ rule: ruleText.trim() }),
+        })
+      : await api("/api/custom-rules/compile-apply", { method: "POST" });
+
+    if (isSave && input) input.value = "";
+    if (res.rules) renderCustomRulesList(res.rules);
+    else await loadCustomRules();
+    showCustomRulesResult(res);
+    await loadReview();
+    loadStatus();
+    reviewOptionsCache = null;
+  } catch (err) {
+    if (resultEl) {
+      resultEl.dataset.sticky = "1";
+      resultEl.textContent = err.message;
+      resultEl.classList.remove("custom-rules-result-ok");
+      resultEl.classList.add("custom-rules-result-err");
+    }
+  } finally {
+    setCustomRulesBusy(false);
+  }
+}
 
 function renderCustomRulesList(rules) {
   const list = $("#custom-rules-list");
@@ -672,59 +768,18 @@ async function loadCustomRules() {
 }
 
 $("#btn-custom-rules-toggle")?.addEventListener("click", () => {
+  if (customRulesBusy) return;
   customRulesExpanded = !customRulesExpanded;
   loadCustomRules();
 });
 
-$("#btn-custom-rule-add")?.addEventListener("click", async () => {
-  const input = $("#custom-rule-input");
-  const resultEl = $("#custom-rules-result");
-  const rule = (input?.value || "").trim();
-  if (!rule) {
-    alert("Enter rule text first.");
-    return;
-  }
-  try {
-    const res = await api("/api/custom-rules", {
-      method: "POST",
-      body: JSON.stringify({ rule }),
-    });
-    if (input) input.value = "";
-    renderCustomRulesList(res.rules || []);
-    if (resultEl) {
-      resultEl.textContent = res.message || "Rule added.";
-      delete resultEl.dataset.sticky;
-    }
-  } catch (err) {
-    if (resultEl) resultEl.textContent = err.message;
-  }
+$("#btn-custom-rule-save-apply")?.addEventListener("click", () => {
+  const rule = ($("#custom-rule-input")?.value || "").trim();
+  runCustomRulesWorkflow("save-apply", { ruleText: rule });
 });
 
-$("#btn-custom-rules-apply")?.addEventListener("click", async () => {
-  const btn = $("#btn-custom-rules-apply");
-  const resultEl = $("#custom-rules-result");
-  if (btn) btn.disabled = true;
-  if (resultEl) {
-    resultEl.textContent = "Compiling rules and applying to database…";
-    resultEl.dataset.sticky = "1";
-  }
-  try {
-    const res = await api("/api/custom-rules/compile-apply", { method: "POST" });
-    let msg = res.message || "Done.";
-    if (res.compile_errors?.length) {
-      msg += `\n\nCompile errors:\n${res.compile_errors
-        .map((e) => `• ${e.rule}: ${e.error}`)
-        .join("\n")}`;
-    }
-    if (resultEl) resultEl.textContent = msg;
-    await loadCustomRules();
-    await loadReview();
-    loadStatus();
-  } catch (err) {
-    if (resultEl) resultEl.textContent = err.message;
-  } finally {
-    if (btn) btn.disabled = false;
-  }
+$("#btn-custom-rules-reapply")?.addEventListener("click", () => {
+  runCustomRulesWorkflow("reapply");
 });
 
 let editOptionsCache = null;
@@ -1830,25 +1885,26 @@ async function loadReview() {
             tips.sub_category || "Specific label",
             `<input id="${uid}-sub" name="sub" list="review-subcategories" value="${escapeAttr(sub)}" placeholder="Select or type…" title="${escapeAttr(tips.sub_category || "")}" />`
           )}
-          ${reviewField(
-            `${uid}-flow`,
-            "Income / Expense",
-            tips.flow_type || "Flow type",
-            `<select id="${uid}-flow" name="flow" title="${escapeAttr(tips.flow_type || "")}">${buildSelectOptions(options.flow_types, flow)}</select>`,
-            { fullWidth: true }
-          )}
-          ${reviewField(
-            `${uid}-type`,
-            "Fixed / Variable",
-            tips.expense_type || "Expense type",
-            `<select id="${uid}-type" name="type" title="${escapeAttr(tips.expense_type || "")}">${buildSelectOptions(options.expense_types, expType)}</select>`
-          )}
-          ${reviewField(
-            `${uid}-class`,
-            "Classification",
-            tips.classification || "Personal or Business",
-            `<select id="${uid}-class" name="classification" title="${escapeAttr(tips.classification || "")}">${buildSelectOptions(classValues, classification)}</select>`
-          )}
+          <div class="review-form-row">
+            ${reviewField(
+              `${uid}-flow`,
+              "Transaction kind",
+              tips.flow_type || "How this row is counted in summaries",
+              `<select id="${uid}-flow" name="flow" title="${escapeAttr(tips.flow_type || "")}">${buildSelectOptions(options.flow_types, flow)}</select>`
+            )}
+            ${reviewField(
+              `${uid}-type`,
+              "Expense Type",
+              tips.expense_type || "Expense type",
+              `<select id="${uid}-type" name="type" title="${escapeAttr(tips.expense_type || "")}">${buildSelectOptions(options.expense_types, expType)}</select>`
+            )}
+            ${reviewField(
+              `${uid}-class`,
+              "Classification",
+              tips.classification || "Personal or Business",
+              `<select id="${uid}-class" name="classification" title="${escapeAttr(tips.classification || "")}">${buildSelectOptions(classValues, classification)}</select>`
+            )}
+          </div>
           <button type="submit">${confirmLabel}</button>
         </form>
       `;

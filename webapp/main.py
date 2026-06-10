@@ -35,7 +35,12 @@ from webapp.services.review_options import get_review_options
 from webapp.services.data_store import clear_data_store, table_counts
 from webapp.services.inbox_upload import save_upload_to_inbox, scan_uploaded_files
 from webapp.services.ingest import ingest_csv, scan_inbox
-from webapp.services.custom_rules import add_custom_rule, compile_and_apply_custom_rules, list_custom_rules
+from webapp.services.custom_rules import (
+    add_custom_rule,
+    compile_and_apply_custom_rules,
+    list_custom_rules,
+    save_and_apply_custom_rule,
+)
 from webapp.services.lookups_import import default_lookup_workbook_path, import_lookup_workbook
 from webapp.services.cadence_insights import propose_cadence, propose_cadence_batch
 from webapp.services.edit_insights import analyze_edit
@@ -545,7 +550,34 @@ def api_custom_rules_add(body: CustomRuleCreateRequest) -> dict[str, Any]:
 def api_custom_rules_compile_apply() -> dict[str, Any]:
     conn = _conn()
     try:
-        return compile_and_apply_custom_rules(conn)
+        result = compile_and_apply_custom_rules(conn)
+        rows = int(result.get("rows_updated") or 0)
+        errors = result.get("compile_errors") or []
+        if errors:
+            err_text = errors[0].get("error", "Unknown error")
+            result["ok"] = False
+            result["message"] = f"Could not apply rules: {err_text}"
+        else:
+            result["ok"] = True
+            result["message"] = f"Updated {rows} transaction(s)."
+        listing = list_custom_rules()
+        result["rules"] = listing.get("rules") or []
+        return result
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.post("/api/custom-rules/save-apply")
+def api_custom_rules_save_apply(body: CustomRuleCreateRequest) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        return save_and_apply_custom_rule(conn, body.rule)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(404, str(exc)) from exc
     except Exception as exc:

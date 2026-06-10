@@ -33,7 +33,7 @@ DEFAULT_CATEGORIES = [
     "Other",
 ]
 
-FLOW_TYPES = ["Expense", "Income"]
+FLOW_TYPES = ["Expense", "Income", "Transfer", "Adjustment"]
 EXPENSE_TYPES = ["Fixed", "Variable"]
 
 
@@ -130,8 +130,10 @@ def get_review_options(conn: sqlite3.Connection) -> dict:
                 "Pick from the list or type your own."
             ),
             "flow_type": (
-                "Income = money coming in (payroll, interest). "
-                "Expense = money out, including purchases and credit card payments."
+                "How this bank row is counted in summaries. "
+                "Expense = spending; Income = wages or interest; "
+                "Transfer = moves between accounts (e.g. credit card payment); "
+                "Adjustment = refunds, credits, or reimbursements."
             ),
             "expense_type": (
                 "Fixed = recurring monthly obligation (rent, utilities, subscriptions). "
