@@ -185,7 +185,22 @@ function appendToolTrace(parent, toolTrace) {
   parent.appendChild(details);
 }
 
-function appendChat(role, text, toolTrace, display) {
+function appendCadenceProposalAction(parent, proposal) {
+  if (!proposal || !proposal.insight) return;
+  const wrap = document.createElement("div");
+  wrap.className = "chat-cadence-proposal";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn-cadence-proposal";
+  btn.textContent = proposal.recommend_save_rule
+    ? "Review & save cadence"
+    : "View cadence suggestion";
+  btn.addEventListener("click", () => openCadenceInsightModal(proposal));
+  wrap.appendChild(btn);
+  parent.appendChild(wrap);
+}
+
+function appendChat(role, text, toolTrace, display, cadenceProposal) {
   const log = $("#chat-log");
   const div = document.createElement("div");
   div.className = `msg ${role}`;
@@ -200,11 +215,13 @@ function appendChat(role, text, toolTrace, display) {
     body.classList.add("markdown-body");
     body.innerHTML = renderMarkdown(text);
     if (display) mountDisplay(body, display);
+    if (cadenceProposal) appendCadenceProposalAction(body, cadenceProposal);
     appendToolTrace(body, toolTrace);
   } else {
     body.textContent = text;
   }
   div.appendChild(body);
+  log.scrollTop = log.scrollHeight;
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
   return div;
@@ -243,7 +260,7 @@ async function loadChatHistory() {
       const messages = res.messages || [];
       log.innerHTML = "";
       messages.forEach((m) => {
-        appendChat(m.role, m.content, m.tool_trace, m.display);
+        appendChat(m.role, m.content, m.tool_trace, m.display, m.cadence_proposal);
       });
       log.scrollTop = log.scrollHeight;
     } catch (_) {
@@ -409,7 +426,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
       body: JSON.stringify({ message: msg }),
     });
     removeChatPending();
-    appendChat("assistant", res.answer, res.tool_trace, res.display);
+    appendChat("assistant", res.answer, res.tool_trace, res.display, res.cadence_proposal);
   } catch (err) {
     removeChatPending();
     appendChat("assistant", `Error: ${err.message}`);
@@ -719,6 +736,135 @@ let editPageOffset = 0;
 let editSearchTotal = 0;
 let editSortBy = "date";
 let editSortDir = "desc";
+let cadencePreviewTimer = null;
+
+const CADENCE_DEFAULT_RUNRATE = {
+  recurring: true,
+  lump: false,
+  one_time: false,
+  exclude: false,
+};
+
+function setEditCadenceRunrateDefault(kind) {
+  const cb = $("#edit-cadence-runrate");
+  if (!cb || !(kind in CADENCE_DEFAULT_RUNRATE)) return;
+  cb.checked = CADENCE_DEFAULT_RUNRATE[kind];
+}
+
+function updateCadencePeriodVisibility() {
+  const kind = $("#edit-cadence-kind")?.value || "unknown";
+  const row = $("#edit-cadence-period-row");
+  const runrateWrap = document.querySelector(".edit-cadence-runrate");
+  const needsPeriod = kind === "recurring" || kind === "lump";
+  if (row) row.classList.toggle("hidden", !needsPeriod);
+  if (runrateWrap) runrateWrap.classList.toggle("hidden", kind === "unknown");
+}
+
+function resetEditCadenceForm() {
+  const kindSel = $("#edit-cadence-kind");
+  const countInput = $("#edit-cadence-period-count");
+  const unitSel = $("#edit-cadence-period-unit");
+  const runrate = $("#edit-cadence-runrate");
+  const note = $("#edit-cadence-note");
+  const preview = $("#edit-cadence-preview");
+  if (kindSel) kindSel.value = "unknown";
+  if (countInput) countInput.value = "";
+  if (unitSel) unitSel.value = "months";
+  if (runrate) runrate.checked = true;
+  if (note) note.value = "";
+  if (preview) preview.textContent = "";
+  const txScope = document.querySelector('input[name="edit-cadence-scope"][value="transaction"]');
+  if (txScope) txScope.checked = true;
+  updateCadencePeriodVisibility();
+}
+
+function loadEditCadenceForm(tx, cadenceRes) {
+  const effective = cadenceRes?.effective_cadence || {};
+  const txKind = (tx?.cadence_kind || "").trim().toLowerCase();
+  const useTx = txKind && txKind !== "unknown";
+  const source = useTx ? tx : effective;
+  const kind = (source?.cadence_kind || "unknown").trim().toLowerCase();
+  const kindSel = $("#edit-cadence-kind");
+  const countInput = $("#edit-cadence-period-count");
+  const unitSel = $("#edit-cadence-period-unit");
+  const runrate = $("#edit-cadence-runrate");
+  const note = $("#edit-cadence-note");
+  if (kindSel) {
+    kindSel.value = [...kindSel.options].some((o) => o.value === kind) ? kind : "unknown";
+  }
+  if (countInput) {
+    countInput.value =
+      source?.period_count != null && source.period_count !== "" ? String(source.period_count) : "";
+  }
+  if (unitSel && source?.period_unit) {
+    unitSel.value = source.period_unit;
+  }
+  if (runrate) {
+    const explicit = source?.include_in_run_rate;
+    if (explicit === true || explicit === 1 || explicit === "1") runrate.checked = true;
+    else if (explicit === false || explicit === 0 || explicit === "0") runrate.checked = false;
+    else setEditCadenceRunrateDefault(kindSel?.value || kind);
+  }
+  if (note) note.value = source?.cadence_note || tx?.cadence_note || "";
+  updateCadencePeriodVisibility();
+}
+
+function getEditCadencePayload() {
+  const kind = ($("#edit-cadence-kind")?.value || "unknown").trim();
+  if (!kind || kind === "unknown") return null;
+  const countRaw = ($("#edit-cadence-period-count")?.value || "").trim();
+  const period_count = countRaw ? parseInt(countRaw, 10) : null;
+  const period_unit = ($("#edit-cadence-period-unit")?.value || "").trim() || null;
+  const runrate = $("#edit-cadence-runrate");
+  const include_in_run_rate = runrate && !runrate.closest(".hidden") ? runrate.checked : null;
+  return {
+    cadence_kind: kind,
+    period_count: Number.isFinite(period_count) ? period_count : null,
+    period_unit,
+    include_in_run_rate,
+    cadence_note: ($("#edit-cadence-note")?.value || "").trim(),
+  };
+}
+
+function renderCadencePreviewLine(amounts) {
+  if (!amounts) return "";
+  return `Cash: ${formatMoney(amounts.cash)}  |  Core: ${formatMoney(amounts.core)}  |  Normalized: ${formatMoney(amounts.normalized)}/mo`;
+}
+
+async function refreshCadencePreview() {
+  if (!editSourceTx?.transaction_id) return;
+  const previewEl = $("#edit-cadence-preview");
+  if (!previewEl) return;
+  const kind = ($("#edit-cadence-kind")?.value || "unknown").trim();
+  const txId = encodeURIComponent(editSourceTx.transaction_id);
+  try {
+    let res;
+    if (kind === "unknown") {
+      res = await api(`/api/transactions/${txId}/cadence`);
+    } else {
+      const params = new URLSearchParams({ cadence_kind: kind });
+      const countRaw = ($("#edit-cadence-period-count")?.value || "").trim();
+      const unit = ($("#edit-cadence-period-unit")?.value || "").trim();
+      if (countRaw) params.set("period_count", countRaw);
+      if (unit) params.set("period_unit", unit);
+      const runrate = $("#edit-cadence-runrate");
+      if (runrate && !runrate.closest(".hidden")) {
+        params.set("include_in_run_rate", runrate.checked ? "true" : "false");
+      }
+      res = await api(`/api/transactions/${txId}/cadence?${params}`);
+    }
+    previewEl.textContent = renderCadencePreviewLine(res.effective_amounts);
+  } catch (err) {
+    previewEl.textContent = `Preview error: ${err.message}`;
+  }
+}
+
+function scheduleCadencePreview() {
+  clearTimeout(cadencePreviewTimer);
+  cadencePreviewTimer = setTimeout(() => {
+    refreshCadencePreview().catch(() => {});
+  }, 300);
+}
 
 function setEditPanelOpen(open) {
   const layout = document.querySelector(".edit-layout");
@@ -734,6 +880,22 @@ function populateEditSelect(sel, items, allLabel, current) {
   sel.innerHTML =
     `<option value="">${escapeHtml(allLabel)}</option>` +
     (items || []).map((c) => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join("");
+  if (current && [...sel.options].some((o) => o.value === current)) {
+    sel.value = current;
+  }
+}
+
+function populateEditValueLabelSelect(sel, items, allLabel, current) {
+  if (!sel) return;
+  sel.innerHTML =
+    `<option value="">${escapeHtml(allLabel)}</option>` +
+    (items || [])
+      .map((item) => {
+        const value = item?.value ?? "";
+        const label = item?.label ?? value;
+        return `<option value="${escapeAttr(value)}">${escapeHtml(label)}</option>`;
+      })
+      .join("");
   if (current && [...sel.options].some((o) => o.value === current)) {
     sel.value = current;
   }
@@ -758,9 +920,27 @@ function populateEditAdvancedFilters(options) {
   );
   populateEditSelect(
     $("#edit-search-classification"),
-    EDIT_CLASSIFICATIONS,
+    options.classifications?.length ? options.classifications : EDIT_CLASSIFICATIONS,
     "All classifications",
     $("#edit-search-classification")?.value
+  );
+  populateEditValueLabelSelect(
+    $("#edit-search-cadence-kind"),
+    options.cadence_kinds || [],
+    "All cadence kinds",
+    $("#edit-search-cadence-kind")?.value
+  );
+  populateEditValueLabelSelect(
+    $("#edit-search-cadence-period"),
+    options.cadence_periods || [],
+    "All expense cadences",
+    $("#edit-search-cadence-period")?.value
+  );
+  populateEditValueLabelSelect(
+    $("#edit-search-include-runrate"),
+    options.run_rate_filters || [],
+    "All",
+    $("#edit-search-include-runrate")?.value
   );
 }
 
@@ -840,6 +1020,9 @@ function renderEditResults(transactions) {
   const rows = transactions
     .map((tx) => {
       const category = tx.ai_category || "—";
+      const expenseCadence = tx.expense_cadence && tx.expense_cadence !== "—" ? tx.expense_cadence : "—";
+      const cadenceKind = tx.cadence_kind_label || tx.effective_cadence_kind || "—";
+      const runRate = tx.include_in_run_rate_label || "—";
       return `
         <tr>
           <td>${escapeHtml(tx.date || "")}</td>
@@ -847,6 +1030,10 @@ function renderEditResults(transactions) {
           <td>${escapeHtml(tx.merchant_key || "")}</td>
           <td>${escapeHtml(category)}</td>
           <td>${escapeHtml(tx.expense_type || "—")}</td>
+          <td>${escapeHtml(tx.classification || "—")}</td>
+          <td class="cadence-col">${escapeHtml(expenseCadence)}</td>
+          <td class="cadence-col">${escapeHtml(cadenceKind)}</td>
+          <td class="cadence-col">${escapeHtml(runRate)}</td>
           <td><button type="button" class="btn-edit-row" data-tx-id="${escapeAttr(tx.transaction_id)}">Edit</button></td>
         </tr>
       `;
@@ -861,6 +1048,10 @@ function renderEditResults(transactions) {
           ${editSortHeader("Merchant", "merchant")}
           ${editSortHeader("AI Category", "ai_category")}
           <th scope="col">Expense Type</th>
+          ${editSortHeader("Classification", "classification")}
+          <th scope="col">Expense Cadence</th>
+          ${editSortHeader("Cadence Kind", "cadence_kind")}
+          ${editSortHeader("In run-rate", "include_in_run_rate")}
           <th scope="col"></th>
         </tr>
       </thead>
@@ -878,7 +1069,14 @@ function bindEditSortHeaders() {
         editSortDir = editSortDir === "asc" ? "desc" : "asc";
       } else {
         editSortBy = field;
-        editSortDir = field === "merchant" || field === "ai_category" ? "asc" : "desc";
+        editSortDir =
+          field === "merchant" ||
+          field === "ai_category" ||
+          field === "classification" ||
+          field === "cadence_kind" ||
+          field === "include_in_run_rate"
+            ? "asc"
+            : "desc";
       }
       runEditSearch({ resetPage: true }).catch(() => {});
     };
@@ -921,7 +1119,7 @@ async function loadEditMatches(scope) {
   renderEditMatchList(res.matches || []);
 }
 
-function openEditPanel(tx) {
+async function openEditPanel(tx) {
   editSourceTx = tx;
   setEditPanelOpen(true);
   const singleScope = document.querySelector('input[name="edit-scope"][value="single"]');
@@ -933,6 +1131,7 @@ function openEditPanel(tx) {
   const classSel = $("#edit-label-classification");
   const resultEl = $("#edit-apply-result");
   if (resultEl) resultEl.textContent = "";
+  resetEditCadenceForm();
   if (summary) {
     summary.innerHTML = `
       <strong>${escapeHtml(tx.merchant_key || "")}</strong><br>
@@ -952,6 +1151,19 @@ function openEditPanel(tx) {
     const list = $("#edit-match-list");
     if (list) list.innerHTML = `<li class="edit-match-item">Error: ${escapeHtml(err.message)}</li>`;
   });
+  try {
+    const txId = encodeURIComponent(tx.transaction_id);
+    const [full, cadenceRes] = await Promise.all([
+      api(`/api/transactions/${txId}`),
+      api(`/api/transactions/${txId}/cadence`),
+    ]);
+    loadEditCadenceForm(full, cadenceRes);
+    const previewEl = $("#edit-cadence-preview");
+    if (previewEl) previewEl.textContent = renderCadencePreviewLine(cadenceRes.effective_amounts);
+  } catch (err) {
+    const previewEl = $("#edit-cadence-preview");
+    if (previewEl) previewEl.textContent = `Could not load cadence: ${err.message}`;
+  }
 }
 
 function closeEditPanel() {
@@ -975,6 +1187,8 @@ function closeEditPanel() {
   if (classSel) classSel.value = "Personal";
   const singleScope = document.querySelector('input[name="edit-scope"][value="single"]');
   if (singleScope) singleScope.checked = true;
+  resetEditCadenceForm();
+  clearTimeout(cadencePreviewTimer);
 }
 
 function updateEditPagination() {
@@ -1023,6 +1237,9 @@ async function runEditSearch({ resetPage = false } = {}) {
   const subCategory = ($("#edit-search-sub")?.value || "").trim();
   const expenseType = ($("#edit-search-expense-type")?.value || "").trim();
   const classification = ($("#edit-search-classification")?.value || "").trim();
+  const cadenceKind = ($("#edit-search-cadence-kind")?.value || "").trim();
+  const cadencePeriod = ($("#edit-search-cadence-period")?.value || "").trim();
+  const includeRunrate = ($("#edit-search-include-runrate")?.value || "").trim();
 
   const params = new URLSearchParams();
   if (q) params.set("q", q);
@@ -1031,6 +1248,9 @@ async function runEditSearch({ resetPage = false } = {}) {
   if (subCategory) params.set("sub_category", subCategory);
   if (expenseType) params.set("expense_type", expenseType);
   if (classification) params.set("classification", classification);
+  if (cadenceKind) params.set("cadence_kind", cadenceKind);
+  if (cadencePeriod) params.set("cadence_period", cadencePeriod);
+  if (includeRunrate) params.set("include_in_run_rate", includeRunrate);
   params.set("limit", String(EDIT_PAGE_SIZE));
   params.set("offset", String(editPageOffset));
   params.set("sort_by", editSortBy);
@@ -1114,6 +1334,34 @@ document.querySelectorAll('input[name="edit-scope"]').forEach((radio) => {
   });
 });
 
+$("#edit-cadence-kind")?.addEventListener("change", () => {
+  setEditCadenceRunrateDefault($("#edit-cadence-kind")?.value || "unknown");
+  updateCadencePeriodVisibility();
+  scheduleCadencePreview();
+});
+
+["edit-cadence-period-count", "edit-cadence-period-unit", "edit-cadence-runrate", "edit-cadence-note"].forEach(
+  (id) => {
+    const el = document.getElementById(id);
+    el?.addEventListener("input", scheduleCadencePreview);
+    el?.addEventListener("change", scheduleCadencePreview);
+  }
+);
+
+document.querySelectorAll(".edit-cadence-preset").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const kindSel = $("#edit-cadence-kind");
+    const countInput = $("#edit-cadence-period-count");
+    const unitSel = $("#edit-cadence-period-unit");
+    if (kindSel) kindSel.value = btn.dataset.kind || "unknown";
+    if (countInput) countInput.value = btn.dataset.count || "";
+    if (unitSel && btn.dataset.unit) unitSel.value = btn.dataset.unit;
+    setEditCadenceRunrateDefault(kindSel?.value || "unknown");
+    updateCadencePeriodVisibility();
+    scheduleCadencePreview();
+  });
+});
+
 $("#btn-edit-select-all")?.addEventListener("click", () => {
   document.querySelectorAll(".edit-match-cb").forEach((cb) => {
     cb.checked = true;
@@ -1130,6 +1378,181 @@ $("#btn-edit-close")?.addEventListener("click", closeEditPanel);
 $("#btn-edit-cancel")?.addEventListener("click", closeEditPanel);
 
 let editInsightState = null;
+let cadenceInsightState = null;
+
+function cadenceKindLabel(kind) {
+  const labels = {
+    recurring: "Recurring",
+    lump: "Lump sum",
+    one_time: "One-time",
+    exclude: "Exclude",
+    unknown: "Unknown",
+  };
+  return labels[kind] || kind || "Unknown";
+}
+
+function closeCadenceInsightModal() {
+  const overlay = $("#cadence-insight-overlay");
+  if (overlay) {
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+  }
+  cadenceInsightState = null;
+}
+
+function renderCadenceInsight(proposal) {
+  const body = $("#cadence-insight-body");
+  const actions = $("#cadence-insight-actions");
+  const saveMerchant = $("#btn-cadence-insight-save-merchant");
+  const saveTx = $("#btn-cadence-insight-save-tx");
+  if (!body) return;
+
+  const notes =
+    (proposal.data_notes || []).length > 0
+      ? `<ul class="edit-insight-notes">${proposal.data_notes.map((n) => `<li>${escapeHtml(n)}</li>`).join("")}</ul>`
+      : "";
+
+  const existingRuleBlock = proposal.existing_similar_rule
+    ? `
+        <p class="edit-insight-existing-rule">
+          <strong>Existing cadence rule</strong>
+          ${proposal.existing_rule_source ? ` (${escapeHtml(proposal.existing_rule_source)})` : ""}:
+          <span class="edit-insight-existing-rule-text">${escapeHtml(proposal.existing_similar_rule)}</span>
+        </p>
+      `
+    : "";
+
+  const period =
+    proposal.period_count && proposal.period_unit
+      ? `Every ${proposal.period_count} ${proposal.period_unit}`
+      : "—";
+  const runRate =
+    proposal.include_in_run_rate === true
+      ? "Included in core"
+      : proposal.include_in_run_rate === false
+        ? "Excluded from core"
+        : "Default by kind";
+
+  body.innerHTML = `
+    <p class="edit-insight-pattern"><strong>${escapeHtml(proposal.merchant_key || "")}</strong> · ${escapeHtml(cadenceKindLabel(proposal.cadence_kind))} · ${escapeHtml(period)} · ${escapeHtml(runRate)}</p>
+    <div class="edit-insight-prose">${renderMarkdown(proposal.insight || "")}</div>
+    <p class="edit-cadence-preview">${escapeHtml(renderCadencePreviewLine(proposal.effective_amounts))}</p>
+    ${proposal.cadence_note ? `<p class="edit-insight-future">Note: ${escapeHtml(proposal.cadence_note)}</p>` : ""}
+    ${notes}
+    ${existingRuleBlock}
+    ${proposal.confidence ? `<span class="edit-insight-confidence">Confidence: ${escapeHtml(proposal.confidence)}</span>` : ""}
+  `;
+
+  const canSave = Boolean(proposal.recommend_save_rule);
+  const hasTx = Boolean(
+    proposal.transaction_id || proposal.sample_transaction?.transaction_id
+  );
+  if (actions) {
+    if (canSave) {
+      actions.classList.remove("hidden");
+      if (saveMerchant) saveMerchant.disabled = false;
+      if (saveTx) {
+        saveTx.disabled = !hasTx;
+        saveTx.classList.toggle("hidden", !hasTx);
+      }
+    } else {
+      actions.classList.add("hidden");
+    }
+  }
+}
+
+function openCadenceInsightModal(proposal) {
+  const overlay = $("#cadence-insight-overlay");
+  const body = $("#cadence-insight-body");
+  const actions = $("#cadence-insight-actions");
+  if (!overlay || !body) return;
+  cadenceInsightState = { proposal };
+  body.innerHTML = `<p class="hint">Loading…</p>`;
+  if (actions) actions.classList.add("hidden");
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+  renderCadenceInsight(proposal);
+}
+
+$("#btn-cadence-insight-close")?.addEventListener("click", closeCadenceInsightModal);
+$("#btn-cadence-insight-dismiss")?.addEventListener("click", closeCadenceInsightModal);
+$("#cadence-insight-overlay")?.addEventListener("click", (e) => {
+  if (e.target?.id === "cadence-insight-overlay") closeCadenceInsightModal();
+});
+
+async function saveCadenceProposal(scope) {
+  const proposal = cadenceInsightState?.proposal;
+  if (!proposal) return;
+  const saveMerchant = $("#btn-cadence-insight-save-merchant");
+  const saveTx = $("#btn-cadence-insight-save-tx");
+  const cadencePayload = {
+    cadence_kind: proposal.cadence_kind,
+    period_count: proposal.period_count ?? null,
+    period_unit: proposal.period_unit ?? null,
+    include_in_run_rate: proposal.include_in_run_rate ?? null,
+    cadence_note: proposal.cadence_note || "",
+  };
+
+  if (scope === "merchant") {
+    if (saveMerchant) saveMerchant.disabled = true;
+    try {
+      await api("/api/cadence-rules", {
+        method: "POST",
+        body: JSON.stringify({
+          merchant_key: proposal.merchant_key,
+          cadence_kind: cadencePayload.cadence_kind,
+          period_count: cadencePayload.period_count,
+          period_unit: cadencePayload.period_unit,
+          include_in_run_rate: cadencePayload.include_in_run_rate,
+          notes: cadencePayload.cadence_note,
+        }),
+      });
+      closeCadenceInsightModal();
+      loadStatus();
+    } catch (err) {
+      const body = $("#cadence-insight-body");
+      if (body) {
+        body.insertAdjacentHTML(
+          "beforeend",
+          `<p class="hint" style="margin-top:0.75rem">Save failed: ${escapeHtml(err.message)}</p>`
+        );
+      }
+      if (saveMerchant) saveMerchant.disabled = false;
+    }
+    return;
+  }
+
+  const sample = proposal.sample_transaction || {};
+  const txId = proposal.transaction_id || sample.transaction_id;
+  if (!txId) return;
+  if (saveTx) saveTx.disabled = true;
+  try {
+    await api("/api/transactions/bulk-label", {
+      method: "POST",
+      body: JSON.stringify({
+        transaction_ids: [txId],
+        ai_category: sample.ai_category || "Uncategorized",
+        ai_sub_category: sample.ai_sub_category || "",
+        cadence: cadencePayload,
+        cadence_scope: "transaction",
+      }),
+    });
+    closeCadenceInsightModal();
+    loadStatus();
+  } catch (err) {
+    const body = $("#cadence-insight-body");
+    if (body) {
+      body.insertAdjacentHTML(
+        "beforeend",
+        `<p class="hint" style="margin-top:0.75rem">Save failed: ${escapeHtml(err.message)}</p>`
+      );
+    }
+    if (saveTx) saveTx.disabled = false;
+  }
+}
+
+$("#btn-cadence-insight-save-merchant")?.addEventListener("click", () => saveCadenceProposal("merchant"));
+$("#btn-cadence-insight-save-tx")?.addEventListener("click", () => saveCadenceProposal("transaction"));
 
 function closeEditInsightModal() {
   const overlay = $("#edit-insight-overlay");
@@ -1162,13 +1585,23 @@ function renderEditInsight(insight) {
       ? `<ul class="edit-insight-notes">${insight.data_notes.map((n) => `<li>${escapeHtml(n)}</li>`).join("")}</ul>`
       : "";
 
+  const existingRuleBlock = insight.existing_similar_rule
+    ? `
+        <p class="edit-insight-existing-rule">
+          <strong>Similar rule already exists</strong>
+          ${insight.existing_rule_status ? ` (${escapeHtml(insight.existing_rule_status)})` : ""}:
+          <span class="edit-insight-existing-rule-text">${escapeHtml(insight.existing_similar_rule)}</span>
+        </p>
+      `
+    : "";
+
   const ruleBlock =
     insight.recommend_save_rule && insight.suggested_rule
       ? `
         <label class="edit-insight-rule-label" for="edit-insight-rule-text">Suggested custom rule</label>
         <textarea id="edit-insight-rule-text" class="edit-insight-rule-input" rows="3">${escapeHtml(insight.suggested_rule)}</textarea>
       `
-      : "";
+      : existingRuleBlock;
 
   body.innerHTML = `
     ${insight.pattern_summary ? `<p class="edit-insight-pattern">${escapeHtml(insight.pattern_summary)}</p>` : ""}
@@ -1275,6 +1708,24 @@ $("#edit-label-form")?.addEventListener("submit", async (e) => {
     update_merchant_label: scope === "merchant",
     merchant_key: scope === "merchant" ? editSourceTx.merchant_key : null,
   };
+  const cadence = getEditCadencePayload();
+  if (cadence) {
+    payload.cadence = cadence;
+    const cadenceScope =
+      document.querySelector('input[name="edit-cadence-scope"]:checked')?.value || "transaction";
+    payload.cadence_scope = cadenceScope;
+    if (cadenceScope === "merchant") {
+      if (!editSourceTx.merchant_key) {
+        if (resultEl) resultEl.textContent = "Merchant key is required for merchant cadence rule.";
+        return;
+      }
+      payload.merchant_key = editSourceTx.merchant_key;
+    }
+    if ((cadence.cadence_kind === "recurring" || cadence.cadence_kind === "lump") && !cadence.period_count) {
+      if (resultEl) resultEl.textContent = "Period count is required for recurring or lump cadence.";
+      return;
+    }
+  }
   if (!payload.ai_category) {
     if (resultEl) resultEl.textContent = "AI Category is required.";
     return;
@@ -1546,7 +1997,7 @@ function appendCategorizeLog(message) {
   log.scrollTop = log.scrollHeight;
 }
 
-function runCategorizeStream() {
+async function runCategorizeStream() {
   const btn = $("#btn-categorize");
   const panel = $("#categorize-progress");
   const result = $("#categorize-result");
@@ -1555,9 +2006,31 @@ function runCategorizeStream() {
   btn.disabled = true;
   panel?.classList.remove("hidden");
   if (log) log.innerHTML = "";
-  setCategorizeProgress(0, "Starting processing (CLI pipeline)…");
+  setCategorizeProgress(0, "Checking inbox…");
   result.textContent = "";
 
+  try {
+    const st = await api("/api/status");
+    const files = st.inbox_csv_files || [];
+    if (files.length === 0) {
+      const msg =
+        "No CSV in input/. Use “Choose CSV files & scan”, or copy one export from processed/ back into input/.";
+      setCategorizeProgress(0, msg);
+      result.textContent = msg;
+      btn.disabled = false;
+      return;
+    }
+    if (files.length > 1) {
+      appendCategorizeLog(`Processing ${files.length} file(s): ${files.join(", ")}`);
+    }
+  } catch (err) {
+    setCategorizeProgress(0, err.message);
+    result.textContent = err.message;
+    btn.disabled = false;
+    return;
+  }
+
+  setCategorizeProgress(0, "Starting processing (CLI pipeline)…");
   const es = new EventSource("/api/process/stream");
 
   es.onmessage = (ev) => {
@@ -1594,16 +2067,40 @@ function runCategorizeStream() {
       setCategorizeProgress(data.percent, data.message);
     } else if (data.type === "batch_error") {
       appendCategorizeLog(data.message);
+    } else if (data.type === "file_start" || data.type === "file_done") {
+      if (typeof data.percent === "number") {
+        setCategorizeProgress(data.percent, data.message);
+      } else if (data.message) {
+        const text = $("#categorize-progress-text");
+        if (text) text.textContent = data.message;
+      }
+      if (data.message) appendCategorizeLog(data.message);
     } else if (data.type === "done") {
-      const doneMsg = data.result?.archived_to
-        ? `Complete — archived to ${data.result.archived_to}`
-        : data.message || "Complete";
+      const fileCount = data.file_count ?? (data.results?.length || (data.result ? 1 : 0));
+      const doneMsg =
+        data.message ||
+        (fileCount > 1
+          ? `Complete — processed ${fileCount} file(s)`
+          : data.result?.archived_to
+            ? `Complete — archived to ${data.result.archived_to}`
+            : "Complete");
       setCategorizeProgress(100, doneMsg);
       if (data.message) appendCategorizeLog(data.message);
-      if (data.result?.archived_to) {
-        appendCategorizeLog(`Archived CSV → ${data.result.archived_to}`);
-      }
-      if (data.result) {
+      if (Array.isArray(data.results)) {
+        for (const item of data.results) {
+          if (item.archived_to) {
+            appendCategorizeLog(`Archived ${item.file} → ${item.archived_to}`);
+          }
+        }
+        result.textContent = JSON.stringify(
+          { file_count: fileCount, results: data.results },
+          null,
+          2
+        );
+      } else if (data.result) {
+        if (data.result.archived_to) {
+          appendCategorizeLog(`Archived CSV → ${data.result.archived_to}`);
+        }
         result.textContent = JSON.stringify(data.result, null, 2);
       } else {
         result.textContent = JSON.stringify(

@@ -2,6 +2,13 @@ from __future__ import annotations
 
 import sqlite3
 
+from webapp.services.expense_cadence import (
+    CADENCE_KIND_LABELS,
+    CADENCE_PERIOD_PRESETS,
+    RUN_RATE_FILTER_OPTIONS,
+    expense_cadence_period_label,
+)
+
 DEFAULT_CATEGORIES = [
     "Housing",
     "Utilities",
@@ -63,10 +70,54 @@ def get_review_options(conn: sqlite3.Connection) -> dict:
     sub_categories = sorted({r[0] for r in sub_rows if r[0]})
     classifications = sorted({r[0] for r in class_rows if r[0]})
 
+    period_rows = conn.execute(
+        """
+        SELECT DISTINCT period_count, period_unit FROM (
+            SELECT period_count, period_unit
+            FROM transactions
+            WHERE period_count IS NOT NULL AND period_unit IS NOT NULL AND TRIM(period_unit) != ''
+            UNION
+            SELECT period_count, period_unit
+            FROM cadence_rules
+            WHERE period_count IS NOT NULL AND period_unit IS NOT NULL AND TRIM(period_unit) != ''
+        )
+        ORDER BY 2, 1
+        """
+    ).fetchall()
+
+    cadence_periods: list[dict[str, str]] = [
+        {"value": value, "label": label} for value, label in CADENCE_PERIOD_PRESETS
+    ]
+    seen_periods = {item["value"] for item in cadence_periods if item["value"] != "unset"}
+    for count, unit in period_rows:
+        if count is None or not unit:
+            continue
+        key = f"{int(count)}:{str(unit).strip().lower()}"
+        if key in seen_periods:
+            continue
+        seen_periods.add(key)
+        cadence_periods.append(
+            {
+                "value": key,
+                "label": expense_cadence_period_label("recurring", int(count), str(unit).strip().lower()),
+            }
+        )
+
+    cadence_kinds = [
+        {"value": kind, "label": label} for kind, label in sorted(CADENCE_KIND_LABELS.items())
+    ]
+
+    run_rate_filters = [
+        {"value": value, "label": label} for value, label in RUN_RATE_FILTER_OPTIONS
+    ]
+
     return {
         "categories": categories,
         "sub_categories": sub_categories,
         "classifications": classifications,
+        "cadence_kinds": cadence_kinds,
+        "cadence_periods": cadence_periods,
+        "run_rate_filters": run_rate_filters,
         "flow_types": FLOW_TYPES,
         "expense_types": EXPENSE_TYPES,
         "tooltips": {

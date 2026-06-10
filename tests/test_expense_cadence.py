@@ -1,3 +1,6 @@
+import sqlite3
+
+from webapp.db.schema import SCHEMA_SQL, _migrate_schema
 from webapp.services.expense_cadence import (
     CADENCE_KIND_LUMP,
     CADENCE_KIND_ONE_TIME,
@@ -6,6 +9,9 @@ from webapp.services.expense_cadence import (
     effective_amount,
     normalize_monthly_amount,
     parse_flexible_cadence_text,
+    sum_expenses_for_view,
+    top_categories_for_view,
+    upsert_cadence_rule,
 )
 
 
@@ -65,3 +71,82 @@ def test_pipeline_yearly_row():
     assert fields["cadence_kind"] == CADENCE_KIND_LUMP
     assert fields["period_count"] == 12
     assert fields["include_in_run_rate"] is False
+
+
+def _test_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(SCHEMA_SQL)
+    _migrate_schema(conn)
+    conn.commit()
+    return conn
+
+
+def test_sum_expenses_for_view_normalized():
+    conn = _test_conn()
+    conn.execute(
+        """
+        INSERT INTO transactions (
+            transaction_id, date, budget_month, amount, merchant_key,
+            flow_type, ai_category, imported_at,
+            cadence_kind, period_count, period_unit, include_in_run_rate
+        ) VALUES
+        ('t1', '2026-04-01', '2026-04', -928.87, 'Mercury Ins', 'Expense', 'Insurance', 'now',
+         'lump', 12, 'months', 0),
+        ('t2', '2026-04-05', '2026-04', -100.0, 'Groceries', 'Expense', 'Groceries', 'now',
+         'recurring', 1, 'months', 1)
+        """
+    )
+    conn.commit()
+    cash, count = sum_expenses_for_view(conn, view="cash", budget_month="2026-04")
+    norm, _ = sum_expenses_for_view(conn, view="normalized", budget_month="2026-04")
+    core, _ = sum_expenses_for_view(conn, view="core", budget_month="2026-04")
+    assert count == 2
+    assert cash == 1028.87
+    assert norm == round(77.41 + 100.0, 2)
+    assert core == 100.0
+
+
+def test_top_categories_for_view():
+    conn = _test_conn()
+    conn.execute(
+        """
+        INSERT INTO transactions (
+            transaction_id, date, budget_month, amount, merchant_key,
+            flow_type, ai_category, imported_at,
+            cadence_kind, period_count, period_unit, include_in_run_rate
+        ) VALUES
+        ('t1', '2026-04-01', '2026-04', -600.0, 'Auto Ins', 'Expense', 'Insurance', 'now',
+         'lump', 6, 'months', 0),
+        ('t2', '2026-04-05', '2026-04', -50.0, 'Groceries', 'Expense', 'Groceries', 'now',
+         'recurring', 1, 'months', 1)
+        """
+    )
+    conn.commit()
+    ranked = top_categories_for_view(conn, "2026-04", limit=5, view="normalized")
+    by_cat = {r["category"]: r["spend"] for r in ranked}
+    assert by_cat["Insurance"] == 100.0
+    assert by_cat["Groceries"] == 50.0
+
+
+def test_merchant_cadence_rule_in_aggregation():
+    conn = _test_conn()
+    upsert_cadence_rule(
+        conn,
+        merchant_key="Mercury Ins",
+        cadence_kind=CADENCE_KIND_LUMP,
+        period_count=12,
+        period_unit="months",
+        include_in_run_rate=False,
+    )
+    conn.execute(
+        """
+        INSERT INTO transactions (
+            transaction_id, date, budget_month, amount, merchant_key,
+            flow_type, ai_category, imported_at
+        ) VALUES ('t1', '2026-04-01', '2026-04', -928.87, 'Mercury Ins', 'Expense', 'Insurance', 'now')
+        """
+    )
+    conn.commit()
+    norm, _ = sum_expenses_for_view(conn, view="normalized", budget_month="2026-04")
+    assert norm == 77.41

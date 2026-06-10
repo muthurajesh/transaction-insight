@@ -81,9 +81,9 @@ For “what months do I have?” or monthly tables, prefer **`full_months`** fro
 | `run_custom_report` | Re-run a saved report with new `month`, `months`, `limit`, etc. |
 | `delete_custom_report` | Remove a saved report |
 | `flow_totals_by_month` | Each/all/every month income or spending; monthly breakdown |
-| `month_total` | One specific month total (`month` optional → latest full month) |
+| `month_total` | One specific month total (`month` optional → latest full month). Expense: optional `expense_view` (`cash` / `core` / `normalized`) |
 | `available_months` | What months exist, date range of data |
-| `top_categories` | Top spending categories for one month |
+| `top_categories` | Top spending categories for one month (`expense_view` optional) |
 | `month_vs_avg` | How a month compares to average spending |
 | `list_outliers` | Unusual category spend vs history |
 | `list_transactions` | **List individual rows** for a month (optional `category` filter) |
@@ -94,11 +94,25 @@ For “what months do I have?” or monthly tables, prefer **`full_months`** fro
 |---------------|-------------|
 | “Show each month income” | `flow_totals_by_month` `{flow: Income}` |
 | “How much did I spend in March?” | `month_total` `{month: 2026-03, flow: Expense}` |
+| “Normalized monthly spend in April?” | `month_total` `{month: 2026-04, flow: Expense, expense_view: normalized}` |
+| “Core run-rate spending in May?” | `month_total` `{month: 2026-05, expense_view: core}` |
 | “What months are loaded?” | `available_months` `{}` |
 | “Top categories last month” | `top_categories` `{month: <latest full>}` |
+| “Top categories April (normalized)” | `top_categories` `{month: 2026-04, expense_view: normalized}` |
 | “Show all Insurance transactions for April 2026” | `list_transactions` `{month: 2026-04, category: Insurance}` |
 | “Save top 10 expenses as a report” | `save_custom_report` with parameterized SQL + name |
 | “Run Top 10 Expenses for March 2026” | `run_custom_report` `{report: "Top 10 Expenses", params: {month: "2026-03"}}` |
+
+## Expense cadence views (`expense_view`)
+
+| View | Meaning |
+|------|---------|
+| `cash` | Raw bank outflows (`SUM(-amount)`) — default |
+| `core` | Run-rate only — excludes annual/lump/one-time per cadence rules |
+| `normalized` | Monthly equivalent — spreads yearly/semi-annual charges |
+
+Use on `month_total`, `top_categories`, `flow_totals_by_month` when `flow=Expense`.
+Raw `query_sql` cannot apply per-row cadence — use helper tools instead.
 
 ## `custom_reports` table (AI may write here)
 
@@ -106,7 +120,7 @@ For “what months do I have?” or monthly tables, prefer **`full_months`** fro
 |--------|---------|
 | `report_id` | Stable id |
 | `name` | Display name (unique enough to find by name) |
-| `sql_template` | Read-only `SELECT` with `:month`, `:months`, `:limit`, `:category` |
+| `sql_template` | Read-only `SELECT` with `:month`, `:months`, `:limit`, `:category` (SQL sums are **cash** only; `:expense_view` is stored for metadata — use helper tools for normalized/core) |
 | `parameters_json` | e.g. `["month", "limit"]` |
 | `original_question` | What the user asked when saving |
 

@@ -7,6 +7,7 @@ from transaction_insight import analytics
 
 from webapp.agent.db_query import execute_readonly_sql
 from webapp.services import custom_reports as saved_reports
+from webapp.services.cadence_insights import propose_cadence
 
 month_total = analytics.month_total
 flow_totals_by_month = analytics.flow_totals_by_month
@@ -33,22 +34,40 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "month_total",
-        "description": "Total spend or income for ONE budget month (YYYY-MM). Omit month to use latest full month.",
-        "parameters": {"month": "optional YYYY-MM", "flow": "Expense or Income"},
+        "description": (
+            "Total spend or income for ONE budget month (YYYY-MM). Omit month to use latest full month. "
+            "For expenses, expense_view: cash (bank), core (run-rate only), normalized (spread annual/lump)."
+        ),
+        "parameters": {
+            "month": "optional YYYY-MM",
+            "flow": "Expense or Income",
+            "expense_view": "optional cash|core|normalized (Expense only, default cash)",
+        },
     },
     {
         "name": "flow_totals_by_month",
         "description": (
             "Totals for ALL full months in one call. Use for 'each month', 'all months', "
             "'income by month', or 'spending by month'. Income respects paycheck spillover "
-            "(stored in budget_month)."
+            "(stored in budget_month). expense_view applies when flow=Expense."
         ),
-        "parameters": {"flow": "Income or Expense", "full_months_only": "optional bool default true"},
+        "parameters": {
+            "flow": "Income or Expense",
+            "full_months_only": "optional bool default true",
+            "expense_view": "optional cash|core|normalized (Expense only)",
+        },
     },
     {
         "name": "top_categories",
-        "description": "Top spending categories for a month (outflows only).",
-        "parameters": {"month": "YYYY-MM", "limit": "optional int"},
+        "description": (
+            "Top spending categories for a month (outflows only). "
+            "Use expense_view=normalized when user asks for monthly budget / spread annual charges."
+        ),
+        "parameters": {
+            "month": "YYYY-MM",
+            "limit": "optional int",
+            "expense_view": "optional cash|core|normalized (default cash)",
+        },
     },
     {
         "name": "month_vs_avg",
@@ -73,7 +92,7 @@ TOOL_DEFINITIONS = [
         "description": (
             "Save a read-only SELECT as a named custom report the user can re-run later. "
             "AI has write access ONLY to custom_reports (not transactions). "
-            "Use SQLite named params: :month, :months (JSON array), :limit, :category."
+            "Use SQLite named params: :month, :months (JSON array), :limit, :category, :expense_view (metadata only for SQL reports)."
         ),
         "parameters": {
             "name": "short display name (required)",
@@ -118,6 +137,19 @@ TOOL_DEFINITIONS = [
             "limit": "optional int default 100 max 500",
         },
     },
+    {
+        "name": "propose_cadence_rule",
+        "description": (
+            "Propose expense cadence for a merchant (annual insurance, monthly sub, bi-weekly, etc.). "
+            "Use when the user explains how a charge should be treated for monthly/run-rate reporting. "
+            "Returns a proposal the UI can confirm — does not save until user approves."
+        ),
+        "parameters": {
+            "merchant_key": "optional exact Generated Description / merchant_key",
+            "transaction_id": "optional transaction id for amount preview",
+            "hint": "optional user words about cadence (e.g. yearly insurance)",
+        },
+    },
 ]
 
 
@@ -129,15 +161,26 @@ def run_tool(conn: sqlite3.Connection, name: str, args: dict[str, Any]) -> Any:
             max_rows=int(args.get("max_rows", 500)),
         )
     if name == "month_total":
-        return month_total(conn, args.get("month"), flow=args.get("flow", "Expense"))
+        return month_total(
+            conn,
+            args.get("month"),
+            flow=args.get("flow", "Expense"),
+            expense_view=str(args.get("expense_view", "cash")),
+        )
     if name == "flow_totals_by_month":
         return flow_totals_by_month(
             conn,
             flow=args.get("flow", "Income"),
             full_months_only=bool(args.get("full_months_only", True)),
+            expense_view=str(args.get("expense_view", "cash")),
         )
     if name == "top_categories":
-        return top_categories(conn, args["month"], limit=int(args.get("limit", 10)))
+        return top_categories(
+            conn,
+            args["month"],
+            limit=int(args.get("limit", 10)),
+            expense_view=str(args.get("expense_view", "cash")),
+        )
     if name == "month_vs_avg":
         return month_vs_avg(conn, args["month"])
     if name == "list_outliers":
@@ -176,4 +219,11 @@ def run_tool(conn: sqlite3.Connection, name: str, args: dict[str, Any]) -> Any:
     if name == "delete_custom_report":
         deleted = saved_reports.delete_custom_report(conn, args["report"])
         return {"deleted": deleted, "report": args["report"]}
+    if name == "propose_cadence_rule":
+        return propose_cadence(
+            conn,
+            merchant_key=args.get("merchant_key"),
+            transaction_id=args.get("transaction_id"),
+            hint=str(args.get("hint") or ""),
+        )
     raise ValueError(f"Unknown tool: {name}")

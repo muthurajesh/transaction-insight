@@ -3,6 +3,20 @@ from __future__ import annotations
 from typing import Any
 
 
+def _view_suffix(args: dict[str, Any] | None) -> str:
+    if not args:
+        return ""
+    view = str(args.get("expense_view") or "cash").strip().lower()
+    if view == "cash":
+        return ""
+    try:
+        from webapp.services.expense_cadence import expense_view_label
+
+        return f" ({expense_view_label(view)})"
+    except Exception:
+        return f" ({view})"
+
+
 def _money_format(amount: float) -> str:
     try:
         n = float(amount)
@@ -61,16 +75,22 @@ def display_from_tool_result(
         if not months:
             return None
         flow = result.get("flow_type", "Expense")
+        view_suffix = (
+            f" — {result.get('expense_view_label')}"
+            if result.get("expense_view_label")
+            else _view_suffix(args)
+        )
         labels = [str(m["month"]) for m in months]
         data = [float(m["total"] or 0) for m in months]
         return chart_display(
-            title=f"{flow} by month",
+            title=f"{flow} by month{view_suffix}",
             chart_type="bar",
             labels=labels,
             datasets=[{"label": flow, "data": data}],
             summary=(
                 f"Grand total: ${result.get('grand_total', 0):,.2f} "
                 f"across {len(months)} month(s)"
+                + (f" · View: {result.get('expense_view_label')}" if result.get("expense_view_label") else "")
             ),
         )
 
@@ -78,16 +98,25 @@ def display_from_tool_result(
         if not isinstance(result, list) or not result:
             return None
         month = str(args.get("month") or "").strip()
+        view_suffix = _view_suffix(args)
         labels = [str(r.get("category") or "") for r in result]
         data = [float(r.get("spend") or 0) for r in result]
-        title = f"Top categories — {month}" if month else "Top categories"
+        title = (
+            f"Top categories — {month}{view_suffix}"
+            if month
+            else f"Top categories{view_suffix}"
+        )
         total = sum(data)
+        view_note = view_suffix.strip(" ()") or ""
+        summary = f"Total shown: ${total:,.2f} ({len(result)} categories)"
+        if view_note:
+            summary += f" · View: {view_note}"
         return chart_display(
             title=title,
             chart_type="bar",
             labels=labels,
             datasets=[{"label": "Spend", "data": data}],
-            summary=f"Total shown: ${total:,.2f} ({len(result)} categories)",
+            summary=summary,
         )
 
     if not isinstance(result, dict) or result.get("error"):

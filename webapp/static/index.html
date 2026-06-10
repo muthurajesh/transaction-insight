@@ -106,6 +106,24 @@
                   <option value="">All classifications</option>
                 </select>
               </label>
+              <label class="edit-advanced-field">
+                <span>Cadence kind</span>
+                <select id="edit-search-cadence-kind" aria-label="Cadence kind filter">
+                  <option value="">All cadence kinds</option>
+                </select>
+              </label>
+              <label class="edit-advanced-field">
+                <span>Expense cadence</span>
+                <select id="edit-search-cadence-period" aria-label="Expense cadence filter">
+                  <option value="">All expense cadences</option>
+                </select>
+              </label>
+              <label class="edit-advanced-field">
+                <span>Include in run-rate</span>
+                <select id="edit-search-include-runrate" aria-label="Include in run-rate filter">
+                  <option value="">All</option>
+                </select>
+              </label>
             </div>
           </details>
           <p id="edit-search-meta" class="edit-search-meta"></p>
@@ -153,6 +171,59 @@
                 <option value="Business">Business</option>
               </select>
             </label>
+            <section class="edit-cadence-section" aria-labelledby="edit-cadence-heading">
+              <h3 id="edit-cadence-heading" class="edit-cadence-heading">Expense cadence</h3>
+              <div class="edit-cadence-presets" role="group" aria-label="Cadence presets">
+                <button type="button" class="edit-cadence-preset" data-kind="recurring" data-count="1" data-unit="months">Monthly</button>
+                <button type="button" class="edit-cadence-preset" data-kind="lump" data-count="12" data-unit="months">Yearly</button>
+                <button type="button" class="edit-cadence-preset" data-kind="lump" data-count="6" data-unit="months">Semi-annual</button>
+                <button type="button" class="edit-cadence-preset" data-kind="recurring" data-count="2" data-unit="weeks">Bi-weekly</button>
+              </div>
+              <label class="edit-field">
+                <span>Cadence kind</span>
+                <select id="edit-cadence-kind" aria-label="Cadence kind">
+                  <option value="unknown">Unknown (no change)</option>
+                  <option value="recurring">Recurring</option>
+                  <option value="lump">Lump sum (annual / semi-annual)</option>
+                  <option value="one_time">One-time</option>
+                  <option value="exclude">Exclude from run-rate</option>
+                </select>
+              </label>
+              <div id="edit-cadence-period-row" class="edit-cadence-period-row">
+                <label class="edit-field edit-field-inline">
+                  <span>Every</span>
+                  <input type="number" id="edit-cadence-period-count" min="1" step="1" placeholder="12" aria-label="Period count" />
+                </label>
+                <label class="edit-field edit-field-inline">
+                  <span>Unit</span>
+                  <select id="edit-cadence-period-unit" aria-label="Period unit">
+                    <option value="months">Months</option>
+                    <option value="weeks">Weeks</option>
+                    <option value="days">Days</option>
+                  </select>
+                </label>
+              </div>
+              <label class="edit-field edit-cadence-runrate">
+                <input type="checkbox" id="edit-cadence-runrate" />
+                <span>Include in run-rate (core view)</span>
+              </label>
+              <label class="edit-field">
+                <span>Note</span>
+                <input type="text" id="edit-cadence-note" placeholder="Optional note" aria-label="Cadence note" />
+              </label>
+              <fieldset class="edit-scope-fieldset edit-cadence-scope-fieldset">
+                <legend>Cadence applies to</legend>
+                <label class="edit-scope-option">
+                  <input type="radio" name="edit-cadence-scope" value="transaction" checked />
+                  This transaction only
+                </label>
+                <label class="edit-scope-option">
+                  <input type="radio" name="edit-cadence-scope" value="merchant" />
+                  All future for this merchant
+                </label>
+              </fieldset>
+              <p id="edit-cadence-preview" class="edit-cadence-preview" aria-live="polite"></p>
+            </section>
             <fieldset class="edit-scope-fieldset">
               <legend>Apply to</legend>
               <label class="edit-scope-option">
@@ -199,7 +270,7 @@
       <div class="card">
         <h2>Process transactions</h2>
         <p>Runs the <strong>same pipeline as the CLI script</strong>: descriptions, lookup rules, AI review rows, business/custom rules, and cadence. Saves results to the database and updates <code>transaction-lookups.xlsx</code> when enabled.</p>
-        <p class="hint">Prefer this over scan. Keep one CSV in <code>input/</code> (or specify a file via API). Processed files are archived automatically.</p>
+        <p class="hint">Processes every CSV in <code>input/</code> in order (or one file via API <code>?filename=</code>). Each file is archived to <code>processed/</code>, replacing same name if it already exists.</p>
         <button type="button" id="btn-categorize">Run processing</button>
         <div id="categorize-progress" class="progress-panel hidden" aria-live="polite">
           <div class="progress-bar-track">
@@ -241,6 +312,31 @@
       </div>
     </section>
   </main>
+
+  <div id="cadence-insight-overlay" class="modal-overlay hidden" role="presentation" aria-hidden="true">
+    <div
+      id="cadence-insight-modal"
+      class="modal-card"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cadence-insight-title"
+    >
+      <div class="modal-header">
+        <h2 id="cadence-insight-title">Cadence suggestion</h2>
+        <button type="button" id="btn-cadence-insight-close" class="btn-edit-close" aria-label="Close">×</button>
+      </div>
+      <div id="cadence-insight-body" class="modal-body">
+        <p class="hint">Loading…</p>
+      </div>
+      <div id="cadence-insight-actions" class="modal-actions hidden">
+        <div class="modal-action-row">
+          <button type="button" id="btn-cadence-insight-dismiss" class="btn-secondary">Dismiss</button>
+          <button type="button" id="btn-cadence-insight-save-tx" class="btn-secondary">This transaction only</button>
+          <button type="button" id="btn-cadence-insight-save-merchant" class="btn-primary">Save merchant rule</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div id="edit-insight-overlay" class="modal-overlay hidden" role="presentation" aria-hidden="true">
     <div
