@@ -38,7 +38,7 @@ async function loadStatus() {
     modelLabel = `process ${s.pipeline_model} · chat ${s.chat_model}`;
   }
   $("#status-line").textContent =
-    `${s.transaction_count} transactions · ${s.review_merchant_count} merchants need review · ${provider}${modelLabel}`;
+    `${s.transaction_count} transactions · ${s.review_merchant_count} merchants to confirm · ${provider}${modelLabel}`;
   $("#inbox-path").textContent = s.inbox_dir;
   const processedEl = $("#processed-path");
   if (processedEl && s.processed_dir) {
@@ -506,9 +506,9 @@ function ensureReviewDatalists(options) {
   `;
 }
 
-function reviewField(name, label, tooltip, controlHtml) {
+function reviewField(name, label, tooltip, controlHtml, { fullWidth = false } = {}) {
   return `
-    <div class="review-field">
+    <div class="review-field${fullWidth ? " review-field-full" : ""}">
       <label for="${name}" title="${escapeAttr(tooltip)}">
         <span>${escapeHtml(label)}</span>
         <span class="field-tip" title="${escapeAttr(tooltip)}" aria-hidden="true">?</span>
@@ -1046,7 +1046,7 @@ function renderEditResults(transactions) {
           ${editSortHeader("Date", "date")}
           ${editSortHeader("Amount", "amount")}
           ${editSortHeader("Merchant", "merchant")}
-          ${editSortHeader("AI Category", "ai_category")}
+          ${editSortHeader("Category", "ai_category")}
           <th scope="col">Expense Type</th>
           ${editSortHeader("Classification", "classification")}
           <th scope="col">Expense Cadence</th>
@@ -1127,6 +1127,7 @@ async function openEditPanel(tx) {
   const summary = $("#edit-source-summary");
   const catInput = $("#edit-ai-category");
   const subInput = $("#edit-ai-sub");
+  const flowSel = $("#edit-label-flow-type");
   const expenseSel = $("#edit-label-expense-type");
   const classSel = $("#edit-label-classification");
   const resultEl = $("#edit-apply-result");
@@ -1137,11 +1138,12 @@ async function openEditPanel(tx) {
       <strong>${escapeHtml(tx.merchant_key || "")}</strong><br>
       ${escapeHtml(tx.date || "")} · ${escapeHtml(formatMoney(tx.amount))}<br>
       Category: ${escapeHtml(tx.ai_category || "—")}${tx.ai_sub_category ? ` / ${escapeHtml(tx.ai_sub_category)}` : ""}<br>
-      Expense: ${escapeHtml(tx.expense_type || "—")} · Class: ${escapeHtml(tx.classification || "—")}
+      Flow: ${escapeHtml(tx.flow_type || "Expense")} · Expense: ${escapeHtml(tx.expense_type || "—")} · Class: ${escapeHtml(tx.classification || "—")}
     `;
   }
   if (catInput) catInput.value = tx.ai_category || "";
   if (subInput) subInput.value = tx.ai_sub_category || "";
+  if (flowSel) flowSel.value = tx.flow_type === "Income" ? "Income" : "Expense";
   if (expenseSel) expenseSel.value = tx.expense_type === "Fixed" ? "Fixed" : "Variable";
   if (classSel) {
     classSel.value = EDIT_CLASSIFICATIONS.includes(tx.classification) ? tx.classification : "Personal";
@@ -1179,10 +1181,12 @@ function closeEditPanel() {
   if (countEl) countEl.textContent = "";
   const catInput = $("#edit-ai-category");
   const subInput = $("#edit-ai-sub");
+  const flowSel = $("#edit-label-flow-type");
   const expenseSel = $("#edit-label-expense-type");
   const classSel = $("#edit-label-classification");
   if (catInput) catInput.value = "";
   if (subInput) subInput.value = "";
+  if (flowSel) flowSel.value = "Expense";
   if (expenseSel) expenseSel.value = "Variable";
   if (classSel) classSel.value = "Personal";
   const singleScope = document.querySelector('input[name="edit-scope"][value="single"]');
@@ -1690,12 +1694,14 @@ $("#edit-label-form")?.addEventListener("submit", async (e) => {
   const afterLabels = {
     ai_category: ($("#edit-ai-category")?.value || "").trim(),
     ai_sub_category: ($("#edit-ai-sub")?.value || "").trim(),
+    flow_type: $("#edit-label-flow-type")?.value || "Expense",
     expense_type: $("#edit-label-expense-type")?.value || "Variable",
     classification: $("#edit-label-classification")?.value || "Personal",
   };
   const beforeLabels = {
     ai_category: editSourceTx.ai_category || "",
     ai_sub_category: editSourceTx.ai_sub_category || "",
+    flow_type: editSourceTx.flow_type || "",
     expense_type: editSourceTx.expense_type || "",
     classification: editSourceTx.classification || "",
   };
@@ -1703,6 +1709,7 @@ $("#edit-label-form")?.addEventListener("submit", async (e) => {
     transaction_ids: ids,
     ai_category: afterLabels.ai_category,
     ai_sub_category: afterLabels.ai_sub_category,
+    flow_type: afterLabels.flow_type,
     expense_type: afterLabels.expense_type,
     classification: afterLabels.classification,
     update_merchant_label: scope === "merchant",
@@ -1727,7 +1734,7 @@ $("#edit-label-form")?.addEventListener("submit", async (e) => {
     }
   }
   if (!payload.ai_category) {
-    if (resultEl) resultEl.textContent = "AI Category is required.";
+    if (resultEl) resultEl.textContent = "Category is required.";
     return;
   }
   const insightContext = {
@@ -1772,13 +1779,19 @@ async function loadReview() {
 
     const tips = options.tooltips || {};
     if (!items.length) {
-      list.innerHTML = "<p>No merchants pending review.</p>";
+      list.innerHTML = "<p>No merchants waiting for confirmation.</p>";
       return;
     }
     list.innerHTML = "";
     items.forEach((item, idx) => {
       const flow = item.flow_type || "Expense";
       const expType = item.expense_type || "Variable";
+      const classification =
+        EDIT_CLASSIFICATIONS.includes(item.classification) ? item.classification : "Personal";
+      const classOptions = (options.classifications || EDIT_CLASSIFICATIONS).filter((c) =>
+        EDIT_CLASSIFICATIONS.includes(c)
+      );
+      const classValues = classOptions.length ? classOptions : [...EDIT_CLASSIFICATIONS];
       const cat = item.ai_category || "";
       const sub = item.ai_sub_category || "";
       const uid = `review-${idx}`;
@@ -1807,7 +1820,7 @@ async function loadReview() {
         <form class="review-form">
           ${reviewField(
             `${uid}-cat`,
-            "AI Category",
+            "Category",
             tips.category || "Top-level category",
             `<input id="${uid}-cat" name="category" list="review-categories" value="${escapeAttr(cat)}" placeholder="Select or type…" required title="${escapeAttr(tips.category || "")}" />`
           )}
@@ -1821,13 +1834,20 @@ async function loadReview() {
             `${uid}-flow`,
             "Income / Expense",
             tips.flow_type || "Flow type",
-            `<select id="${uid}-flow" name="flow" title="${escapeAttr(tips.flow_type || "")}">${buildSelectOptions(options.flow_types, flow)}</select>`
+            `<select id="${uid}-flow" name="flow" title="${escapeAttr(tips.flow_type || "")}">${buildSelectOptions(options.flow_types, flow)}</select>`,
+            { fullWidth: true }
           )}
           ${reviewField(
             `${uid}-type`,
             "Fixed / Variable",
             tips.expense_type || "Expense type",
             `<select id="${uid}-type" name="type" title="${escapeAttr(tips.expense_type || "")}">${buildSelectOptions(options.expense_types, expType)}</select>`
+          )}
+          ${reviewField(
+            `${uid}-class`,
+            "Classification",
+            tips.classification || "Personal or Business",
+            `<select id="${uid}-class" name="classification" title="${escapeAttr(tips.classification || "")}">${buildSelectOptions(classValues, classification)}</select>`
           )}
           <button type="submit">${confirmLabel}</button>
         </form>
@@ -1849,6 +1869,7 @@ async function loadReview() {
           ai_sub_category: String(fd.get("sub") || "").trim(),
           flow_type: fd.get("flow"),
           expense_type: fd.get("type"),
+          classification: fd.get("classification") || "Personal",
         };
         if (isSingleTx) payload.transaction_id = item.transaction_id;
         try {

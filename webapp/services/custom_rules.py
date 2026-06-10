@@ -121,7 +121,8 @@ def _transactions_dataframe(conn: sqlite3.Connection) -> pd.DataFrame:
         """
         SELECT transaction_id, merchant_key, amount, budget_month,
                source_category, classification, flow_type,
-               ai_category, ai_sub_category, expense_type
+               ai_category, ai_sub_category, expense_type,
+               original_description, simple_description, user_description
         FROM transactions
         ORDER BY date ASC, id ASC
         """
@@ -131,6 +132,9 @@ def _transactions_dataframe(conn: sqlite3.Connection) -> pd.DataFrame:
 
     df = pd.DataFrame([dict(r) for r in rows])
     df["Generated Description"] = df["merchant_key"].fillna("").astype(str)
+    df["Original Description"] = df["original_description"].fillna("").astype(str)
+    df["Simple Description"] = df["simple_description"].fillna("").astype(str)
+    df["User Description"] = df["user_description"].fillna("").astype(str)
     df["Amount_Numeric"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0.0)
     df["Amount"] = df["Amount_Numeric"].map(lambda a: f"{a:.2f}")
     df["Budget Month"] = df["budget_month"].fillna("").astype(str)

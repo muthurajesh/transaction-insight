@@ -23,7 +23,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | Project layout (`webapp/`, `scripts/`, SQLite) | Phase 0 |
 | [x] | Scan inbox + ingest CSV → `transactions` | |
 | [x] | Run processing (CLI pipeline in web) | Descriptions, lookups, LLM, custom rules |
-| [x] | Review inbox + confirm labels | |
+| [x] | Confirm Categories tab (label queue) | |
 | [x] | Chat agent + SQL / analytics tools | `webapp/agent/` |
 | [x] | Import & Categorize UI (tabs) | |
 | [x] | **Choose CSV files & scan** | Upload → `input/` → scan; see Import section below |

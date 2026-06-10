@@ -174,9 +174,13 @@ Return ONLY valid JSON: {"rule": { ... }}
 
 Supported rule_type values:
 
-1. "assign" — set fields when match criteria all apply (AND). generated_description is case-insensitive.
+1. "assign" — set fields when match criteria all apply (AND). All text matching is case-insensitive.
    Use *text* for contains, prefix* for starts-with, *suffix for ends-with; plain text is exact match.
    Optional amount: compare absolute dollar value (9.99 matches -9.99 and 9.99).
+   Use match.description when the user says "description" (searches Generated, Original, Simple, and User descriptions).
+   Use match.generated_description only for the merchant/payee label (Generated Description).
+   For OR conditions, use a JSON array of patterns, e.g. ["*amazon web services*","*aws*"].
+   {"rule_type":"assign","match":{"description":["*amazon web services*","*aws*"]},"set":{"ai_category":"Business Expenses","ai_sub_category":"Cloud Computing/Hosting","type":"Variable","classification":"Business"}}
    {"rule_type":"assign","match":{"generated_description":"*check*","amount":"60"},"set":{"ai_category":"Education","ai_sub_category":"Music Lessons"}}
    {"rule_type":"assign","match":{"generated_description":"Apple","amount":"9.99"},"set":{"category":"Business Expenses","classification":"Business","ai_category":"Business","ai_sub_category":"Laptop Warranty"}}
 
@@ -1592,19 +1596,65 @@ def _apply_custom_field_spec(df: pd.DataFrame, idx: int, spec: dict[str, Any]) -
             df.at[idx, col] = text
 
 
-def _match_generated_description(df: pd.DataFrame, desc: str) -> pd.Series:
-    target = str(desc or "").strip().lower()
-    if not target or "Generated Description" not in df.columns:
-        return pd.Series(False, index=df.index)
-    series = df["Generated Description"].fillna("").astype(str).str.strip().str.lower()
+def _normalize_match_patterns(value: Any) -> list[str]:
+    if value is None:
+        return []
+    items = value if isinstance(value, (list, tuple)) else [value]
+    patterns: list[str] = []
+    for item in items:
+        text = str(item or "").strip()
+        if text and text.lower() != "nan":
+            patterns.append(text)
+    return patterns
+
+
+def _match_text_pattern(series: pd.Series, pattern: str) -> pd.Series:
+    """Case-insensitive match of one pattern against a lowercase text series."""
+    target = str(pattern or "").strip().lower()
+    if not target:
+        return pd.Series(False, index=series.index)
     if target.startswith("*") and target.endswith("*") and len(target) > 2:
         needle = target[1:-1]
-        return series.str.contains(needle, regex=False) if needle else pd.Series(False, index=df.index)
+        return series.str.contains(needle, regex=False) if needle else pd.Series(False, index=series.index)
     if target.endswith("*") and len(target) > 1:
         return series.str.startswith(target[:-1])
     if target.startswith("*") and len(target) > 1:
         return series.str.endswith(target[1:])
     return series == target
+
+
+def _match_patterns_on_series(series: pd.Series, patterns: Any) -> pd.Series:
+    normalized = _normalize_match_patterns(patterns)
+    if not normalized:
+        return pd.Series(False, index=series.index)
+    mask = pd.Series(False, index=series.index)
+    lowered = series.fillna("").astype(str).str.strip().str.lower()
+    for pattern in normalized:
+        mask |= _match_text_pattern(lowered, pattern)
+    return mask
+
+
+def _match_generated_description(df: pd.DataFrame, desc: Any) -> pd.Series:
+    if "Generated Description" not in df.columns:
+        return pd.Series(False, index=df.index)
+    series = df["Generated Description"]
+    return _match_patterns_on_series(series, desc)
+
+
+def _match_any_description(df: pd.DataFrame, desc: Any) -> pd.Series:
+    columns = (
+        "Generated Description",
+        "Original Description",
+        "Simple Description",
+        "User Description",
+    )
+    present = [col for col in columns if col in df.columns]
+    if not present:
+        return pd.Series(False, index=df.index)
+    mask = pd.Series(False, index=df.index)
+    for col in present:
+        mask |= _match_patterns_on_series(df[col], desc)
+    return mask
 
 
 def _match_custom_rule_amount(df: pd.DataFrame, amount_spec: Any) -> pd.Series:
@@ -1629,8 +1679,10 @@ def _custom_rule_match_mask(df: pd.DataFrame, match: dict[str, Any]) -> pd.Serie
     """AND of all match keys in a compiled custom rule."""
     match = match or {}
     mask = pd.Series(True, index=df.index)
+    if "description" in match:
+        mask &= _match_any_description(df, match.get("description"))
     if "generated_description" in match:
-        mask &= _match_generated_description(df, match.get("generated_description", ""))
+        mask &= _match_generated_description(df, match.get("generated_description"))
     if "amount" in match:
         mask &= _match_custom_rule_amount(df, match.get("amount"))
     return mask

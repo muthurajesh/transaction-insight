@@ -65,7 +65,7 @@ Reuse `inbox_upload.save_uploaded_files()` then existing process service.
 
 1. Upload new CSV via picker
 2. File lands in `input/`, processing runs
-3. Transactions appear in DB / Review inbox
+3. Transactions appear in DB / Confirm Categories
 
 ## Context
 
