@@ -202,6 +202,28 @@ def _apply_rules_to_db(conn: sqlite3.Connection, rules: list[dict[str, Any]]) ->
     return updated
 
 
+def save_and_apply_custom_rule(conn: sqlite3.Connection, rule_text: str) -> dict[str, Any]:
+    """Append a rule, compile pending rows, and apply active rules to the database."""
+    add_custom_rule(rule_text)
+    result = compile_and_apply_custom_rules(conn)
+    errors = result.get("compile_errors") or []
+    rows = int(result.get("rows_updated") or 0)
+
+    if errors:
+        err_text = errors[0].get("error", "Unknown error")
+        result["ok"] = False
+        result["message"] = f"Rule saved but could not be applied: {err_text}"
+    else:
+        result["ok"] = True
+        result["message"] = f"Rule saved. Updated {rows} transaction(s)."
+
+    listing = list_custom_rules()
+    result["rules"] = listing.get("rules") or []
+    result["lookup_file"] = listing.get("lookup_file")
+    result["lookup_file_exists"] = listing.get("lookup_file_exists")
+    return result
+
+
 def compile_and_apply_custom_rules(conn: sqlite3.Connection) -> dict[str, Any]:
     path = lookup_workbook_path()
     if not path.is_file():
