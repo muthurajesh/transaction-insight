@@ -13,3 +13,5 @@ output/*
 !output/.gitkeep
 processed/*
 !processed/.gitkeep
+backups/
+ab-test/

@@ -19,7 +19,7 @@ This project automates that enrichment:
 | Workflow | Entry point | Output |
 |----------|-------------|--------|
 | **Excel CLI** (unchanged logic) | `scripts/process_transactions.py` | Per-run workbook in `output/`; state files in `scripts/` |
-| **Web app** (AI-first, local) | `webapp/` + browser | SQLite `data/finance.db`, Review Inbox, chat analytics |
+| **Web app** (AI-first, local) | `webapp/` + browser | SQLite `data/finance.db`, Confirm Categories, chat analytics |
 
 ### Where files live (CLI)
 
@@ -53,7 +53,7 @@ uvicorn webapp.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 4. Open http://127.0.0.1:8000 — **Import & Categorize** → **Run processing** (same pipeline as the CLI script).
-5. Use **Review Inbox** for uncertain merchants (one fix updates all matching rows).
+5. Use **Confirm Categories** for uncertain merchants (one fix updates all matching rows).
 6. Use **Chat** for questions like “How much did I spend in 2026-04?” (dollar amounts use CLI spend rules: negative outflows only).
 
 **Shared core:** [`transaction_insight/`](transaction_insight/) holds the processing logic; [`scripts/process_transactions.py`](scripts/process_transactions.py) is the CLI entry; the web app calls [`transaction_insight/pipeline.py`](transaction_insight/pipeline.py).

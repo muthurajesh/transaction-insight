@@ -137,6 +137,10 @@ def get_review_options(conn: sqlite3.Connection) -> dict:
                 "Fixed = recurring monthly obligation (rent, utilities, subscriptions). "
                 "Variable = discretionary or fluctuating spend (groceries, dining, shopping)."
             ),
+            "classification": (
+                "Personal = household spending. Business = work-related expenses "
+                "for tax or reimbursement tracking."
+            ),
             "confidence": (
                 "How confident the AI was (0–1). Lower values appear here for you to confirm."
             ),

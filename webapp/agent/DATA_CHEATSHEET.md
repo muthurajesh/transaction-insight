@@ -25,7 +25,7 @@ SQLite database (`data/finance.db`) populated by **Run processing** (same pipeli
 | Table | Purpose |
 |-------|---------|
 | `transactions` | All processed rows from CSV exports |
-| `merchant_labels` | Confirmed / review labels per merchant (from processing + review inbox) |
+| `merchant_labels` | Confirmed labels per merchant (from processing + Confirm Categories) |
 | `ingested_files` | Scan-inbox history (hash per CSV); optional |
 | `chat_messages` | Chat history |
 

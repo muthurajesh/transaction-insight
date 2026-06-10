@@ -6,6 +6,7 @@ from typing import Any
 
 # Merchants reviewed one transaction at a time (amounts/categories differ per check).
 SPLIT_REVIEW_MERCHANT_KEYS: frozenset[str] = frozenset({"Check Payment"})
+CLASSIFICATION_OPTIONS = frozenset({"Personal", "Business"})
 
 
 def _apply_merchant_label(
@@ -37,6 +38,13 @@ def _apply_merchant_label(
     return cur.rowcount
 
 
+def _normalize_classification(value: str) -> str:
+    cls = (value or "Personal").strip()
+    if cls not in CLASSIFICATION_OPTIONS:
+        raise ValueError(f"classification must be one of: {', '.join(sorted(CLASSIFICATION_OPTIONS))}")
+    return cls
+
+
 def confirm_merchant(
     conn: sqlite3.Connection,
     merchant_key: str,
@@ -45,7 +53,9 @@ def confirm_merchant(
     ai_sub_category: str = "",
     expense_type: str = "Variable",
     flow_type: str = "Expense",
+    classification: str = "Personal",
 ) -> int:
+    classification = _normalize_classification(classification)
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """
@@ -70,13 +80,14 @@ def confirm_merchant(
             ai_category = ?,
             ai_sub_category = ?,
             expense_type = ?,
+            classification = ?,
             confidence = 1.0,
             label_status = 'confirmed',
             rationale = 'user confirmed'
         WHERE merchant_key = ?
           AND label_status IN ('needs_review', 'pending')
         """,
-        (flow_type, ai_category, ai_sub_category, expense_type, merchant_key),
+        (flow_type, ai_category, ai_sub_category, expense_type, classification, merchant_key),
     )
     conn.commit()
     return cur.rowcount
@@ -90,7 +101,9 @@ def confirm_transaction(
     ai_sub_category: str = "",
     expense_type: str = "Variable",
     flow_type: str = "Expense",
+    classification: str = "Personal",
 ) -> int:
+    classification = _normalize_classification(classification)
     cur = conn.execute(
         """
         UPDATE transactions SET
@@ -98,13 +111,14 @@ def confirm_transaction(
             ai_category = ?,
             ai_sub_category = ?,
             expense_type = ?,
+            classification = ?,
             confidence = 1.0,
             label_status = 'confirmed',
             rationale = 'user confirmed'
         WHERE transaction_id = ?
           AND label_status IN ('needs_review', 'pending')
         """,
-        (flow_type, ai_category, ai_sub_category, expense_type, transaction_id),
+        (flow_type, ai_category, ai_sub_category, expense_type, classification, transaction_id),
     )
     conn.commit()
     return cur.rowcount
@@ -125,6 +139,7 @@ def list_review_items(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                    MAX(ai_sub_category) AS ai_sub_category,
                    MAX(flow_type) AS flow_type,
                    MAX(expense_type) AS expense_type,
+                   MAX(classification) AS classification,
                    MAX(confidence) AS confidence,
                    MAX(label_status) AS label_status,
                    MIN(simple_description) AS sample_description
@@ -146,6 +161,7 @@ def list_review_items(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                    MAX(ai_sub_category) AS ai_sub_category,
                    MAX(flow_type) AS flow_type,
                    MAX(expense_type) AS expense_type,
+                   MAX(classification) AS classification,
                    MAX(confidence) AS confidence,
                    MAX(label_status) AS label_status,
                    MIN(simple_description) AS sample_description
@@ -173,6 +189,7 @@ def list_review_items(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                    ai_sub_category,
                    flow_type,
                    expense_type,
+                   classification,
                    confidence,
                    label_status,
                    COALESCE(NULLIF(simple_description, ''), NULLIF(user_description, ''),

@@ -15,7 +15,7 @@
 
   <nav class="tabs">
     <button type="button" class="tab active" data-tab="chat">Chat</button>
-    <button type="button" class="tab" data-tab="review">Review Inbox</button>
+    <button type="button" class="tab" data-tab="review">Confirm Categories</button>
     <button type="button" class="tab" data-tab="edit">Edit Transactions</button>
     <button type="button" class="tab" data-tab="actions">Import &amp; Categorize</button>
     <button type="button" class="tab" data-tab="settings">Settings</button>
@@ -72,7 +72,7 @@
     </section>
 
     <section id="panel-edit" class="panel">
-      <p class="hint">Search any transaction and change <strong>AI Category</strong> / <strong>Sub-category</strong>. Pick how broadly to apply, then review the checkbox list before saving.</p>
+      <p class="hint">Search any transaction and change <strong>Category</strong> / <strong>Sub-category</strong>. Pick how broadly to apply, then review the checkbox list before saving.</p>
       <div class="edit-layout">
         <div class="edit-main">
           <form id="edit-search-form" class="edit-search-form">
@@ -80,7 +80,7 @@
             <select id="edit-search-month" aria-label="Budget month">
               <option value="">All months</option>
             </select>
-            <select id="edit-search-category" aria-label="AI category filter">
+            <select id="edit-search-category" aria-label="Category filter">
               <option value="">All categories</option>
             </select>
             <button type="submit">Search</button>
@@ -89,8 +89,8 @@
             <summary>More filters</summary>
             <div class="edit-advanced-grid">
               <label class="edit-advanced-field">
-                <span>AI Sub-category</span>
-                <select id="edit-search-sub" aria-label="AI sub-category filter">
+                <span>Sub-category</span>
+                <select id="edit-search-sub" aria-label="Sub-category filter">
                   <option value="">All sub-categories</option>
                 </select>
               </label>
@@ -142,7 +142,7 @@
           <p id="edit-source-summary" class="edit-source-summary"></p>
           <form id="edit-label-form" class="edit-label-form">
             <label class="edit-field">
-              <span>AI Category</span>
+              <span>Category</span>
               <div class="combo-field" data-combo="edit-ai-category">
                 <input type="text" id="edit-ai-category" required placeholder="Select or type…" autocomplete="off" />
                 <button type="button" class="combo-toggle" tabindex="-1" aria-label="Show all categories">▾</button>
@@ -156,6 +156,13 @@
                 <button type="button" class="combo-toggle" tabindex="-1" aria-label="Show all sub-categories">▾</button>
                 <ul class="combo-menu hidden" role="listbox" aria-label="Sub-categories"></ul>
               </div>
+            </label>
+            <label class="edit-field">
+              <span>Income / Expense</span>
+              <select id="edit-label-flow-type" aria-label="Income or expense">
+                <option value="Expense">Expense</option>
+                <option value="Income">Income</option>
+              </select>
             </label>
             <label class="edit-field">
               <span>Expense type</span>

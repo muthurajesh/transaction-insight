@@ -77,6 +77,7 @@ class ReviewConfirmRequest(BaseModel):
     ai_sub_category: str = ""
     expense_type: str = "Variable"
     flow_type: str = "Expense"
+    classification: str = "Personal"
     transaction_id: str | None = None
 
 
@@ -674,29 +675,34 @@ def api_transactions_edit_insight(body: EditInsightRequest) -> dict[str, Any]:
 def api_review_confirm(merchant_key: str, body: ReviewConfirmRequest) -> dict[str, Any]:
     conn = _conn()
     try:
-        if body.transaction_id:
-            updated = confirm_transaction(
+        try:
+            if body.transaction_id:
+                updated = confirm_transaction(
+                    conn,
+                    body.transaction_id,
+                    ai_category=body.ai_category,
+                    ai_sub_category=body.ai_sub_category,
+                    expense_type=body.expense_type,
+                    flow_type=body.flow_type,
+                    classification=body.classification,
+                )
+                return {
+                    "merchant_key": merchant_key,
+                    "transaction_id": body.transaction_id,
+                    "rows_updated": updated,
+                }
+            updated = confirm_merchant(
                 conn,
-                body.transaction_id,
+                merchant_key,
                 ai_category=body.ai_category,
                 ai_sub_category=body.ai_sub_category,
                 expense_type=body.expense_type,
                 flow_type=body.flow_type,
+                classification=body.classification,
             )
-            return {
-                "merchant_key": merchant_key,
-                "transaction_id": body.transaction_id,
-                "rows_updated": updated,
-            }
-        updated = confirm_merchant(
-            conn,
-            merchant_key,
-            ai_category=body.ai_category,
-            ai_sub_category=body.ai_sub_category,
-            expense_type=body.expense_type,
-            flow_type=body.flow_type,
-        )
-        return {"merchant_key": merchant_key, "rows_updated": updated}
+            return {"merchant_key": merchant_key, "rows_updated": updated}
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
     finally:
         conn.close()
 
