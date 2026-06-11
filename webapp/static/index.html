@@ -47,10 +47,25 @@
     </section>
 
     <section id="panel-review" class="panel">
-      <p class="hint">Merchants the AI is unsure about. One fix applies to all matching transactions in a group. <strong>Check Payment</strong> is split into one card per check (different amounts). Use <strong>Custom rules</strong> for repeating patterns, then <strong>Save &amp; apply rule</strong>.</p>
+      <p class="hint">Merchants the AI is unsure about. One fix applies to all matching transactions in a group. Use <strong>✨ Suggest labels (AI)</strong> at the top to pre-fill the first 10–100 groups (lookup-first, then AI). <strong>Check Payment</strong> is split into one card per check (different amounts). Use <strong>Custom rules</strong> for repeating patterns, then <strong>Save &amp; apply rule</strong>.</p>
       <div class="review-layout">
         <div class="review-main">
           <div id="review-datalists" class="sr-only" aria-hidden="true"></div>
+          <div id="review-bulk-toolbar" class="review-bulk-toolbar hidden">
+            <div class="review-bulk-row">
+              <span class="review-bulk-label">Bulk suggest</span>
+              <span id="review-bulk-count" class="review-bulk-count" aria-live="polite"></span>
+              <label class="review-bulk-groups-label" for="review-suggest-batch">Groups</label>
+              <select id="review-suggest-batch" class="review-bulk-select" aria-label="Batch size">
+                <option value="10" selected>10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+              <button type="button" id="btn-review-suggest-batch" class="review-bulk-action">✨ Suggest labels (AI)</button>
+            </div>
+            <span id="review-suggest-status" class="review-suggest-status" aria-live="polite"></span>
+          </div>
           <div id="review-list"></div>
         </div>
         <aside class="custom-rules-panel" aria-label="Custom rules">
@@ -375,6 +390,36 @@
         <div class="modal-action-row">
           <button type="button" id="btn-edit-insight-dismiss" class="btn-secondary">Dismiss</button>
           <button type="button" id="btn-edit-insight-save" class="btn-primary">Save as custom rule</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="review-confirm-overlay" class="modal-overlay hidden" role="presentation" aria-hidden="true">
+    <div
+      id="review-confirm-modal"
+      class="modal-card"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="review-confirm-title"
+    >
+      <div class="modal-header">
+        <h2 id="review-confirm-title">Confirm labels</h2>
+        <button type="button" id="btn-review-confirm-close" class="btn-edit-close" aria-label="Close">×</button>
+      </div>
+      <div id="review-confirm-body" class="modal-body">
+        <p class="hint">Loading…</p>
+      </div>
+      <div id="review-confirm-actions" class="modal-actions">
+        <label id="review-confirm-replace-wrap" class="review-confirm-replace hidden">
+          <input type="checkbox" id="review-confirm-replace" />
+          Replace conflicting rule in <code>transaction-lookups.xlsx</code>
+        </label>
+        <p id="review-confirm-error" class="review-confirm-error hidden" role="alert"></p>
+        <div class="modal-action-row">
+          <button type="button" id="btn-review-confirm-cancel" class="btn-secondary">Cancel</button>
+          <button type="button" id="btn-review-confirm-pending" class="btn-secondary">Update pending only</button>
+          <button type="button" id="btn-review-confirm-all" class="btn-primary">Update all transactions</button>
         </div>
       </div>
     </div>

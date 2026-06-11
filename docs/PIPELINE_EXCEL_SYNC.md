@@ -1,13 +1,14 @@
 # Optional: Sync web edits → transaction-lookups.xlsx
 
-**Status:** Not implemented (optional / lower priority)  
+**Status:** Partial — Confirm Categories syncs per merchant; bulk export still optional  
 **Roadmap:** §3 Edit transactions
 
 ## Problem
 
 Web **Edit Transactions** writes to **SQLite only**. `transaction-lookups.xlsx` is unchanged unless user:
 
-- Saves a **CustomRule** via edit insights modal, or
+- Confirms a merchant on **Confirm Categories** (writes **MerchantCategories** / **BusinessCategoryRules**), or
+- Saves a **CustomRule** via edit insights modal or the Custom rules panel, or
 - Manually edits Excel
 
 Next **CLI-only** run or another machine using Excel alone won’t see web edits.
