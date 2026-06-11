@@ -619,9 +619,9 @@ function buildSelectOptions(values, selected, { allowEmpty = false } = {}) {
 
 let customRulesExpanded = false;
 let customRulesBusy = false;
+let reviewSuggestBusy = false;
 
-function setCustomRulesBusy(busy, { title, hint } = {}) {
-  customRulesBusy = busy;
+function setReviewPanelBusy(busy, { title, hint } = {}) {
   const overlay = $("#review-busy-overlay");
   const panel = $("#panel-review");
   document.querySelectorAll(".tab").forEach((t) => {
@@ -638,6 +638,11 @@ function setCustomRulesBusy(busy, { title, hint } = {}) {
     }
   }
   if (panel) panel.setAttribute("aria-busy", busy ? "true" : "false");
+}
+
+function setCustomRulesBusy(busy, { title, hint } = {}) {
+  customRulesBusy = busy;
+  setReviewPanelBusy(reviewSuggestBusy || customRulesBusy, busy ? { title, hint } : {});
 
   const saveBtn = $("#btn-custom-rule-save-apply");
   const reapplyBtn = $("#btn-custom-rules-reapply");
@@ -647,6 +652,127 @@ function setCustomRulesBusy(busy, { title, hint } = {}) {
   if (reapplyBtn) reapplyBtn.disabled = busy;
   if (input) input.disabled = busy;
   if (toggle) toggle.disabled = busy;
+}
+
+function setReviewSuggestBusy(busy, { title, hint } = {}) {
+  reviewSuggestBusy = busy;
+  setReviewPanelBusy(reviewSuggestBusy || customRulesBusy, busy ? { title, hint } : {});
+
+  const batchBtn = $("#btn-review-suggest-batch");
+  const batchSelect = $("#review-suggest-batch");
+  if (batchBtn) batchBtn.disabled = busy || customRulesBusy;
+  if (batchSelect) batchSelect.disabled = busy || customRulesBusy;
+}
+
+function applyReviewSuggestionToCard(card, suggestion) {
+  if (!card || !suggestion) return;
+  const labels = suggestion.labels || {};
+  const idx = card.dataset.reviewIdx;
+  const setVal = (id, val) => {
+    const el = card.querySelector(`#review-${idx}-${id}`);
+    if (el && val != null && String(val).trim() !== "") el.value = val;
+  };
+  setVal("cat", labels.ai_category);
+  setVal("sub", labels.ai_sub_category);
+  setVal("flow", labels.flow_type);
+  setVal("type", labels.expense_type);
+  setVal("class", labels.classification);
+
+  let note = card.querySelector(".review-suggest-note");
+  if (!note) {
+    note = document.createElement("div");
+    note.className = "review-suggest-note";
+    const meta = card.querySelector(".meta");
+    if (meta) meta.after(note);
+    else card.querySelector(".review-item-title")?.appendChild(note);
+  }
+  const conf = suggestion.confidence || "medium";
+  const src = suggestion.source || "ai";
+  const rationale = suggestion.rationale || "Suggested labels applied.";
+  note.textContent = `✨ ${rationale} (${conf} · ${src})`;
+  note.dataset.confidence = conf;
+}
+
+function formatReviewGroupCount(count) {
+  const n = Number(count) || 0;
+  return `${n} group${n === 1 ? "" : "s"} to review`;
+}
+
+function updateReviewBulkCount(count) {
+  const toolbar = $("#review-bulk-toolbar");
+  const countEl = $("#review-bulk-count");
+  const n =
+    typeof count === "number"
+      ? count
+      : document.querySelectorAll("#review-list .review-item").length;
+  if (countEl) countEl.textContent = formatReviewGroupCount(n);
+  if (toolbar) toolbar.classList.toggle("hidden", n <= 0);
+  return n;
+}
+
+async function runReviewBulkSuggest() {
+  if (reviewSuggestBusy || customRulesBusy) return;
+
+  const limit = Number($("#review-suggest-batch")?.value || 10);
+  const cards = [...document.querySelectorAll(".review-item")].slice(0, limit);
+  const statusEl = $("#review-suggest-status");
+  if (!cards.length) {
+    if (statusEl) statusEl.textContent = "No groups to suggest.";
+    return;
+  }
+
+  setReviewSuggestBusy(true, {
+    title: "Suggesting labels…",
+    hint: `0 / ${cards.length} — starting`,
+  });
+  if (statusEl) statusEl.textContent = `Suggesting up to ${cards.length} group(s)…`;
+
+  let lookupCount = 0;
+  let llmCount = 0;
+  const errors = [];
+
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i];
+    const merchantKey = card.dataset.merchantKey;
+    const transactionId = card.dataset.transactionId || null;
+    setReviewSuggestBusy(true, {
+      title: "Suggesting labels…",
+      hint: `${i + 1} / ${cards.length} — ${merchantKey}`,
+    });
+    if (statusEl) {
+      statusEl.textContent = `Suggesting ${i + 1} / ${cards.length}: ${merchantKey}`;
+    }
+    try {
+      const mk = encodeURIComponent(merchantKey);
+      const suggestion = await api(`/api/review/${mk}/suggest-labels`, {
+        method: "POST",
+        body: JSON.stringify({ transaction_id: transactionId }),
+      });
+      applyReviewSuggestionToCard(card, suggestion);
+      const src = suggestion.source || "";
+      if (
+        src === "MerchantCategories" ||
+        src === "BusinessCategoryRules" ||
+        src === "CustomRules" ||
+        src === "merchant_labels"
+      ) {
+        lookupCount += 1;
+      } else if (src === "llm") {
+        llmCount += 1;
+      }
+    } catch (err) {
+      errors.push(`${merchantKey}: ${err.message}`);
+    }
+  }
+
+  setReviewSuggestBusy(false);
+  if (statusEl) {
+    const errPart = errors.length ? ` · ${errors.length} error(s)` : "";
+    statusEl.textContent = `Done — ${lookupCount} from lookups, ${llmCount} from AI${errPart}. Review and confirm each group.`;
+  }
+  if (errors.length) {
+    console.warn("Bulk suggest errors:", errors);
+  }
 }
 
 function showCustomRulesResult(res) {
@@ -782,11 +908,24 @@ $("#btn-custom-rules-reapply")?.addEventListener("click", () => {
   runCustomRulesWorkflow("reapply");
 });
 
+$("#btn-review-suggest-batch")?.addEventListener("click", () => {
+  runReviewBulkSuggest();
+});
+
 let editOptionsCache = null;
 let editSourceTx = null;
 let editLastResults = [];
 const EDIT_PAGE_SIZE = 50;
 const EDIT_CLASSIFICATIONS = ["Personal", "Business"];
+const BUSINESS_AI_CATEGORIES = new Set(["Business Expenses", "Business"]);
+
+function alignReviewClassificationFromCategory(formEl) {
+  if (!formEl) return;
+  const category = String(formEl.querySelector('[name="category"]')?.value || "").trim();
+  const classEl = formEl.querySelector('[name="classification"]');
+  if (!classEl || !BUSINESS_AI_CATEGORIES.has(category)) return;
+  classEl.value = "Business";
+}
 let editPageOffset = 0;
 let editSearchTotal = 0;
 let editSortBy = "date";
@@ -1821,6 +1960,144 @@ $("#edit-label-form")?.addEventListener("submit", async (e) => {
   }
 });
 
+let reviewConfirmState = null;
+
+function closeReviewConfirmModal() {
+  reviewConfirmState = null;
+  const overlay = $("#review-confirm-overlay");
+  const errEl = $("#review-confirm-error");
+  if (overlay) {
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+  }
+  if (errEl) {
+    errEl.textContent = "";
+    errEl.classList.add("hidden");
+  }
+  const replaceWrap = $("#review-confirm-replace-wrap");
+  const replaceCb = $("#review-confirm-replace");
+  if (replaceWrap) replaceWrap.classList.add("hidden");
+  if (replaceCb) replaceCb.checked = false;
+}
+
+function renderReviewConfirmBody(preview, merchantKey) {
+  const parts = [];
+  parts.push(
+    `<p><strong>${escapeHtml(merchantKey)}</strong> — ${preview.pending_count} pending, ${preview.total_count} total transaction(s).</p>`
+  );
+
+  if (preview.differing_confirmed_count > 0) {
+    parts.push(
+      `<p><strong>${preview.differing_confirmed_count}</strong> already-confirmed transaction(s) have different labels than your choice.</p>`
+    );
+    if (preview.differing_breakdown?.length) {
+      const items = preview.differing_breakdown
+        .map(
+          (row) =>
+            `<li>${escapeHtml(row.ai_category || "—")}${row.ai_sub_category ? ` / ${escapeHtml(row.ai_sub_category)}` : ""} (${row.count})</li>`
+        )
+        .join("");
+      parts.push(`<ul class="review-confirm-breakdown">${items}</ul>`);
+    }
+  } else if (preview.pending_count === 0) {
+    parts.push("<p>No pending transactions; you can still update all rows to match this rule.</p>");
+  }
+
+  if (preview.suggest_custom_rule && preview.custom_rule_hint) {
+    parts.push(`<div class="review-confirm-warn">${escapeHtml(preview.custom_rule_hint)}</div>`);
+  }
+
+  if (preview.excel_conflicts?.length) {
+    const conflictLines = preview.excel_conflicts
+      .map((c) => {
+        const ex = c.existing || {};
+        return `<li><strong>${escapeHtml(c.source)}</strong>: ${escapeHtml(ex.ai_category || "—")}${ex.ai_sub_category ? ` / ${escapeHtml(ex.ai_sub_category)}` : ""}</li>`;
+      })
+      .join("");
+    parts.push(
+      `<p>Conflicting rule in lookup workbook:</p><ul class="review-confirm-breakdown">${conflictLines}</ul>`
+    );
+  }
+
+  parts.push(
+    "<p class=\"hint\">Saving updates <code>transaction-lookups.xlsx</code> (MerchantCategories) and matching rows in the database.</p>"
+  );
+  return parts.join("");
+}
+
+function openReviewConfirmModal(preview, item, payload, cardEl) {
+  reviewConfirmState = { item, payload, preview, cardEl };
+  const overlay = $("#review-confirm-overlay");
+  const body = $("#review-confirm-body");
+  const title = $("#review-confirm-title");
+  const replaceWrap = $("#review-confirm-replace-wrap");
+  const replaceCb = $("#review-confirm-replace");
+  if (title) title.textContent = `Confirm — ${item.merchant_key}`;
+  if (body) body.innerHTML = renderReviewConfirmBody(preview, item.merchant_key);
+  if (replaceWrap) {
+    replaceWrap.classList.toggle("hidden", !(preview.excel_conflicts?.length));
+  }
+  if (replaceCb) replaceCb.checked = false;
+  if (overlay) {
+    overlay.classList.remove("hidden");
+    overlay.setAttribute("aria-hidden", "false");
+  }
+}
+
+async function submitReviewConfirm(scope) {
+  if (!reviewConfirmState) return;
+  const { item, payload, cardEl } = reviewConfirmState;
+  const replaceExcel = $("#review-confirm-replace")?.checked ?? false;
+  const errEl = $("#review-confirm-error");
+  const pendingBtn = $("#btn-review-confirm-pending");
+  const allBtn = $("#btn-review-confirm-all");
+  if (pendingBtn) pendingBtn.disabled = true;
+  if (allBtn) allBtn.disabled = true;
+  if (errEl) {
+    errEl.textContent = "";
+    errEl.classList.add("hidden");
+  }
+  try {
+    const mk = encodeURIComponent(item.merchant_key);
+    const res = await api(`/api/review/${mk}/confirm`, {
+      method: "POST",
+      body: JSON.stringify({
+        ...payload,
+        scope,
+        replace_excel: replaceExcel,
+      }),
+    });
+    if (cardEl) cardEl.remove();
+    updateReviewBulkCount();
+    closeReviewConfirmModal();
+    loadStatus();
+    if (res.suggest_custom_rule && res.custom_rule_hint) {
+      const resultEl = $("#custom-rules-result");
+      if (resultEl) {
+        resultEl.textContent = `Confirmed. ${res.custom_rule_hint}`;
+        resultEl.classList.add("custom-rules-result-ok");
+        resultEl.dataset.sticky = "1";
+      }
+    }
+  } catch (err) {
+    if (errEl) {
+      errEl.textContent = err.message;
+      errEl.classList.remove("hidden");
+    }
+  } finally {
+    if (pendingBtn) pendingBtn.disabled = false;
+    if (allBtn) allBtn.disabled = false;
+  }
+}
+
+$("#btn-review-confirm-close")?.addEventListener("click", closeReviewConfirmModal);
+$("#btn-review-confirm-cancel")?.addEventListener("click", closeReviewConfirmModal);
+$("#review-confirm-overlay")?.addEventListener("click", (e) => {
+  if (e.target?.id === "review-confirm-overlay") closeReviewConfirmModal();
+});
+$("#btn-review-confirm-pending")?.addEventListener("click", () => submitReviewConfirm("pending"));
+$("#btn-review-confirm-all")?.addEventListener("click", () => submitReviewConfirm("all"));
+
 async function loadReview() {
   const list = $("#review-list");
   list.innerHTML = "<p>Loading…</p>";
@@ -1833,10 +2110,15 @@ async function loadReview() {
     ensureReviewDatalists(options);
 
     const tips = options.tooltips || {};
+    const suggestStatus = $("#review-suggest-status");
     if (!items.length) {
+      updateReviewBulkCount(0);
+      if (suggestStatus) suggestStatus.textContent = "";
       list.innerHTML = "<p>No merchants waiting for confirmation.</p>";
       return;
     }
+    updateReviewBulkCount(items.length);
+    if (suggestStatus && !reviewSuggestBusy) suggestStatus.textContent = "";
     list.innerHTML = "";
     items.forEach((item, idx) => {
       const flow = item.flow_type || "Expense";
@@ -1861,6 +2143,9 @@ async function loadReview() {
 
       const el = document.createElement("div");
       el.className = `review-item${isSingleTx ? " review-item-single" : ""}`;
+      el.dataset.merchantKey = item.merchant_key;
+      el.dataset.reviewIdx = String(idx);
+      if (item.transaction_id) el.dataset.transactionId = item.transaction_id;
       el.innerHTML = `
         <div class="review-item-header${isSingleTx ? " review-item-header-single" : ""}">
           <div class="review-item-title">
@@ -1916,10 +2201,21 @@ async function loadReview() {
         });
       }
 
-      el.querySelector("form").addEventListener("submit", async (ev) => {
+      const reviewForm = el.querySelector("form");
+      const categoryInput = reviewForm?.querySelector('[name="category"]');
+      if (categoryInput) {
+        categoryInput.addEventListener("change", () => {
+          alignReviewClassificationFromCategory(reviewForm);
+        });
+        categoryInput.addEventListener("input", () => {
+          alignReviewClassificationFromCategory(reviewForm);
+        });
+        alignReviewClassificationFromCategory(reviewForm);
+      }
+
+      reviewForm.addEventListener("submit", async (ev) => {
         ev.preventDefault();
         const fd = new FormData(ev.target);
-        const mk = encodeURIComponent(item.merchant_key);
         const payload = {
           ai_category: String(fd.get("category") || "").trim(),
           ai_sub_category: String(fd.get("sub") || "").trim(),
@@ -1927,14 +2223,29 @@ async function loadReview() {
           expense_type: fd.get("type"),
           classification: fd.get("classification") || "Personal",
         };
-        if (isSingleTx) payload.transaction_id = item.transaction_id;
+        if (isSingleTx) {
+          payload.transaction_id = item.transaction_id;
+          try {
+            const mk = encodeURIComponent(item.merchant_key);
+            await api(`/api/review/${mk}/confirm`, {
+              method: "POST",
+              body: JSON.stringify(payload),
+            });
+            el.remove();
+            updateReviewBulkCount();
+            loadStatus();
+          } catch (err) {
+            alert(err.message);
+          }
+          return;
+        }
         try {
-          await api(`/api/review/${mk}/confirm`, {
+          const mk = encodeURIComponent(item.merchant_key);
+          const preview = await api(`/api/review/${mk}/confirm-preview`, {
             method: "POST",
             body: JSON.stringify(payload),
           });
-          el.remove();
-          loadStatus();
+          openReviewConfirmModal(preview, item, payload, el);
         } catch (err) {
           alert(err.message);
         }

@@ -120,6 +120,8 @@ MERCHANT_CATEGORY_COLUMNS = (
     "AI Sub-Category",
     "Budget Tier",
     "Type",
+    "Flow Type",
+    "Classification",
     "Transaction Count",
     "Notes",
 )
@@ -1390,6 +1392,7 @@ def apply_business_rules_to_df(
             ("AI Sub-Category", "AI Sub-Category"),
             ("Type", "Type"),
             ("Sub-Type", "Sub-Type"),
+            ("Flow Type", "Flow Type"),
         ):
             val = match.get(col, "")
             if pd.notna(val) and str(val).strip() not in ("", "nan"):
@@ -2632,6 +2635,8 @@ def apply_merchant_category_lookup(
             ("AI Category", "AI Category"),
             ("Type", "Type"),
             ("Sub-Type", "Sub-Type"),
+            ("Flow Type", "Flow Type"),
+            ("Classification", "Classification"),
         ):
             val = match.get(col, "")
             if pd.notna(val) and str(val).strip() not in ("", "nan"):

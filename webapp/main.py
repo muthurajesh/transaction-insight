@@ -25,10 +25,14 @@ from webapp.config import (
 )
 from webapp.db.schema import get_connection, init_db
 from webapp.services.categorize import (
-    confirm_merchant,
-    confirm_transaction,
     list_merchant_transactions,
     list_review_items,
+)
+from webapp.services.review_confirm import confirm_merchant_or_transaction, confirm_preview
+from webapp.services.review_suggest import (
+    REVIEW_SUGGEST_BATCH_LIMITS,
+    suggest_labels_bulk,
+    suggest_labels_for_merchant,
 )
 from webapp.services.process import list_inbox_csv_paths, process_inbox_files
 from webapp.services.review_options import get_review_options
@@ -84,6 +88,24 @@ class ReviewConfirmRequest(BaseModel):
     flow_type: str = "Expense"
     classification: str = "Personal"
     transaction_id: str | None = None
+    scope: str = "pending"
+    replace_excel: bool = False
+
+
+class ReviewConfirmPreviewRequest(BaseModel):
+    ai_category: str
+    ai_sub_category: str = ""
+    expense_type: str = "Variable"
+    flow_type: str = "Expense"
+    classification: str = "Personal"
+
+
+class ReviewSuggestRequest(BaseModel):
+    transaction_id: str | None = None
+
+
+class ReviewSuggestBatchRequest(BaseModel):
+    limit: int = Field(10, ge=10, le=100)
 
 
 class IngestRequest(BaseModel):
@@ -400,6 +422,44 @@ def api_review_transactions(merchant_key: str) -> list[dict[str, Any]]:
         conn.close()
 
 
+@app.post("/api/review/suggest-batch")
+def api_review_suggest_batch(body: ReviewSuggestBatchRequest | None = None) -> dict[str, Any]:
+    body = body or ReviewSuggestBatchRequest()
+    if body.limit not in REVIEW_SUGGEST_BATCH_LIMITS:
+        raise HTTPException(400, "limit must be one of: 10, 25, 50, 100")
+    conn = _conn()
+    try:
+        try:
+            return suggest_labels_bulk(conn, limit=body.limit)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.post("/api/review/{merchant_key}/suggest-labels")
+def api_review_suggest_labels(
+    merchant_key: str, body: ReviewSuggestRequest | None = None
+) -> dict[str, Any]:
+    body = body or ReviewSuggestRequest()
+    conn = _conn()
+    try:
+        try:
+            return suggest_labels_for_merchant(
+                conn,
+                merchant_key,
+                transaction_id=body.transaction_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
+
+
 @app.get("/api/cadence-rules")
 def api_cadence_rules_list() -> dict[str, Any]:
     conn = _conn()
@@ -703,27 +763,14 @@ def api_transactions_edit_insight(body: EditInsightRequest) -> dict[str, Any]:
         conn.close()
 
 
-@app.post("/api/review/{merchant_key}/confirm")
-def api_review_confirm(merchant_key: str, body: ReviewConfirmRequest) -> dict[str, Any]:
+@app.post("/api/review/{merchant_key}/confirm-preview")
+def api_review_confirm_preview(
+    merchant_key: str, body: ReviewConfirmPreviewRequest
+) -> dict[str, Any]:
     conn = _conn()
     try:
         try:
-            if body.transaction_id:
-                updated = confirm_transaction(
-                    conn,
-                    body.transaction_id,
-                    ai_category=body.ai_category,
-                    ai_sub_category=body.ai_sub_category,
-                    expense_type=body.expense_type,
-                    flow_type=body.flow_type,
-                    classification=body.classification,
-                )
-                return {
-                    "merchant_key": merchant_key,
-                    "transaction_id": body.transaction_id,
-                    "rows_updated": updated,
-                }
-            updated = confirm_merchant(
+            return confirm_preview(
                 conn,
                 merchant_key,
                 ai_category=body.ai_category,
@@ -732,7 +779,29 @@ def api_review_confirm(merchant_key: str, body: ReviewConfirmRequest) -> dict[st
                 flow_type=body.flow_type,
                 classification=body.classification,
             )
-            return {"merchant_key": merchant_key, "rows_updated": updated}
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.post("/api/review/{merchant_key}/confirm")
+def api_review_confirm(merchant_key: str, body: ReviewConfirmRequest) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        try:
+            return confirm_merchant_or_transaction(
+                conn,
+                merchant_key,
+                ai_category=body.ai_category,
+                ai_sub_category=body.ai_sub_category,
+                expense_type=body.expense_type,
+                flow_type=body.flow_type,
+                classification=body.classification,
+                transaction_id=body.transaction_id,
+                scope=body.scope,
+                replace_excel=body.replace_excel,
+            )
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
     finally:

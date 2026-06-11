@@ -23,7 +23,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | Project layout (`webapp/`, `scripts/`, SQLite) | Phase 0 |
 | [x] | Scan inbox + ingest CSV → `transactions` | |
 | [x] | Run processing (CLI pipeline in web) | Descriptions, lookups, LLM, custom rules |
-| [x] | Confirm Categories tab (label queue) | |
+| [x] | Confirm Categories tab (label queue) | → [CONFIRM_CATEGORIES.md](./CONFIRM_CATEGORIES.md); bulk AI suggest (10/25/50/100) |
 | [x] | Chat agent + SQL / analytics tools | `webapp/agent/` |
 | [x] | Import & Categorize UI (tabs) | |
 | [x] | **Choose CSV files & scan** | Upload → `input/` → scan; see Import section below |
@@ -55,7 +55,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | Edit Transactions tab — search, bulk label, scopes | |
 | [x] | **Edit insights (post-apply)** — AI pattern + suggested CustomRule | EDIT_INSIGHTS |
 | [ ] | Pipeline reads SQLite `merchant_labels` before LLM on re-import | → [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md) |
-| [ ] | Sync web edits → `transaction-lookups.xlsx` (optional export) | → [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) |
+| [~] | Sync web edits → `transaction-lookups.xlsx` (optional export) | Confirm Categories writes **MerchantCategories**; bulk Settings export → [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) |
 
 ---
 
@@ -185,7 +185,8 @@ CLI seed writes Excel + lookups + history; **not** `finance.db` until import scr
 | [CHAT_ROUTING.md](./CHAT_ROUTING.md) | Fix top-categories vs list-transactions shortcut |
 | [CHAT_TIER3_SAVE_REPORT.md](./CHAT_TIER3_SAVE_REPORT.md) | Save-as-report button + API |
 | [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md) | SQLite labels on re-import |
-| [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) | Optional export web edits → Excel |
+| [CONFIRM_CATEGORIES.md](./CONFIRM_CATEGORIES.md) | Confirm merchant → Excel MerchantCategories + DB |
+| [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) | Bulk export web labels → Excel (Settings; partial) |
 | [CUSTOM_REPORTS_UI.md](./CUSTOM_REPORTS_UI.md) | Settings UI for saved reports |
 | [IMPORT_PROCESS_UPLOAD.md](./IMPORT_PROCESS_UPLOAD.md) | File picker for Run processing |
 | `scripts/split_export_by_month.py` | Master CSV → monthly `input/` files |

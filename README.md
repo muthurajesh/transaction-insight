@@ -53,7 +53,7 @@ uvicorn webapp.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 4. Open http://127.0.0.1:8000 — **Import & Categorize** → **Run processing** (same pipeline as the CLI script).
-5. Use **Confirm Categories** for uncertain merchants (one fix updates all matching rows).
+5. Use **Confirm Categories** for uncertain merchants (one fix applies to pending rows, syncs **MerchantCategories** in `transaction-lookups.xlsx`, optional update all rows). See [docs/CONFIRM_CATEGORIES.md](docs/CONFIRM_CATEGORIES.md).
 6. Use **Chat** for questions like “How much did I spend in 2026-04?” (dollar amounts use CLI spend rules: negative outflows only).
 
 **Shared core:** [`transaction_insight/`](transaction_insight/) holds the processing logic; [`scripts/process_transactions.py`](scripts/process_transactions.py) is the CLI entry; the web app calls [`transaction_insight/pipeline.py`](transaction_insight/pipeline.py).
@@ -265,7 +265,8 @@ Lookup workbook sheets:
 
 | Sheet | Contents |
 |-------|----------|
-| **Categories** | `AI Category`, `AI Sub-Category`, `Transaction Count`, `Budget Tier`, `Type`, `Sub-Type`, `Notes` |
+| **MerchantCategories** | Per **Merchant Key**: `AI Category`, `AI Sub-Category`, `Budget Tier`, `Type`, `Flow Type`, `Classification`, `Transaction Count`, `Notes`. Web **Confirm Categories** upserts rows here; pipeline applies on each run. |
+| **Categories** | Legacy merchant rollup; pipeline prefers **MerchantCategories** when present |
 | **CategoryRules** | Map bank `Category` → `AI Category`, `Budget Tier`, `Type`, `Sub-Type` |
 | **BusinessCategoryRules** | Rules keyed by **Generated Description**. Matching rows are auto-set to `Classification = Business` (even if the CSV says Personal), then AI Category / Budget Tier / Type are applied. |
 | **Types** | `Type`, `Sub-Type`, `Transaction Count`, `Notes` |
