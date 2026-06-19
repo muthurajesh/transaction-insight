@@ -1,6 +1,6 @@
 import pandas as pd
 
-from transaction_insight.core import _custom_rule_match_mask
+from webapp.processing import _custom_rule_match_mask
 
 
 def _df(**rows):

@@ -1,8 +1,12 @@
+"""Archive processed inbox CSVs."""
+
 from __future__ import annotations
 
 import os
 import shutil
 from pathlib import Path
+
+from webapp.config import PROCESSED_DIR
 
 
 def move_processed_enabled() -> bool:
@@ -14,14 +18,11 @@ def move_processed_enabled() -> bool:
     )
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
-
 def resolve_processed_dir() -> Path:
     custom = os.getenv("FINANCE_PROCESSED_DIR", "").strip()
     if custom:
         return Path(custom)
-    return PROJECT_ROOT / "processed"
+    return PROCESSED_DIR
 
 
 def should_archive_inbox_csv(path: Path, inbox_dir: Path) -> bool:

@@ -18,13 +18,31 @@ function setTab(name) {
   document.querySelectorAll(".panel").forEach((p) => {
     p.classList.toggle("active", p.id === `panel-${name}`);
   });
-  if (name === "review") {
-    loadReview();
+  if (name === "review") loadReview();
+  if (name === "settings") {
+    loadSettings();
     loadCustomRules();
+    loadCadenceRulesList();
   }
-  if (name === "settings") loadSettings();
   if (name === "chat") loadChatHistory();
   if (name === "edit") loadTransactionEditor();
+  if (name === "cadence") loadCadencePanel();
+}
+
+document.querySelectorAll(".tab-jump").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const tab = btn.dataset.tab;
+    if (tab) setTab(tab);
+  });
+});
+
+function setWorkflowStepper(stepperEl, step) {
+  if (!stepperEl) return;
+  stepperEl.querySelectorAll(".workflow-step").forEach((el) => {
+    const n = Number(el.dataset.step);
+    el.classList.toggle("active", n === step);
+    el.classList.toggle("done", n < step);
+  });
 }
 
 document.querySelectorAll(".tab").forEach((btn) => {
@@ -622,8 +640,7 @@ let customRulesBusy = false;
 let reviewSuggestBusy = false;
 
 function setReviewPanelBusy(busy, { title, hint } = {}) {
-  const overlay = $("#review-busy-overlay");
-  const panel = $("#panel-review");
+  const overlay = $("#app-busy-overlay");
   document.querySelectorAll(".tab").forEach((t) => {
     t.disabled = busy;
   });
@@ -637,7 +654,6 @@ function setReviewPanelBusy(busy, { title, hint } = {}) {
       if (hintEl) hintEl.textContent = hint || "Please wait. Do not leave this page.";
     }
   }
-  if (panel) panel.setAttribute("aria-busy", busy ? "true" : "false");
 }
 
 function setCustomRulesBusy(busy, { title, hint } = {}) {
@@ -707,6 +723,7 @@ function updateReviewBulkCount(count) {
       : document.querySelectorAll("#review-list .review-item").length;
   if (countEl) countEl.textContent = formatReviewGroupCount(n);
   if (toolbar) toolbar.classList.toggle("hidden", n <= 0);
+  updateReviewWorkflow(n);
   return n;
 }
 
@@ -930,134 +947,29 @@ let editPageOffset = 0;
 let editSearchTotal = 0;
 let editSortBy = "date";
 let editSortDir = "desc";
-let cadencePreviewTimer = null;
-
-const CADENCE_DEFAULT_RUNRATE = {
-  recurring: true,
-  lump: false,
-  one_time: false,
-  exclude: false,
-};
-
-function setEditCadenceRunrateDefault(kind) {
-  const cb = $("#edit-cadence-runrate");
-  if (!cb || !(kind in CADENCE_DEFAULT_RUNRATE)) return;
-  cb.checked = CADENCE_DEFAULT_RUNRATE[kind];
-}
-
-function updateCadencePeriodVisibility() {
-  const kind = $("#edit-cadence-kind")?.value || "unknown";
-  const row = $("#edit-cadence-period-row");
-  const runrateWrap = document.querySelector(".edit-cadence-runrate");
-  const needsPeriod = kind === "recurring" || kind === "lump";
-  if (row) row.classList.toggle("hidden", !needsPeriod);
-  if (runrateWrap) runrateWrap.classList.toggle("hidden", kind === "unknown");
-}
-
-function resetEditCadenceForm() {
-  const kindSel = $("#edit-cadence-kind");
-  const countInput = $("#edit-cadence-period-count");
-  const unitSel = $("#edit-cadence-period-unit");
-  const runrate = $("#edit-cadence-runrate");
-  const note = $("#edit-cadence-note");
-  const preview = $("#edit-cadence-preview");
-  if (kindSel) kindSel.value = "unknown";
-  if (countInput) countInput.value = "";
-  if (unitSel) unitSel.value = "months";
-  if (runrate) runrate.checked = true;
-  if (note) note.value = "";
-  if (preview) preview.textContent = "";
-  const txScope = document.querySelector('input[name="edit-cadence-scope"][value="transaction"]');
-  if (txScope) txScope.checked = true;
-  updateCadencePeriodVisibility();
-}
-
-function loadEditCadenceForm(tx, cadenceRes) {
-  const effective = cadenceRes?.effective_cadence || {};
-  const txKind = (tx?.cadence_kind || "").trim().toLowerCase();
-  const useTx = txKind && txKind !== "unknown";
-  const source = useTx ? tx : effective;
-  const kind = (source?.cadence_kind || "unknown").trim().toLowerCase();
-  const kindSel = $("#edit-cadence-kind");
-  const countInput = $("#edit-cadence-period-count");
-  const unitSel = $("#edit-cadence-period-unit");
-  const runrate = $("#edit-cadence-runrate");
-  const note = $("#edit-cadence-note");
-  if (kindSel) {
-    kindSel.value = [...kindSel.options].some((o) => o.value === kind) ? kind : "unknown";
-  }
-  if (countInput) {
-    countInput.value =
-      source?.period_count != null && source.period_count !== "" ? String(source.period_count) : "";
-  }
-  if (unitSel && source?.period_unit) {
-    unitSel.value = source.period_unit;
-  }
-  if (runrate) {
-    const explicit = source?.include_in_run_rate;
-    if (explicit === true || explicit === 1 || explicit === "1") runrate.checked = true;
-    else if (explicit === false || explicit === 0 || explicit === "0") runrate.checked = false;
-    else setEditCadenceRunrateDefault(kindSel?.value || kind);
-  }
-  if (note) note.value = source?.cadence_note || tx?.cadence_note || "";
-  updateCadencePeriodVisibility();
-}
-
-function getEditCadencePayload() {
-  const kind = ($("#edit-cadence-kind")?.value || "unknown").trim();
-  if (!kind || kind === "unknown") return null;
-  const countRaw = ($("#edit-cadence-period-count")?.value || "").trim();
-  const period_count = countRaw ? parseInt(countRaw, 10) : null;
-  const period_unit = ($("#edit-cadence-period-unit")?.value || "").trim() || null;
-  const runrate = $("#edit-cadence-runrate");
-  const include_in_run_rate = runrate && !runrate.closest(".hidden") ? runrate.checked : null;
-  return {
-    cadence_kind: kind,
-    period_count: Number.isFinite(period_count) ? period_count : null,
-    period_unit,
-    include_in_run_rate,
-    cadence_note: ($("#edit-cadence-note")?.value || "").trim(),
-  };
-}
+let cadenceSuggestBusy = false;
+let cadenceNeedingCount = 0;
+let cadenceFilterLabels = [];
+let cadenceQueue = [];
+let pendingCadenceMerchant = null;
+let cadenceWizardStep = 1;
+let cadenceMerchantTotal = 0;
+let cadenceMerchantOffset = 0;
+let cadenceLastMerchants = [];
+const CADENCE_MERCHANT_PAGE_SIZE = 50;
+const CADENCE_SKIP_VARIABLE_NOTE = "Variable spending — no fixed cadence";
+let importWizardStep = 1;
 
 function renderCadencePreviewLine(amounts) {
   if (!amounts) return "";
   return `Cash: ${formatMoney(amounts.cash)}  |  Core: ${formatMoney(amounts.core)}  |  Normalized: ${formatMoney(amounts.normalized)}/mo`;
 }
 
-async function refreshCadencePreview() {
-  if (!editSourceTx?.transaction_id) return;
-  const previewEl = $("#edit-cadence-preview");
-  if (!previewEl) return;
-  const kind = ($("#edit-cadence-kind")?.value || "unknown").trim();
-  const txId = encodeURIComponent(editSourceTx.transaction_id);
-  try {
-    let res;
-    if (kind === "unknown") {
-      res = await api(`/api/transactions/${txId}/cadence`);
-    } else {
-      const params = new URLSearchParams({ cadence_kind: kind });
-      const countRaw = ($("#edit-cadence-period-count")?.value || "").trim();
-      const unit = ($("#edit-cadence-period-unit")?.value || "").trim();
-      if (countRaw) params.set("period_count", countRaw);
-      if (unit) params.set("period_unit", unit);
-      const runrate = $("#edit-cadence-runrate");
-      if (runrate && !runrate.closest(".hidden")) {
-        params.set("include_in_run_rate", runrate.checked ? "true" : "false");
-      }
-      res = await api(`/api/transactions/${txId}/cadence?${params}`);
-    }
-    previewEl.textContent = renderCadencePreviewLine(res.effective_amounts);
-  } catch (err) {
-    previewEl.textContent = `Preview error: ${err.message}`;
-  }
-}
-
-function scheduleCadencePreview() {
-  clearTimeout(cadencePreviewTimer);
-  cadencePreviewTimer = setTimeout(() => {
-    refreshCadencePreview().catch(() => {});
-  }, 300);
+function openCadenceForMerchant(merchantKey) {
+  if (!merchantKey) return;
+  closeEditPanel();
+  pendingCadenceMerchant = merchantKey;
+  setTab("cadence");
 }
 
 function setEditPanelOpen(open) {
@@ -1118,24 +1030,119 @@ function populateEditAdvancedFilters(options) {
     "All classifications",
     $("#edit-search-classification")?.value
   );
-  populateEditValueLabelSelect(
-    $("#edit-search-cadence-kind"),
-    options.cadence_kinds || [],
-    "All cadence kinds",
-    $("#edit-search-cadence-kind")?.value
-  );
-  populateEditValueLabelSelect(
-    $("#edit-search-cadence-period"),
-    options.cadence_periods || [],
-    "All expense cadences",
-    $("#edit-search-cadence-period")?.value
-  );
-  populateEditValueLabelSelect(
-    $("#edit-search-include-runrate"),
-    options.run_rate_filters || [],
-    "All",
-    $("#edit-search-include-runrate")?.value
-  );
+}
+
+function selectDisplayValue(el) {
+  if (!el || !el.value) return "";
+  if (el.tagName === "SELECT") {
+    const opt = el.selectedOptions?.[0];
+    return (opt?.textContent || el.value).trim();
+  }
+  return String(el.value).trim();
+}
+
+function renderActiveFilterChips({ host, filters, onClearOne, onClearAll }) {
+  if (!host) return;
+  const active = filters.filter((f) => f.value);
+  if (!active.length) {
+    host.classList.add("hidden");
+    host.innerHTML = "";
+    return;
+  }
+  host.classList.remove("hidden");
+  const chips = active
+    .map(
+      (f) =>
+        `<button type="button" class="filter-chip" data-filter-key="${escapeAttr(f.key)}" aria-label="Remove ${escapeAttr(f.label)} filter">
+          <span class="filter-chip-label">${escapeHtml(f.label)}:</span>
+          <span class="filter-chip-value">${escapeHtml(f.display || f.value)}</span>
+          <span class="filter-chip-remove" aria-hidden="true">×</span>
+        </button>`
+    )
+    .join("");
+  host.innerHTML = `
+    <span class="active-filters-title">Active filters</span>
+    ${chips}
+    <button type="button" class="btn-link filter-clear-all">Clear all</button>
+  `;
+  host.querySelectorAll(".filter-chip").forEach((btn) => {
+    btn.addEventListener("click", () => onClearOne(btn.dataset.filterKey));
+  });
+  host.querySelector(".filter-clear-all")?.addEventListener("click", onClearAll);
+}
+
+const EDIT_FILTER_CONFIG = [
+  { key: "q", label: "Search", sel: "#edit-search-q" },
+  { key: "month", label: "Month", sel: "#edit-search-month" },
+  { key: "category", label: "Category", sel: "#edit-search-category" },
+  { key: "sub_category", label: "Sub-category", sel: "#edit-search-sub" },
+  { key: "expense_type", label: "Expense type", sel: "#edit-search-expense-type" },
+  { key: "classification", label: "Classification", sel: "#edit-search-classification" },
+];
+
+const CADENCE_FILTER_CONFIG = [
+  { key: "q", label: "Search", sel: "#cadence-search-q" },
+  { key: "month", label: "Month", sel: "#cadence-search-month" },
+  { key: "category", label: "Category", sel: "#cadence-search-category" },
+  { key: "sub_category", label: "Sub-category", sel: "#cadence-search-sub" },
+  { key: "expense_type", label: "Expense type", sel: "#cadence-search-expense-type" },
+  { key: "classification", label: "Classification", sel: "#cadence-search-classification" },
+];
+
+function collectConfiguredFilters(config) {
+  return config.map(({ key, label, sel }) => {
+    const el = $(sel);
+    const value = el ? String(el.value || "").trim() : "";
+    return { key, label, value, display: selectDisplayValue(el) };
+  });
+}
+
+function clearConfiguredFilter(config, key) {
+  const entry = config.find((f) => f.key === key);
+  if (!entry) return;
+  const el = $(entry.sel);
+  if (el) el.value = "";
+}
+
+function clearAllConfiguredFilters(config) {
+  config.forEach(({ sel }) => {
+    const el = $(sel);
+    if (el) el.value = "";
+  });
+}
+
+function renderEditActiveFilters() {
+  renderActiveFilterChips({
+    host: $("#edit-active-filters"),
+    filters: collectConfiguredFilters(EDIT_FILTER_CONFIG),
+    onClearOne: (key) => {
+      clearConfiguredFilter(EDIT_FILTER_CONFIG, key);
+      renderEditActiveFilters();
+      runEditSearch({ resetPage: true }).catch(() => {});
+    },
+    onClearAll: () => {
+      clearAllConfiguredFilters(EDIT_FILTER_CONFIG);
+      renderEditActiveFilters();
+      runEditSearch({ resetPage: true }).catch(() => {});
+    },
+  });
+}
+
+function renderCadenceActiveFilters() {
+  renderActiveFilterChips({
+    host: $("#cadence-active-filters"),
+    filters: collectConfiguredFilters(CADENCE_FILTER_CONFIG),
+    onClearOne: (key) => {
+      clearConfiguredFilter(CADENCE_FILTER_CONFIG, key);
+      renderCadenceActiveFilters();
+      loadCadenceScope({ resetPage: true }).catch(() => {});
+    },
+    onClearAll: () => {
+      clearAllConfiguredFilters(CADENCE_FILTER_CONFIG);
+      renderCadenceActiveFilters();
+      loadCadenceScope({ resetPage: true }).catch(() => {});
+    },
+  });
 }
 
 function editSortHeader(label, field) {
@@ -1214,21 +1221,17 @@ function renderEditResults(transactions) {
   const rows = transactions
     .map((tx) => {
       const category = tx.ai_category || "—";
-      const expenseCadence = tx.expense_cadence && tx.expense_cadence !== "—" ? tx.expense_cadence : "—";
-      const cadenceKind = tx.cadence_kind_label || tx.effective_cadence_kind || "—";
-      const runRate = tx.include_in_run_rate_label || "—";
+      const merchant = tx.merchant_key || "";
       return `
         <tr>
           <td>${escapeHtml(tx.date || "")}</td>
           <td class="amount">${escapeHtml(formatMoney(tx.amount))}</td>
-          <td>${escapeHtml(tx.merchant_key || "")}</td>
+          <td>${escapeHtml(merchant)}</td>
           <td>${escapeHtml(category)}</td>
-          <td>${escapeHtml(tx.expense_type || "—")}</td>
-          <td>${escapeHtml(tx.classification || "—")}</td>
-          <td class="cadence-col">${escapeHtml(expenseCadence)}</td>
-          <td class="cadence-col">${escapeHtml(cadenceKind)}</td>
-          <td class="cadence-col">${escapeHtml(runRate)}</td>
-          <td><button type="button" class="btn-edit-row" data-tx-id="${escapeAttr(tx.transaction_id)}">Edit</button></td>
+          <td class="edit-row-actions">
+            <button type="button" class="btn-edit-row" data-tx-id="${escapeAttr(tx.transaction_id)}">Edit</button>
+            <button type="button" class="btn-link btn-edit-cadence-link" data-merchant-key="${escapeAttr(merchant)}" title="Open Cadence tab for this merchant">Cadence</button>
+          </td>
         </tr>
       `;
     })
@@ -1241,11 +1244,6 @@ function renderEditResults(transactions) {
           ${editSortHeader("Amount", "amount")}
           ${editSortHeader("Merchant", "merchant")}
           ${editSortHeader("Category", "ai_category")}
-          <th scope="col">Expense Type</th>
-          ${editSortHeader("Classification", "classification")}
-          <th scope="col">Expense Cadence</th>
-          ${editSortHeader("Cadence Kind", "cadence_kind")}
-          ${editSortHeader("In run-rate", "include_in_run_rate")}
           <th scope="col"></th>
         </tr>
       </thead>
@@ -1264,11 +1262,7 @@ function bindEditSortHeaders() {
       } else {
         editSortBy = field;
         editSortDir =
-          field === "merchant" ||
-          field === "ai_category" ||
-          field === "classification" ||
-          field === "cadence_kind" ||
-          field === "include_in_run_rate"
+          field === "merchant" || field === "ai_category" || field === "classification"
             ? "asc"
             : "desc";
       }
@@ -1326,7 +1320,6 @@ async function openEditPanel(tx) {
   const classSel = $("#edit-label-classification");
   const resultEl = $("#edit-apply-result");
   if (resultEl) resultEl.textContent = "";
-  resetEditCadenceForm();
   if (summary) {
     summary.innerHTML = `
       <strong>${escapeHtml(tx.merchant_key || "")}</strong><br>
@@ -1347,19 +1340,6 @@ async function openEditPanel(tx) {
     const list = $("#edit-match-list");
     if (list) list.innerHTML = `<li class="edit-match-item">Error: ${escapeHtml(err.message)}</li>`;
   });
-  try {
-    const txId = encodeURIComponent(tx.transaction_id);
-    const [full, cadenceRes] = await Promise.all([
-      api(`/api/transactions/${txId}`),
-      api(`/api/transactions/${txId}/cadence`),
-    ]);
-    loadEditCadenceForm(full, cadenceRes);
-    const previewEl = $("#edit-cadence-preview");
-    if (previewEl) previewEl.textContent = renderCadencePreviewLine(cadenceRes.effective_amounts);
-  } catch (err) {
-    const previewEl = $("#edit-cadence-preview");
-    if (previewEl) previewEl.textContent = `Could not load cadence: ${err.message}`;
-  }
 }
 
 function closeEditPanel() {
@@ -1385,8 +1365,6 @@ function closeEditPanel() {
   if (classSel) classSel.value = "Personal";
   const singleScope = document.querySelector('input[name="edit-scope"][value="single"]');
   if (singleScope) singleScope.checked = true;
-  resetEditCadenceForm();
-  clearTimeout(cadencePreviewTimer);
 }
 
 function updateEditPagination() {
@@ -1423,6 +1401,11 @@ function bindEditResultRows() {
       if (tx) openEditPanel(tx);
     });
   });
+  host.querySelectorAll(".btn-edit-cadence-link").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      openCadenceForMerchant(btn.dataset.merchantKey || "");
+    });
+  });
 }
 
 async function runEditSearch({ resetPage = false } = {}) {
@@ -1435,9 +1418,6 @@ async function runEditSearch({ resetPage = false } = {}) {
   const subCategory = ($("#edit-search-sub")?.value || "").trim();
   const expenseType = ($("#edit-search-expense-type")?.value || "").trim();
   const classification = ($("#edit-search-classification")?.value || "").trim();
-  const cadenceKind = ($("#edit-search-cadence-kind")?.value || "").trim();
-  const cadencePeriod = ($("#edit-search-cadence-period")?.value || "").trim();
-  const includeRunrate = ($("#edit-search-include-runrate")?.value || "").trim();
 
   const params = new URLSearchParams();
   if (q) params.set("q", q);
@@ -1446,9 +1426,6 @@ async function runEditSearch({ resetPage = false } = {}) {
   if (subCategory) params.set("sub_category", subCategory);
   if (expenseType) params.set("expense_type", expenseType);
   if (classification) params.set("classification", classification);
-  if (cadenceKind) params.set("cadence_kind", cadenceKind);
-  if (cadencePeriod) params.set("cadence_period", cadencePeriod);
-  if (includeRunrate) params.set("include_in_run_rate", includeRunrate);
   params.set("limit", String(EDIT_PAGE_SIZE));
   params.set("offset", String(editPageOffset));
   params.set("sort_by", editSortBy);
@@ -1465,6 +1442,7 @@ async function runEditSearch({ resetPage = false } = {}) {
     bindEditResultRows();
     bindEditSortHeaders();
   }
+  renderEditActiveFilters();
   if (meta) {
     const shown = editLastResults.length;
     if (shown) {
@@ -1477,6 +1455,557 @@ async function runEditSearch({ resetPage = false } = {}) {
   }
   updateEditPagination();
 }
+
+function getCadenceFilterPayload() {
+  return {
+    q: ($("#cadence-search-q")?.value || "").trim(),
+    month: $("#cadence-search-month")?.value || "",
+    category: ($("#cadence-search-category")?.value || "").trim(),
+    sub_category: ($("#cadence-search-sub")?.value || "").trim(),
+    expense_type: ($("#cadence-search-expense-type")?.value || "").trim(),
+    classification: ($("#cadence-search-classification")?.value || "").trim(),
+  };
+}
+
+function buildCadenceFilterQueryString() {
+  const f = getCadenceFilterPayload();
+  const params = new URLSearchParams();
+  if (f.q) params.set("q", f.q);
+  if (f.month) params.set("month", f.month);
+  if (f.category) params.set("category", f.category);
+  if (f.sub_category) params.set("sub_category", f.sub_category);
+  if (f.expense_type) params.set("expense_type", f.expense_type);
+  if (f.classification) params.set("classification", f.classification);
+  return params.toString();
+}
+
+function formatCadenceMerchantCount(count, filterLabels) {
+  const n = Number(count) || 0;
+  let text = `${n} merchant${n === 1 ? "" : "s"} need cadence`;
+  if (filterLabels?.length) {
+    text += " (filtered)";
+  }
+  return text;
+}
+
+function setCadenceWizardStep(step) {
+  cadenceWizardStep = Math.max(1, Math.min(3, step));
+  setWorkflowStepper($("#cadence-stepper"), cadenceWizardStep);
+  for (let i = 1; i <= 3; i++) {
+    const panel = $(`#cadence-step-${i}`);
+    if (panel) panel.classList.toggle("hidden", i !== cadenceWizardStep);
+  }
+  if (cadenceWizardStep === 2) {
+    updateCadenceSuggestSummary();
+  }
+  updateCadenceQueueEmptyState();
+}
+
+function updateCadenceSuggestSummary() {
+  const el = $("#cadence-suggest-summary");
+  if (!el) return;
+  const n = cadenceNeedingCount;
+  el.textContent = n
+    ? `${n} merchant(s) in scope. Choose a batch size and run AI suggest.`
+    : "No merchants need cadence for this scope. Go back and adjust filters.";
+}
+
+function updateCadenceNextButton() {
+  const btn = $("#btn-cadence-next-suggest");
+  if (btn) btn.disabled = cadenceNeedingCount <= 0;
+}
+
+function updateCadenceQueueEmptyState() {
+  const empty = $("#cadence-queue-empty");
+  const host = $("#cadence-queue");
+  if (!empty) return;
+  const showEmpty = cadenceWizardStep === 3 && !cadenceQueue.length;
+  empty.classList.toggle("hidden", !showEmpty);
+  if (showEmpty && host) {
+    host.classList.add("hidden");
+  }
+}
+
+function renderCadenceMerchantList(merchants, total) {
+  const host = $("#cadence-merchant-list");
+  const meta = $("#cadence-merchant-meta");
+  if (!host) return;
+  cadenceMerchantTotal = Number(total) || 0;
+  cadenceLastMerchants = merchants || [];
+  updateCadenceNextButton();
+  if (!cadenceMerchantTotal) {
+    host.innerHTML = '<p class="hint">No merchants need cadence for these filters.</p>';
+    if (meta) meta.textContent = "No merchants match your filters.";
+    updateCadencePagination();
+    return;
+  }
+  const shown = cadenceLastMerchants.length;
+  if (meta) {
+    const start = cadenceMerchantOffset + 1;
+    const end = cadenceMerchantOffset + shown;
+    meta.textContent = `Showing ${start}–${end} of ${cadenceMerchantTotal} merchant(s)`;
+  }
+  if (!shown) {
+    host.innerHTML = '<p class="hint">No merchants on this page.</p>';
+    updateCadencePagination();
+    return;
+  }
+  const rows = cadenceLastMerchants
+    .map((m) => {
+      const merchant = m.merchant_key || "";
+      const category = m.ai_category || "—";
+      return `
+        <tr>
+          <td>${escapeHtml(merchant)}</td>
+          <td>${escapeHtml(category)}</td>
+          <td>${Number(m.tx_count) || 0}</td>
+          <td>${Number(m.month_count) || 0}</td>
+          <td class="edit-row-actions">
+            <button type="button" class="btn-link btn-cadence-skip-variable" data-merchant-key="${escapeAttr(merchant)}" title="Mark as variable spending — no cadence rule">Skip</button>
+          </td>
+        </tr>`;
+    })
+    .join("");
+  host.innerHTML = `
+    <table class="edit-results-table cadence-merchant-table">
+      <thead>
+        <tr>
+          <th scope="col">Merchant</th>
+          <th scope="col">Category</th>
+          <th scope="col"># of Transactions</th>
+          <th scope="col"># of Months</th>
+          <th scope="col"></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+  host.querySelectorAll(".btn-cadence-skip-variable").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const mk = btn.dataset.merchantKey || "";
+      if (mk) saveCadenceSkipVariable(mk).catch((err) => alert(err.message));
+    });
+  });
+  updateCadencePagination();
+}
+
+function updateCadencePagination() {
+  const bar = $("#cadence-pagination");
+  const info = $("#cadence-page-info");
+  const prev = $("#btn-cadence-prev");
+  const next = $("#btn-cadence-next");
+  if (!bar || !info) return;
+
+  const total = cadenceMerchantTotal;
+  const pageCount = Math.max(1, Math.ceil(total / CADENCE_MERCHANT_PAGE_SIZE));
+  const page = Math.floor(cadenceMerchantOffset / CADENCE_MERCHANT_PAGE_SIZE) + 1;
+
+  if (total <= CADENCE_MERCHANT_PAGE_SIZE) {
+    bar.classList.add("hidden");
+    return;
+  }
+
+  bar.classList.remove("hidden");
+  const start = cadenceMerchantOffset + 1;
+  const end = Math.min(cadenceMerchantOffset + cadenceLastMerchants.length, total);
+  info.textContent = `Page ${page} of ${pageCount} · rows ${start}–${end} of ${total}`;
+  if (prev) prev.disabled = cadenceMerchantOffset <= 0;
+  if (next) next.disabled = cadenceMerchantOffset + CADENCE_MERCHANT_PAGE_SIZE >= total;
+}
+
+async function loadCadenceMerchantsPreview({ resetPage = false } = {}) {
+  const host = $("#cadence-merchant-list");
+  if (resetPage) cadenceMerchantOffset = 0;
+  if (host) host.innerHTML = '<p class="hint">Loading merchants…</p>';
+  try {
+    const qs = buildCadenceFilterQueryString();
+    const params = new URLSearchParams(qs);
+    params.set("limit", String(CADENCE_MERCHANT_PAGE_SIZE));
+    params.set("offset", String(cadenceMerchantOffset));
+    const path = `/api/transactions/cadence-suggest-merchants?${params.toString()}`;
+    const res = await api(path);
+    renderCadenceMerchantList(res.merchants || [], res.total ?? 0);
+  } catch (err) {
+    if (host) host.innerHTML = `<p class="hint">Error: ${escapeHtml(err.message)}</p>`;
+    cadenceMerchantTotal = 0;
+    cadenceLastMerchants = [];
+    updateCadenceNextButton();
+    updateCadencePagination();
+  }
+}
+
+async function loadCadenceScope({ resetPage = false } = {}) {
+  await Promise.all([
+    loadCadenceBulkCount(),
+    loadCadenceMerchantsPreview({ resetPage }),
+  ]);
+}
+
+function setImportWizardStep(step) {
+  importWizardStep = Math.max(1, Math.min(2, step));
+  setWorkflowStepper($("#import-stepper"), importWizardStep);
+  for (let i = 1; i <= 2; i++) {
+    const panel = $(`#import-step-${i}`);
+    if (panel) panel.classList.toggle("hidden", i !== importWizardStep);
+  }
+}
+
+function updateReviewWorkflow(itemCount) {
+  const empty = $("#review-empty-state");
+  const stepper = $("#review-stepper");
+  const n = Number(itemCount) || 0;
+  if (empty) empty.classList.toggle("hidden", n > 0);
+  if (n > 0) {
+    setWorkflowStepper(stepper, 2);
+  } else {
+    setWorkflowStepper(stepper, 1);
+  }
+}
+
+function updateCadenceBulkCount(count, filterLabels) {
+  const countEl = $("#cadence-bulk-count");
+  if (typeof count === "number") {
+    cadenceNeedingCount = count;
+  }
+  if (filterLabels) {
+    cadenceFilterLabels = filterLabels;
+  }
+  const n = cadenceNeedingCount;
+  if (countEl) countEl.textContent = formatCadenceMerchantCount(n, cadenceFilterLabels);
+  renderCadenceActiveFilters();
+  updateCadenceNextButton();
+  updateCadenceClearButton();
+  return n;
+}
+
+async function loadCadenceBulkCount() {
+  try {
+    const qs = buildCadenceFilterQueryString();
+    const path = qs
+      ? `/api/transactions/cadence-suggest-count?${qs}`
+      : "/api/transactions/cadence-suggest-count";
+    const res = await api(path);
+    return updateCadenceBulkCount(res.count, res.filter_labels || []);
+  } catch {
+    return updateCadenceBulkCount(0, []);
+  }
+}
+
+async function loadCadenceRulesList() {
+  const list = $("#cadence-rules-list");
+  if (!list) return;
+  try {
+    const data = await api("/api/cadence-rules");
+    const rules = (data.rules || []).filter((r) => r.enabled !== 0 && r.enabled !== false);
+    if (!rules.length) {
+      list.innerHTML = '<li class="custom-rules-empty">No saved cadence rules yet.</li>';
+      return;
+    }
+    list.innerHTML = rules
+      .map((rule) => {
+        const kind = cadenceRuleKindDisplay(rule);
+        const period =
+          rule.period_count && rule.period_unit
+            ? ` · every ${rule.period_count} ${rule.period_unit}`
+            : "";
+        const runRate =
+          rule.include_in_run_rate === 0 || rule.include_in_run_rate === false
+            ? " · excluded from core"
+            : rule.include_in_run_rate === 1 || rule.include_in_run_rate === true
+              ? " · in core"
+              : "";
+        const note = rule.notes ? ` — ${rule.notes}` : "";
+        return `<li><span class="rule-text"><strong>${escapeHtml(rule.merchant_key || "")}</strong>: ${escapeHtml(kind)}${escapeHtml(period)}${escapeHtml(runRate)}${escapeHtml(note)}</span></li>`;
+      })
+      .join("");
+  } catch (err) {
+    list.innerHTML = `<li class="custom-rules-empty">Could not load rules: ${escapeHtml(err.message)}</li>`;
+  }
+}
+
+function updateCadenceClearButton() {
+  const btn = $("#btn-cadence-clear-queue");
+  if (!btn) return;
+  btn.disabled = cadenceSuggestBusy || cadenceQueue.length === 0;
+}
+
+function clearCadenceQueue() {
+  cadenceQueue = [];
+  renderCadenceQueue();
+  const statusEl = $("#cadence-suggest-status");
+  if (statusEl) statusEl.textContent = "Cleared cadence suggestions.";
+  updateCadenceClearButton();
+  updateCadenceQueueEmptyState();
+}
+
+function renderCadenceQueue() {
+  const host = $("#cadence-queue");
+  if (!host) return;
+  if (!cadenceQueue.length) {
+    host.innerHTML = "";
+    host.classList.add("hidden");
+    updateCadenceBulkCount();
+    updateCadenceClearButton();
+    updateCadenceQueueEmptyState();
+    return;
+  }
+  host.classList.remove("hidden");
+  updateCadenceQueueEmptyState();
+  host.innerHTML = `
+    <p class="hint" style="margin:0 0 0.25rem">Review each suggestion — save a rule, skip variable merchants, or dismiss.</p>
+  `;
+  cadenceQueue.forEach((proposal, idx) => {
+    const el = document.createElement("div");
+    el.className = "edit-cadence-queue-item";
+    el.dataset.queueIdx = String(idx);
+    el.dataset.merchantKey = proposal.merchant_key || "";
+    const period =
+      proposal.period_count && proposal.period_unit
+        ? `Every ${proposal.period_count} ${proposal.period_unit}`
+        : "—";
+    const src = proposal.source || "ai";
+    const conf = proposal.confidence || "medium";
+    const insightText = (proposal.insight || "").replace(/\*\*/g, "");
+    const preview = renderCadencePreviewLine(proposal.effective_amounts);
+    el.innerHTML = `
+      <h3>${escapeHtml(proposal.merchant_key || "Merchant")}</h3>
+      <div class="edit-cadence-queue-meta">
+        ${escapeHtml(cadenceKindLabel(proposal.cadence_kind))} · ${escapeHtml(period)} · ${escapeHtml(conf)} · ${escapeHtml(src)}
+      </div>
+      <p class="edit-cadence-queue-insight">${escapeHtml(insightText.slice(0, 280))}${insightText.length > 280 ? "…" : ""}</p>
+      <p class="edit-cadence-preview">${escapeHtml(preview)}</p>
+      <div class="edit-cadence-queue-actions">
+        <button type="button" class="btn-primary btn-cadence-review" data-queue-idx="${idx}">Review &amp; save</button>
+        <button type="button" class="btn-secondary btn-cadence-skip-variable" data-merchant-key="${escapeAttr(proposal.merchant_key || "")}" data-queue-idx="${idx}">Skip — variable</button>
+        <button type="button" class="btn-secondary btn-cadence-dismiss" data-queue-idx="${idx}">Dismiss</button>
+      </div>
+    `;
+    host.appendChild(el);
+  });
+  host.querySelectorAll(".btn-cadence-review").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const i = Number(btn.dataset.queueIdx);
+      const proposal = cadenceQueue[i];
+      if (proposal) openCadenceInsightModal(proposal);
+    });
+  });
+  host.querySelectorAll(".btn-cadence-dismiss").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const i = Number(btn.dataset.queueIdx);
+      cadenceQueue.splice(i, 1);
+      renderCadenceQueue();
+    });
+  });
+  host.querySelectorAll(".btn-cadence-skip-variable").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const mk = btn.dataset.merchantKey || "";
+      if (!mk) return;
+      saveCadenceSkipVariable(mk).catch((err) => alert(err.message));
+    });
+  });
+  updateCadenceBulkCount();
+  updateCadenceClearButton();
+  if (cadenceQueue.length) {
+    setCadenceWizardStep(3);
+  }
+}
+
+function removeMerchantFromCadenceQueue(merchantKey) {
+  if (!merchantKey) return;
+  cadenceQueue = cadenceQueue.filter((p) => p.merchant_key !== merchantKey);
+  renderCadenceQueue();
+  loadCadenceBulkCount().catch(() => {});
+}
+
+async function runCadenceBulkSuggest() {
+  if (cadenceSuggestBusy) return;
+  const limit = Number($("#cadence-suggest-batch")?.value || 10);
+  const statusEl = $("#cadence-suggest-status");
+  const batchBtn = $("#btn-cadence-suggest-batch");
+  const batchSelect = $("#cadence-suggest-batch");
+
+  cadenceSuggestBusy = true;
+  if (batchBtn) batchBtn.disabled = true;
+  if (batchSelect) batchSelect.disabled = true;
+  updateCadenceClearButton();
+  if (statusEl) statusEl.textContent = `Suggesting cadence for up to ${limit} merchant(s)…`;
+
+  try {
+    const res = await api("/api/transactions/cadence-suggest-batch", {
+      method: "POST",
+      body: JSON.stringify({
+        limit,
+        ...getCadenceFilterPayload(),
+      }),
+    });
+    const incoming = res.suggestions || [];
+    cadenceQueue = incoming.filter((p) => p.merchant_key);
+    renderCadenceQueue();
+    if (typeof res.queue_total === "number") {
+      updateCadenceBulkCount(res.queue_total, res.filter_labels || cadenceFilterLabels);
+    } else {
+      await loadCadenceBulkCount();
+    }
+    if (statusEl) {
+      const errPart = res.error_count ? ` · ${res.error_count} error(s)` : "";
+      statusEl.textContent =
+        (res.message || `Queued ${incoming.length} suggestion(s).`) + errPart;
+    }
+    if (res.error_count) {
+      console.warn("Cadence bulk suggest errors:", res.errors);
+    }
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `Error: ${err.message}`;
+  } finally {
+    cadenceSuggestBusy = false;
+    if (batchBtn) batchBtn.disabled = false;
+    if (batchSelect) batchSelect.disabled = false;
+    updateCadenceClearButton();
+  }
+}
+
+function populateCadenceFilters(options, status) {
+  const monthSel = $("#cadence-search-month");
+  if (monthSel) {
+    const current = monthSel.value;
+    monthSel.innerHTML = '<option value="">All months</option>';
+    (status.months || []).forEach((m) => {
+      const opt = document.createElement("option");
+      opt.value = m;
+      opt.textContent = m;
+      monthSel.appendChild(opt);
+    });
+    if (current) monthSel.value = current;
+  }
+  populateEditSelect(
+    $("#cadence-search-category"),
+    options.categories,
+    "All categories",
+    $("#cadence-search-category")?.value
+  );
+  populateEditSelect(
+    $("#cadence-search-sub"),
+    options.sub_categories,
+    "All sub-categories",
+    $("#cadence-search-sub")?.value
+  );
+  populateEditSelect(
+    $("#cadence-search-expense-type"),
+    options.expense_types,
+    "All expense types",
+    $("#cadence-search-expense-type")?.value
+  );
+  populateEditSelect(
+    $("#cadence-search-classification"),
+    options.classifications?.length ? options.classifications : EDIT_CLASSIFICATIONS,
+    "All classifications",
+    $("#cadence-search-classification")?.value
+  );
+}
+
+async function loadCadencePanel() {
+  try {
+    const [status, options] = await Promise.all([
+      api("/api/status"),
+      editOptionsCache ? Promise.resolve(editOptionsCache) : api("/api/review/options"),
+    ]);
+    editOptionsCache = options;
+    populateCadenceFilters(options, status);
+    if (pendingCadenceMerchant) {
+      const qEl = $("#cadence-search-q");
+      if (qEl) qEl.value = pendingCadenceMerchant;
+      pendingCadenceMerchant = null;
+      renderCadenceActiveFilters();
+    }
+    await loadCadenceScope();
+    renderCadenceQueue();
+    setCadenceWizardStep(cadenceQueue.length ? 3 : 1);
+  } catch (err) {
+    const statusEl = $("#cadence-suggest-status");
+    if (statusEl) statusEl.textContent = `Error: ${err.message}`;
+  }
+}
+
+$("#btn-cadence-next-suggest")?.addEventListener("click", () => {
+  setCadenceWizardStep(2);
+});
+
+$("#btn-cadence-back-scope")?.addEventListener("click", () => {
+  setCadenceWizardStep(1);
+});
+
+$("#btn-cadence-back-suggest")?.addEventListener("click", () => {
+  setCadenceWizardStep(2);
+});
+
+$("#btn-cadence-start-over")?.addEventListener("click", () => {
+  clearCadenceQueue();
+  cadenceMerchantOffset = 0;
+  setCadenceWizardStep(1);
+  loadCadenceScope({ resetPage: true }).catch(() => {});
+});
+
+$("#btn-cadence-suggest-batch")?.addEventListener("click", () => {
+  runCadenceBulkSuggest().catch(() => {});
+});
+
+$("#btn-cadence-clear-queue")?.addEventListener("click", () => {
+  clearCadenceQueue();
+});
+
+$("#cadence-search-form")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+  renderCadenceActiveFilters();
+  setCadenceWizardStep(1);
+  loadCadenceScope({ resetPage: true }).catch(() => {});
+});
+
+$("#btn-cadence-prev")?.addEventListener("click", () => {
+  if (cadenceMerchantOffset <= 0) return;
+  cadenceMerchantOffset = Math.max(0, cadenceMerchantOffset - CADENCE_MERCHANT_PAGE_SIZE);
+  loadCadenceMerchantsPreview().catch(() => {});
+});
+
+$("#btn-cadence-next")?.addEventListener("click", () => {
+  if (cadenceMerchantOffset + CADENCE_MERCHANT_PAGE_SIZE >= cadenceMerchantTotal) return;
+  cadenceMerchantOffset += CADENCE_MERCHANT_PAGE_SIZE;
+  loadCadenceMerchantsPreview().catch(() => {});
+});
+
+$("#btn-import-next-process")?.addEventListener("click", () => {
+  setImportWizardStep(2);
+});
+
+$("#btn-import-back-upload")?.addEventListener("click", () => {
+  setImportWizardStep(1);
+});
+
+[
+  "#cadence-search-q",
+  "#cadence-search-month",
+  "#cadence-search-category",
+  "#cadence-search-sub",
+  "#cadence-search-expense-type",
+  "#cadence-search-classification",
+].forEach((sel) => {
+  const el = $(sel);
+  if (!el) return;
+  el.addEventListener("change", () => {
+    renderCadenceActiveFilters();
+    if (cadenceWizardStep === 1) loadCadenceScope({ resetPage: true }).catch(() => {});
+    else loadCadenceBulkCount().catch(() => {});
+  });
+  if (el.tagName === "INPUT") {
+    el.addEventListener("input", () => {
+      clearTimeout(el._cadenceCountTimer);
+      el._cadenceCountTimer = setTimeout(() => {
+        renderCadenceActiveFilters();
+        if (cadenceWizardStep === 1) loadCadenceScope({ resetPage: true }).catch(() => {});
+        else loadCadenceBulkCount().catch(() => {});
+      }, 400);
+    });
+  }
+});
 
 async function loadTransactionEditor() {
   const monthSel = $("#edit-search-month");
@@ -1513,6 +2042,29 @@ $("#edit-search-form")?.addEventListener("submit", (e) => {
   });
 });
 
+[
+  "#edit-search-q",
+  "#edit-search-month",
+  "#edit-search-category",
+  "#edit-search-sub",
+  "#edit-search-expense-type",
+  "#edit-search-classification",
+].forEach((sel) => {
+  const el = $(sel);
+  if (!el) return;
+  el.addEventListener("change", () => {
+    renderEditActiveFilters();
+  });
+  if (el.tagName === "INPUT") {
+    el.addEventListener("input", () => {
+      clearTimeout(el._editFilterChipTimer);
+      el._editFilterChipTimer = setTimeout(() => {
+        renderEditActiveFilters();
+      }, 400);
+    });
+  }
+});
+
 $("#btn-edit-prev")?.addEventListener("click", () => {
   if (editPageOffset <= 0) return;
   editPageOffset = Math.max(0, editPageOffset - EDIT_PAGE_SIZE);
@@ -1529,34 +2081,6 @@ document.querySelectorAll('input[name="edit-scope"]').forEach((radio) => {
   radio.addEventListener("change", () => {
     if (!editSourceTx) return;
     loadEditMatches(radio.value).catch(() => {});
-  });
-});
-
-$("#edit-cadence-kind")?.addEventListener("change", () => {
-  setEditCadenceRunrateDefault($("#edit-cadence-kind")?.value || "unknown");
-  updateCadencePeriodVisibility();
-  scheduleCadencePreview();
-});
-
-["edit-cadence-period-count", "edit-cadence-period-unit", "edit-cadence-runrate", "edit-cadence-note"].forEach(
-  (id) => {
-    const el = document.getElementById(id);
-    el?.addEventListener("input", scheduleCadencePreview);
-    el?.addEventListener("change", scheduleCadencePreview);
-  }
-);
-
-document.querySelectorAll(".edit-cadence-preset").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const kindSel = $("#edit-cadence-kind");
-    const countInput = $("#edit-cadence-period-count");
-    const unitSel = $("#edit-cadence-period-unit");
-    if (kindSel) kindSel.value = btn.dataset.kind || "unknown";
-    if (countInput) countInput.value = btn.dataset.count || "";
-    if (unitSel && btn.dataset.unit) unitSel.value = btn.dataset.unit;
-    setEditCadenceRunrateDefault(kindSel?.value || "unknown");
-    updateCadencePeriodVisibility();
-    scheduleCadencePreview();
   });
 });
 
@@ -1587,6 +2111,38 @@ function cadenceKindLabel(kind) {
     unknown: "Unknown",
   };
   return labels[kind] || kind || "Unknown";
+}
+
+function cadenceRuleKindDisplay(rule) {
+  const note = (rule?.notes || "").trim();
+  if (rule?.cadence_kind === "unknown" && note.startsWith("Variable spending")) {
+    return "Variable (no cadence)";
+  }
+  return cadenceKindLabel(rule?.cadence_kind);
+}
+
+async function saveCadenceSkipVariable(merchantKey) {
+  const mk = (merchantKey || "").trim();
+  if (!mk) return;
+  await api("/api/cadence-rules", {
+    method: "POST",
+    body: JSON.stringify({
+      merchant_key: mk,
+      cadence_kind: "unknown",
+      period_count: null,
+      period_unit: null,
+      include_in_run_rate: true,
+      notes: CADENCE_SKIP_VARIABLE_NOTE,
+    }),
+  });
+  closeCadenceInsightModal();
+  removeMerchantFromCadenceQueue(mk);
+  await Promise.all([
+    loadCadenceBulkCount(),
+    loadCadenceMerchantsPreview(),
+    loadCadenceRulesList(),
+    loadStatus(),
+  ]);
 }
 
 function closeCadenceInsightModal() {
@@ -1641,17 +2197,26 @@ function renderCadenceInsight(proposal) {
     ${proposal.confidence ? `<span class="edit-insight-confidence">Confidence: ${escapeHtml(proposal.confidence)}</span>` : ""}
   `;
 
-  const canSave = Boolean(proposal.recommend_save_rule);
+  const canSaveMerchant = Boolean(proposal.recommend_save_rule);
   const hasTx = Boolean(
     proposal.transaction_id || proposal.sample_transaction?.transaction_id
   );
+  const hasMerchant = Boolean((proposal.merchant_key || "").trim());
+  const skipVariable = $("#btn-cadence-insight-skip-variable");
   if (actions) {
-    if (canSave) {
+    if (canSaveMerchant || hasTx || hasMerchant) {
       actions.classList.remove("hidden");
-      if (saveMerchant) saveMerchant.disabled = false;
+      if (saveMerchant) {
+        saveMerchant.disabled = false;
+        saveMerchant.classList.toggle("hidden", !canSaveMerchant);
+      }
       if (saveTx) {
         saveTx.disabled = !hasTx;
         saveTx.classList.toggle("hidden", !hasTx);
+      }
+      if (skipVariable) {
+        skipVariable.disabled = false;
+        skipVariable.classList.toggle("hidden", !hasMerchant);
       }
     } else {
       actions.classList.add("hidden");
@@ -1674,6 +2239,25 @@ function openCadenceInsightModal(proposal) {
 
 $("#btn-cadence-insight-close")?.addEventListener("click", closeCadenceInsightModal);
 $("#btn-cadence-insight-dismiss")?.addEventListener("click", closeCadenceInsightModal);
+$("#btn-cadence-insight-skip-variable")?.addEventListener("click", () => {
+  const mk = cadenceInsightState?.proposal?.merchant_key;
+  if (!mk) return;
+  const btn = $("#btn-cadence-insight-skip-variable");
+  if (btn) btn.disabled = true;
+  saveCadenceSkipVariable(mk)
+    .catch((err) => {
+      const body = $("#cadence-insight-body");
+      if (body) {
+        body.insertAdjacentHTML(
+          "beforeend",
+          `<p class="hint" style="margin-top:0.75rem">Skip failed: ${escapeHtml(err.message)}</p>`
+        );
+      }
+    })
+    .finally(() => {
+      if (btn) btn.disabled = false;
+    });
+});
 $("#cadence-insight-overlay")?.addEventListener("click", (e) => {
   if (e.target?.id === "cadence-insight-overlay") closeCadenceInsightModal();
 });
@@ -1706,7 +2290,10 @@ async function saveCadenceProposal(scope) {
         }),
       });
       closeCadenceInsightModal();
+      removeMerchantFromCadenceQueue(proposal.merchant_key);
       loadStatus();
+      loadCadenceRulesList().catch(() => {});
+      loadCadenceBulkCount().catch(() => {});
     } catch (err) {
       const body = $("#cadence-insight-body");
       if (body) {
@@ -1736,6 +2323,7 @@ async function saveCadenceProposal(scope) {
       }),
     });
     closeCadenceInsightModal();
+    removeMerchantFromCadenceQueue(proposal.merchant_key);
     loadStatus();
   } catch (err) {
     const body = $("#cadence-insight-body");
@@ -1909,24 +2497,6 @@ $("#edit-label-form")?.addEventListener("submit", async (e) => {
     update_merchant_label: scope === "merchant",
     merchant_key: scope === "merchant" ? editSourceTx.merchant_key : null,
   };
-  const cadence = getEditCadencePayload();
-  if (cadence) {
-    payload.cadence = cadence;
-    const cadenceScope =
-      document.querySelector('input[name="edit-cadence-scope"]:checked')?.value || "transaction";
-    payload.cadence_scope = cadenceScope;
-    if (cadenceScope === "merchant") {
-      if (!editSourceTx.merchant_key) {
-        if (resultEl) resultEl.textContent = "Merchant key is required for merchant cadence rule.";
-        return;
-      }
-      payload.merchant_key = editSourceTx.merchant_key;
-    }
-    if ((cadence.cadence_kind === "recurring" || cadence.cadence_kind === "lump") && !cadence.period_count) {
-      if (resultEl) resultEl.textContent = "Period count is required for recurring or lump cadence.";
-      return;
-    }
-  }
   if (!payload.ai_category) {
     if (resultEl) resultEl.textContent = "Category is required.";
     return;
@@ -2114,7 +2684,7 @@ async function loadReview() {
     if (!items.length) {
       updateReviewBulkCount(0);
       if (suggestStatus) suggestStatus.textContent = "";
-      list.innerHTML = "<p>No merchants waiting for confirmation.</p>";
+      list.innerHTML = "";
       return;
     }
     updateReviewBulkCount(items.length);
@@ -2322,6 +2892,7 @@ async function uploadAndScan(files) {
       resultEl.textContent = lines.length ? lines.join("\n") : JSON.stringify(data, null, 2);
     }
     loadStatus();
+    setImportWizardStep(2);
   } catch (err) {
     if (resultEl) resultEl.textContent = err.message;
   } finally {
@@ -2358,6 +2929,7 @@ $("#btn-scan-existing")?.addEventListener("click", async () => {
       resultEl.textContent = lines.length ? lines.join("\n") : JSON.stringify(res, null, 2);
     }
     loadStatus();
+    setImportWizardStep(2);
   } catch (err) {
     if (resultEl) resultEl.textContent = err.message;
   } finally {

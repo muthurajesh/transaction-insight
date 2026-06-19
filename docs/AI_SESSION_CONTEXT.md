@@ -13,7 +13,7 @@
 | **AI-first judgment** | LLM handles ambiguous calls (cadence, routing, label nuance). Avoid growing rule/heuristic sprawl for new patterns. |
 | **Rules for exact math** | Layer 0 amounts, dedup fingerprints, SQL aggregation, `effective_amount` / `expense_view` — deterministic code. |
 | **User confirm before persist** | AI *proposes*; user confirms (edit insights modal, cadence modal) before writes to rules/DB. |
-| **Excel + SQLite** | Pipeline reads `transaction-lookups.xlsx`. Web edits live in SQLite until promoted to CustomRules / lookups / `cadence_rules`. |
+| **Excel + SQLite** | Pipeline lookups default to **SQLite** (`LOOKUP_SOURCE=db`). Excel seeded once if DB empty; optional export with `EXPORT_LOOKUPS=1`. |
 
 ---
 
@@ -64,12 +64,12 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 
 ## 4. What re-import / re-pipeline overwrites
 
-| Saved how | Survives Run processing / CLI seed? |
+| Saved how | Survives Run processing? |
 |-----------|-------------------------------------|
 | Edit Transactions (row only) | **No** — pipeline UPDATE overwrites labels + tx cadence columns |
 | Edit + **merchant label** checkbox | **Often no** — pipeline re-upserts `merchant_labels` |
 | **`cadence_rules`** (merchant rule) | **Yes** — separate table |
-| **CustomRules** / Excel lookups | **Yes** — pipeline reads each run |
+| **CustomRules** / pipeline lookups in SQLite | **Yes** — loaded from DB each run (`LOOKUP_SOURCE=db`) |
 | **SQLite merchant_labels before LLM** | **Not implemented** — see [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md) |
 
 ---
@@ -99,21 +99,13 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 - Tiers 1–2 done; routing fix for top categories ([CHAT_RICH_UI.md](./CHAT_RICH_UI.md), [CHAT_ROUTING.md](./CHAT_ROUTING.md))
 - Tier 3: save-as-report, multiline composer — pending
 
-### Bulk history pipeline (other chat window)
+### Bulk history / migration
 
-| Script | Role |
-|--------|------|
-| `scripts/split_export_by_month.py` | Master CSV → `ExportData-Month-YYYY.csv` in `input/` |
-| `scripts/reset_and_seed_pipeline_32b.sh` | Fresh/ resume CLI batch (`--all`, `--no-reset`, `--force`) |
-| `scripts/import_processed_to_db.py` | Excel → `finance.db` without re-LLM |
-
-**Row counts (Jul 2021–May 2026):** 12,231 raw → 12,088 processed → 9,319 history import (no Transfers) / 12,088 `--source output` (incl. 2,769 Transfers).
-
-**CLI vs web:** CLI seed writes Excel + lookups + history; **not** `finance.db` until import script or web Run processing. Web Run uses `skip_cadence_detection=True` (demote pipeline Detected heuristics).
+**Web workflow:** Upload monthly CSVs → Run processing writes directly to `finance.db`. Web Run uses `skip_cadence_detection=True` (demote pipeline Detected heuristics).
 
 ### Pipeline timing
 
-Per-phase timers in `transaction_insight/pipeline.py` + `core.py` `PhaseTimer`.
+Per-phase timers in `webapp/pipeline/run.py` + `webapp/processing/timer.py` `PhaseTimer`.
 
 ---
 
@@ -121,7 +113,8 @@ Per-phase timers in `transaction_insight/pipeline.py` + `core.py` `PhaseTimer`.
 
 | Area | Paths |
 |------|--------|
-| Pipeline | `transaction_insight/pipeline.py`, `core.py` |
+| Pipeline | `webapp/pipeline/run.py`, `webapp/processing/`, `webapp/llm/` |
+| Lookups | `webapp/adapters/lookup_store.py` |
 | Web API | `webapp/main.py` |
 | Chat agent | `webapp/agent/chat.py`, `tools.py`, `display.py` |
 | Cadence | `webapp/services/expense_cadence.py`, `cadence_insights.py`, `cadence_rule_similarity.py` |
@@ -145,7 +138,7 @@ Per-phase timers in `transaction_insight/pipeline.py` + `core.py` `PhaseTimer`.
 2. Do not assume one Mercury merchant; match `merchant_key` from DB.
 3. D1 chat without cadence keywords may still call LLM tool but can hallucinate merchant names.
 4. Re-processing overwrites SQLite-only edits — promote to rules/lookups first.
-5. Import **history** for spend/income analytics without Transfers; **output** for full ledger including Transfers.
+5. Re-processing overwrites SQLite-only **transaction row** edits — promote to `merchant_labels`, `cadence_rules`, or pipeline lookup tables first.
 6. Browser verify web UI changes via **Browser DevTools MCP only** (workspace rule).
 7. Do not git commit unless user asks.
 
@@ -155,9 +148,7 @@ Per-phase timers in `transaction_insight/pipeline.py` + `core.py` `PhaseTimer`.
 
 See [ROADMAP.md](./ROADMAP.md) § Suggested order. Short list:
 
-1. `import_processed_to_db.py --source output` if 32B batch done
-2. Tune D1 (merchant-from-amount, date-range → period_count)
-3. `PIPELINE_MERCHANT_LABELS` — apply SQLite labels before LLM on re-import
+1. Tune D1 (merchant-from-amount, date-range → period_count) `PIPELINE_MERCHANT_LABELS` — apply SQLite labels before LLM on re-import
 4. Chat Tier 3, report layers D2–D3
 
 ---
@@ -186,4 +177,4 @@ Constraints: AI-first; minimal diff; read linked docs before coding.
 
 ---
 
-*Last synced: Jun 2026 — expense cadence A–D1, bulk 32B pipeline scripts, transfer/overwrite semantics.*
+*Last synced: Jun 2026 — web-only pipeline under `webapp/`, DB-first lookups, expense cadence A–D1.*

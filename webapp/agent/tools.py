@@ -3,11 +3,28 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from transaction_insight import analytics
+from webapp import analytics
 
 from webapp.agent.db_query import execute_readonly_sql
 from webapp.services import custom_reports as saved_reports
 from webapp.services.cadence_insights import propose_cadence
+
+# Chat tools are read-only against finance data. No INSERT/UPDATE/DELETE via chat.
+CHAT_READ_ONLY_TOOLS = frozenset(
+    {
+        "query_sql",
+        "month_total",
+        "flow_totals_by_month",
+        "top_categories",
+        "month_vs_avg",
+        "list_outliers",
+        "available_months",
+        "list_transactions",
+        "list_custom_reports",
+        "run_custom_report",
+        "propose_cadence_rule",
+    }
+)
 
 month_total = analytics.month_total
 flow_totals_by_month = analytics.flow_totals_by_month
@@ -22,10 +39,10 @@ TOOL_DEFINITIONS = [
     {
         "name": "query_sql",
         "description": (
-            "Run a read-only SELECT against the SQLite database. "
-            "Preferred for most data questions — write SQL directly. "
-            "Main table: transactions (use budget_month for monthly rollups; "
-            "expenses are negative amounts with flow_type='Expense')."
+            "Run a read-only SELECT against SQLite. **Use this first** for spending questions: "
+            "averages, category/merchant filters, comparisons, last N months. "
+            "Main table: transactions (budget_month for monthly rollups; "
+            "expenses: flow_type='Expense' AND amount<0, use SUM(-amount))."
         ),
         "parameters": {
             "sql": "SELECT … (required, read-only)",
@@ -47,9 +64,9 @@ TOOL_DEFINITIONS = [
     {
         "name": "flow_totals_by_month",
         "description": (
-            "Totals for ALL full months in one call. Use for 'each month', 'all months', "
-            "'income by month', or 'spending by month'. Income respects paycheck spillover "
-            "(stored in budget_month). expense_view applies when flow=Expense."
+            "Totals for ALL full months in one call. Use only when the user wants every month "
+            "with no category/merchant filter (e.g. 'show my spending each month'). "
+            "For averages, categories, or last N months, use query_sql instead."
         ),
         "parameters": {
             "flow": "Income or Expense",
@@ -88,21 +105,6 @@ TOOL_DEFINITIONS = [
         "parameters": {},
     },
     {
-        "name": "save_custom_report",
-        "description": (
-            "Save a read-only SELECT as a named custom report the user can re-run later. "
-            "AI has write access ONLY to custom_reports (not transactions). "
-            "Use SQLite named params: :month, :months (JSON array), :limit, :category, :expense_view (metadata only for SQL reports)."
-        ),
-        "parameters": {
-            "name": "short display name (required)",
-            "sql_template": "SELECT with :month / :months / :limit / :category placeholders",
-            "description": "optional what this report shows",
-            "original_question": "optional user words that led to this report",
-            "parameters": "optional list matching SQL placeholders",
-        },
-    },
-    {
         "name": "list_custom_reports",
         "description": "List all saved custom reports (names, parameters, descriptions).",
         "parameters": {},
@@ -118,11 +120,6 @@ TOOL_DEFINITIONS = [
             "params": "optional dict of parameter values",
             "max_rows": "optional int default 500",
         },
-    },
-    {
-        "name": "delete_custom_report",
-        "description": "Delete a saved custom report by report_id or name.",
-        "parameters": {"report": "report_id or name (required)"},
     },
     {
         "name": "list_transactions",
@@ -152,8 +149,14 @@ TOOL_DEFINITIONS = [
     },
 ]
 
+CHAT_TOOL_DEFINITIONS = [t for t in TOOL_DEFINITIONS if t["name"] in CHAT_READ_ONLY_TOOLS]
+
 
 def run_tool(conn: sqlite3.Connection, name: str, args: dict[str, Any]) -> Any:
+    if name not in CHAT_READ_ONLY_TOOLS:
+        raise ValueError(
+            f"Tool {name!r} is not available in chat (read-only access only)."
+        )
     if name == "query_sql":
         return execute_readonly_sql(
             conn,
@@ -197,16 +200,6 @@ def run_tool(conn: sqlite3.Connection, name: str, args: dict[str, Any]) -> Any:
             flow=args.get("flow", "Expense"),
             limit=int(args.get("limit", 100)),
         )
-    if name == "save_custom_report":
-        return saved_reports.save_custom_report(
-            conn,
-            name=args["name"],
-            sql_template=args["sql_template"],
-            description=args.get("description", ""),
-            original_question=args.get("original_question", ""),
-            parameters=args.get("parameters"),
-            report_id=args.get("report_id"),
-        )
     if name == "list_custom_reports":
         return saved_reports.list_custom_reports(conn)
     if name == "run_custom_report":
@@ -216,9 +209,6 @@ def run_tool(conn: sqlite3.Connection, name: str, args: dict[str, Any]) -> Any:
             params=args.get("params"),
             max_rows=int(args.get("max_rows", 500)),
         )
-    if name == "delete_custom_report":
-        deleted = saved_reports.delete_custom_report(conn, args["report"])
-        return {"deleted": deleted, "report": args["report"]}
     if name == "propose_cadence_rule":
         return propose_cadence(
             conn,

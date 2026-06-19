@@ -46,7 +46,14 @@ from webapp.services.custom_rules import (
     save_and_apply_custom_rule,
 )
 from webapp.services.lookups_import import default_lookup_workbook_path, import_lookup_workbook
-from webapp.services.cadence_insights import propose_cadence, propose_cadence_batch
+from webapp.services.cadence_insights import propose_cadence
+from webapp.services.edit_cadence_suggest import (
+    CADENCE_SUGGEST_BATCH_LIMITS,
+    CadenceSuggestFilters,
+    count_merchants_needing_cadence,
+    list_merchants_needing_cadence,
+    suggest_cadence_bulk,
+)
 from webapp.services.edit_insights import analyze_edit
 from webapp.services.expense_cadence import (
     effective_amount,
@@ -179,7 +186,36 @@ class CadenceProposeRequest(BaseModel):
 
 
 class CadenceProposeBatchRequest(BaseModel):
-    limit: int = Field(default=10, ge=1, le=25)
+    limit: int = Field(default=10, ge=1, le=50)
+
+
+class CadenceSuggestBatchRequest(BaseModel):
+    limit: int = Field(default=10, ge=10, le=50)
+    q: str = ""
+    month: str = ""
+    category: str = ""
+    sub_category: str = ""
+    expense_type: str = ""
+    classification: str = ""
+
+
+def _cadence_suggest_filters_from_request(
+    *,
+    q: str = "",
+    month: str = "",
+    category: str = "",
+    sub_category: str = "",
+    expense_type: str = "",
+    classification: str = "",
+) -> CadenceSuggestFilters:
+    return CadenceSuggestFilters(
+        q=q,
+        month=month,
+        category=category,
+        sub_category=sub_category,
+        expense_type=expense_type,
+        classification=classification,
+    )
 
 
 @app.get("/api/status")
@@ -491,9 +527,19 @@ def api_cadence_rules_propose(body: CadenceProposeRequest) -> dict[str, Any]:
 @app.post("/api/cadence-rules/propose-batch")
 def api_cadence_rules_propose_batch(body: CadenceProposeBatchRequest | None = None) -> dict[str, Any]:
     body = body or CadenceProposeBatchRequest()
+    mapped = body.limit
+    if mapped not in CADENCE_SUGGEST_BATCH_LIMITS:
+        mapped = min(
+            (x for x in sorted(CADENCE_SUGGEST_BATCH_LIMITS) if x >= mapped),
+            default=max(CADENCE_SUGGEST_BATCH_LIMITS),
+        )
     conn = _conn()
     try:
-        return propose_cadence_batch(conn, limit=body.limit)
+        result = suggest_cadence_bulk(conn, limit=mapped)
+        return {
+            "count": result.get("suggestion_count", 0),
+            "proposals": result.get("suggestions", []),
+        }
     except Exception as exc:
         raise HTTPException(500, str(exc)) from exc
     finally:
@@ -640,6 +686,98 @@ def api_custom_rules_save_apply(body: CustomRuleCreateRequest) -> dict[str, Any]
         raise HTTPException(400, str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(404, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.get("/api/transactions/cadence-suggest-count")
+def api_transactions_cadence_suggest_count(
+    q: str = "",
+    month: str = "",
+    category: str = "",
+    sub_category: str = "",
+    expense_type: str = "",
+    classification: str = "",
+) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        filters = _cadence_suggest_filters_from_request(
+            q=q,
+            month=month,
+            category=category,
+            sub_category=sub_category,
+            expense_type=expense_type,
+            classification=classification,
+        )
+        count = count_merchants_needing_cadence(conn, filters=filters)
+        return {
+            "count": count,
+            "filters": filters.to_dict(),
+            "filter_labels": filters.active_labels(),
+        }
+    finally:
+        conn.close()
+
+
+@app.get("/api/transactions/cadence-suggest-merchants")
+def api_transactions_cadence_suggest_merchants(
+    q: str = "",
+    month: str = "",
+    category: str = "",
+    sub_category: str = "",
+    expense_type: str = "",
+    classification: str = "",
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        filters = _cadence_suggest_filters_from_request(
+            q=q,
+            month=month,
+            category=category,
+            sub_category=sub_category,
+            expense_type=expense_type,
+            classification=classification,
+        )
+        total = count_merchants_needing_cadence(conn, filters=filters)
+        merchants = list_merchants_needing_cadence(
+            conn, limit=limit, offset=offset, filters=filters
+        )
+        return {
+            "merchants": merchants,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "filters": filters.to_dict(),
+            "filter_labels": filters.active_labels(),
+        }
+    finally:
+        conn.close()
+
+
+@app.post("/api/transactions/cadence-suggest-batch")
+def api_transactions_cadence_suggest_batch(
+    body: CadenceSuggestBatchRequest | None = None,
+) -> dict[str, Any]:
+    body = body or CadenceSuggestBatchRequest()
+    if body.limit not in CADENCE_SUGGEST_BATCH_LIMITS:
+        raise HTTPException(400, "limit must be one of: 10, 25, 50")
+    conn = _conn()
+    try:
+        filters = _cadence_suggest_filters_from_request(
+            q=body.q,
+            month=body.month,
+            category=body.category,
+            sub_category=body.sub_category,
+            expense_type=body.expense_type,
+            classification=body.classification,
+        )
+        return suggest_cadence_bulk(conn, limit=body.limit, filters=filters)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(500, str(exc)) from exc
     finally:

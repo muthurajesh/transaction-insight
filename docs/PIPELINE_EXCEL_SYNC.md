@@ -1,7 +1,7 @@
 # Optional: Sync web edits → transaction-lookups.xlsx
 
 **Status:** Partial — Confirm Categories syncs per merchant; bulk export still optional  
-**Roadmap:** §3 Edit transactions
+**Roadmap:** §3 Edit transactions · **Long-term:** superseded by [PIPELINE_DB_LOOKUPS.md](./PIPELINE_DB_LOOKUPS.md) (SQLite as pipeline source)
 
 ## Problem
 
@@ -11,7 +11,7 @@ Web **Edit Transactions** writes to **SQLite only**. `transaction-lookups.xlsx` 
 - Saves a **CustomRule** via edit insights modal or the Custom rules panel, or
 - Manually edits Excel
 
-Next **CLI-only** run or another machine using Excel alone won’t see web edits.
+Another machine using Excel alone (without sync) won’t see web edits until you export.
 
 ## Goal
 
@@ -26,7 +26,7 @@ User-triggered **export/sync** of confirmed web labels into the shared lookup wo
 | `merchant_labels` where `label_status='confirmed'` | **BusinessCategoryRules** or **Categories** | `Generated Description` = `merchant_key` |
 | User-confirmed cadence (Phase C+) | **ExpenseCadenceRules** | `Generated Description` |
 
-Do **not** overwrite user Excel edits blindly — **merge** like `merge_description_lookup` in CLI.
+Do **not** overwrite user Excel edits blindly — **merge** like `merge_description_lookup` in `webapp/llm/descriptions.py` / `webapp/processing/lookups.py`.
 
 ### Trigger
 
@@ -46,7 +46,7 @@ Response: counts merged per sheet, path to `scripts/transaction-lookups.xlsx`.
 1. Read `merchant_labels` + optional `cadence_rules` from SQLite
 2. Load existing workbook `load_lookup_workbook(path)`
 3. Merge rows (append new merchants; update only if `rationale` starts with `user` / `import: web`)
-4. Write via `open_excel_workbook` / existing persist helpers in `transaction_insight/core.py`
+4. Write via `webapp/excel/` persist helpers (or export-only path from `lookup_store.py`)
 
 ## Non-goals (v1)
 

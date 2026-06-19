@@ -20,9 +20,9 @@ Single index for planned and completed work. Use this file to pick **what to do 
 
 | Status | Item | Notes |
 |--------|------|-------|
-| [x] | Project layout (`webapp/`, `scripts/`, SQLite) | Phase 0 |
+| [x] | Project layout (`webapp/`, lookup workbook, SQLite) | Phase 0 |
 | [x] | Scan inbox + ingest CSV → `transactions` | |
-| [x] | Run processing (CLI pipeline in web) | Descriptions, lookups, LLM, custom rules |
+| [x] | Run processing (shared pipeline in web) | Descriptions, lookups, LLM, custom rules |
 | [x] | Confirm Categories tab (label queue) | → [CONFIRM_CATEGORIES.md](./CONFIRM_CATEGORIES.md); bulk AI suggest (10/25/50/100) |
 | [x] | Chat agent + SQL / analytics tools | `webapp/agent/` |
 | [x] | Import & Categorize UI (tabs) | |
@@ -130,20 +130,11 @@ Single index for planned and completed work. Use this file to pick **what to do 
 |--------|------|-------|
 | [x] | File picker → copy to `input/` → scan | `POST /api/ingest/upload-and-scan` |
 | [x] | Scan existing inbox (manual drop) | |
-| [x] | Split master CSV → monthly files | `scripts/split_export_by_month.py` |
-| [x] | Bulk CLI seed (32B) + resume | `scripts/reset_and_seed_pipeline_32b.sh` (`--all`, `--no-reset`, `--force`) |
-| [x] | Excel → SQLite without re-LLM | `scripts/import_processed_to_db.py` (`--source history` 9,319 tx · `--source output` 12,088 incl. Transfers) |
-| [x] | Pipeline per-phase timing | `transaction_insight/pipeline.py`, `core.py` `PhaseTimer` |
+| [x] | Run processing → SQLite (web) | Import & Categorize → Run processing |
+| [x] | Pipeline per-phase timing | `webapp/pipeline/run.py`, `webapp/processing/timer.py` |
 | [ ] | Same file picker pattern for **Run processing** | → [IMPORT_PROCESS_UPLOAD.md](./IMPORT_PROCESS_UPLOAD.md) |
-| [ ] | Web UI: import processed xlsx → DB | Discussed; use CLI import script for now |
 
-**Bulk history workflow (Jul 2021–May 2026):**
-```bash
-./scripts/reset_and_seed_pipeline_32b.sh --all --input-dir original-data   # fresh seed
-./scripts/reset_and_seed_pipeline_32b.sh --all --input-dir original-data --no-reset  # resume
-python scripts/import_processed_to_db.py --clear --source output           # web DB (~12k)
-```
-CLI seed writes Excel + lookups + history; **not** `finance.db` until import script or web Run processing.
+**Monthly workflow (web):** Upload CSV(s) in **Import & Categorize**, then **Run processing** — populates `finance.db` directly.
 
 **Models (from A/B on May 2026):** seed `PIPELINE_MODEL=qwen2.5-coder:32b`; routine months `qwen2.5:7b-instruct` after lookups exist; chat `CHAT_MODEL=qwen2.5:14b`.
 
@@ -159,13 +150,29 @@ CLI seed writes Excel + lookups + history; **not** `finance.db` until import scr
 
 ---
 
+## 7. Pipeline storage — SQLite-first
+
+**Detail:** [PIPELINE_DB_LOOKUPS.md](./PIPELINE_DB_LOOKUPS.md)
+
+**Context:** Run processing loads and saves pipeline lookups from **`finance.db`** by default (`LOOKUP_SOURCE=db`). `scripts/transaction-lookups.xlsx` is optional — seeded once when DB tables are empty, or refreshed when `EXPORT_LOOKUPS=1`. Remaining work: pure in-memory merge on save, merchant labels before LLM on re-import.
+
+| Status | Item | Detail |
+|--------|------|--------|
+| [~] | **Make SQLite authoritative for pipeline lookups** | DB default; optional Excel export via `EXPORT_LOOKUPS=1` |
+| [x] | Phase 1 — DB schema for description cache, category rules, custom rules | `description_lookup`, `category_rules`, `pipeline_custom_rules` |
+| [x] | Phase 2 — Pipeline loads lookups from DB (web path) | `webapp/adapters/lookup_store.py`, `LOOKUP_SOURCE=db` |
+| [~] | Phase 3 — Pipeline persists lookup updates to DB | Save via DB + Excel merge scratch; set `EXPORT_LOOKUPS=0` to skip Excel refresh |
+| [x] | Phase 4 — One-time workbook migration | `ensure_lookups_seeded()` on first run when DB empty |
+
+---
+
 ## Suggested order (next work)
 
-1. **Load web DB from 32B seed** — `import_processed_to_db.py --source output` if CLI batch finished  
-2. **Phase D Slice D1** — cadence AI on full merchant history (D1 shipped; tune + use post-import)  
-3. **PIPELINE_MERCHANT_LABELS** — SQLite confirmed labels before LLM on re-import  
-4. **Chat Tier 3** — save-as-report, multiline composer  
-5. **Phase D2–D3** — report layers + layered reports  
+1. **Phase D Slice D1** — tune cadence AI on full merchant history (D1 shipped)
+2. **PIPELINE_MERCHANT_LABELS** — SQLite confirmed labels before LLM on re-import
+3. **Chat Tier 3** — save-as-report, multiline composer
+4. **Phase D2–D3** — report layers + layered reports  
+5. **§7 Pipeline lookups** — pure in-memory merge on save; optional Excel export UI ([PIPELINE_DB_LOOKUPS.md](./PIPELINE_DB_LOOKUPS.md))
 
 ---
 
@@ -186,12 +193,10 @@ CLI seed writes Excel + lookups + history; **not** `finance.db` until import scr
 | [CHAT_TIER3_SAVE_REPORT.md](./CHAT_TIER3_SAVE_REPORT.md) | Save-as-report button + API |
 | [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md) | SQLite labels on re-import |
 | [CONFIRM_CATEGORIES.md](./CONFIRM_CATEGORIES.md) | Confirm merchant → Excel MerchantCategories + DB |
-| [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) | Bulk export web labels → Excel (Settings; partial) |
+| [PIPELINE_DB_LOOKUPS.md](./PIPELINE_DB_LOOKUPS.md) | **Deferred** — SQLite as pipeline lookup source (replace Excel dependency) |
+| [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) | Bulk export web labels → Excel (Settings; partial; interim until §7) |
 | [CUSTOM_REPORTS_UI.md](./CUSTOM_REPORTS_UI.md) | Settings UI for saved reports |
 | [IMPORT_PROCESS_UPLOAD.md](./IMPORT_PROCESS_UPLOAD.md) | File picker for Run processing |
-| `scripts/split_export_by_month.py` | Master CSV → monthly `input/` files |
-| `scripts/reset_and_seed_pipeline_32b.sh` | Fresh/ resume bulk CLI pipeline (32B) |
-| `scripts/import_processed_to_db.py` | Processed Excel → `finance.db` |
 
 ---
 

@@ -17,6 +17,7 @@
     <button type="button" class="tab active" data-tab="chat">Chat</button>
     <button type="button" class="tab" data-tab="review">Confirm Categories</button>
     <button type="button" class="tab" data-tab="edit">Edit Transactions</button>
+    <button type="button" class="tab" data-tab="cadence">Cadence</button>
     <button type="button" class="tab" data-tab="actions">Import &amp; Categorize</button>
     <button type="button" class="tab" data-tab="settings">Settings</button>
   </nav>
@@ -47,54 +48,41 @@
     </section>
 
     <section id="panel-review" class="panel">
-      <p class="hint">Merchants the AI is unsure about. One fix applies to all matching transactions in a group. Use <strong>✨ Suggest labels (AI)</strong> at the top to pre-fill the first 10–100 groups (lookup-first, then AI). <strong>Check Payment</strong> is split into one card per check (different amounts). Use <strong>Custom rules</strong> for repeating patterns, then <strong>Save &amp; apply rule</strong>.</p>
-      <div class="review-layout">
-        <div class="review-main">
-          <div id="review-datalists" class="sr-only" aria-hidden="true"></div>
-          <div id="review-bulk-toolbar" class="review-bulk-toolbar hidden">
-            <div class="review-bulk-row">
-              <span class="review-bulk-label">Bulk suggest</span>
-              <span id="review-bulk-count" class="review-bulk-count" aria-live="polite"></span>
-              <label class="review-bulk-groups-label" for="review-suggest-batch">Groups</label>
-              <select id="review-suggest-batch" class="review-bulk-select" aria-label="Batch size">
-                <option value="10" selected>10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-              </select>
-              <button type="button" id="btn-review-suggest-batch" class="review-bulk-action">✨ Suggest labels (AI)</button>
-            </div>
-            <span id="review-suggest-status" class="review-suggest-status" aria-live="polite"></span>
-          </div>
-          <div id="review-list"></div>
+      <p class="hint panel-subtitle">Review and confirm AI label suggestions.</p>
+      <ol class="workflow-stepper" id="review-stepper" aria-label="Confirm workflow">
+        <li class="workflow-step" data-step="1"><span class="workflow-step-num">1</span> Suggest</li>
+        <li class="workflow-step" data-step="2"><span class="workflow-step-num">2</span> Confirm</li>
+      </ol>
+      <div id="review-datalists" class="sr-only" aria-hidden="true"></div>
+      <div id="review-bulk-toolbar" class="review-bulk-toolbar hidden">
+        <div class="review-bulk-row">
+          <span class="review-bulk-label">Bulk suggest</span>
+          <span id="review-bulk-count" class="review-bulk-count" aria-live="polite"></span>
+          <label class="review-bulk-groups-label" for="review-suggest-batch">Groups</label>
+          <select id="review-suggest-batch" class="review-bulk-select" aria-label="Batch size">
+            <option value="10" selected>10</option>
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+          <button type="button" id="btn-review-suggest-batch" class="review-bulk-action">✨ Suggest labels (AI)</button>
         </div>
-        <aside class="custom-rules-panel" aria-label="Custom rules">
-          <h2>Custom rules</h2>
-          <p class="hint custom-rules-hint">Saved to <code>transaction-lookups.xlsx</code> → CustomRules sheet. Use <code>contains "check"</code> or <code>*check*</code> to match any description that includes that text (e.g. Check Payment).</p>
-          <div id="custom-rules-list-wrap" class="custom-rules-list-wrap">
-            <ul id="custom-rules-list" class="custom-rules-list"></ul>
-          </div>
-          <button type="button" id="btn-custom-rules-toggle" class="btn-link hidden">Show all rules</button>
-          <label class="custom-rules-add-label" for="custom-rule-input">New rule (plain English)</label>
-          <textarea id="custom-rule-input" rows="4" placeholder='If Generated Description contains "check" and Amount is 60, AI Category = Education, AI Sub-Category = Music Lessons'></textarea>
-          <div class="custom-rules-actions">
-            <button type="button" id="btn-custom-rule-save-apply">Save &amp; apply rule</button>
-            <button type="button" id="btn-custom-rules-reapply" class="btn-link custom-rules-reapply">Re-apply all rules</button>
-          </div>
-          <pre id="custom-rules-result" class="custom-rules-result" aria-live="polite"></pre>
-        </aside>
+        <span id="review-suggest-status" class="review-suggest-status" aria-live="polite"></span>
       </div>
-      <div id="review-busy-overlay" class="review-busy-overlay hidden" aria-hidden="true">
-        <div class="review-busy-card" role="status">
-          <div class="review-busy-spinner" aria-hidden="true"></div>
-          <p class="review-busy-title">Saving and applying rule…</p>
-          <p class="review-busy-hint">Please wait. Do not leave this page.</p>
-        </div>
+      <div id="review-empty-state" class="empty-state-card hidden">
+        <h2 class="empty-state-title">All caught up</h2>
+        <p>No merchants waiting for label confirmation.</p>
+        <ul class="empty-state-steps">
+          <li>Import new CSVs on <button type="button" class="btn-link tab-jump" data-tab="actions">Import &amp; Categorize</button></li>
+          <li>Run processing to populate this queue</li>
+          <li>Repeating patterns → <button type="button" class="btn-link tab-jump" data-tab="settings">Settings → Custom rules</button></li>
+        </ul>
       </div>
+      <div id="review-list"></div>
     </section>
 
     <section id="panel-edit" class="panel">
-      <p class="hint">Search any transaction and change <strong>Category</strong> / <strong>Sub-category</strong>. Pick how broadly to apply, then review the checkbox list before saving.</p>
+      <p class="hint panel-subtitle">Search and edit transaction labels.</p>
       <div class="edit-layout">
         <div class="edit-main">
           <form id="edit-search-form" class="edit-search-form">
@@ -128,26 +116,9 @@
                   <option value="">All classifications</option>
                 </select>
               </label>
-              <label class="edit-advanced-field">
-                <span>Cadence kind</span>
-                <select id="edit-search-cadence-kind" aria-label="Cadence kind filter">
-                  <option value="">All cadence kinds</option>
-                </select>
-              </label>
-              <label class="edit-advanced-field">
-                <span>Expense cadence</span>
-                <select id="edit-search-cadence-period" aria-label="Expense cadence filter">
-                  <option value="">All expense cadences</option>
-                </select>
-              </label>
-              <label class="edit-advanced-field">
-                <span>Include in run-rate</span>
-                <select id="edit-search-include-runrate" aria-label="Include in run-rate filter">
-                  <option value="">All</option>
-                </select>
-              </label>
             </div>
           </details>
+          <div id="edit-active-filters" class="active-filters hidden" aria-label="Active filters"></div>
           <p id="edit-search-meta" class="edit-search-meta"></p>
           <div id="edit-results" class="edit-results"></div>
           <div id="edit-pagination" class="edit-pagination hidden">
@@ -200,59 +171,6 @@
                 <option value="Business">Business</option>
               </select>
             </label>
-            <section class="edit-cadence-section" aria-labelledby="edit-cadence-heading">
-              <h3 id="edit-cadence-heading" class="edit-cadence-heading">Expense cadence</h3>
-              <div class="edit-cadence-presets" role="group" aria-label="Cadence presets">
-                <button type="button" class="edit-cadence-preset" data-kind="recurring" data-count="1" data-unit="months">Monthly</button>
-                <button type="button" class="edit-cadence-preset" data-kind="lump" data-count="12" data-unit="months">Yearly</button>
-                <button type="button" class="edit-cadence-preset" data-kind="lump" data-count="6" data-unit="months">Semi-annual</button>
-                <button type="button" class="edit-cadence-preset" data-kind="recurring" data-count="2" data-unit="weeks">Bi-weekly</button>
-              </div>
-              <label class="edit-field">
-                <span>Cadence kind</span>
-                <select id="edit-cadence-kind" aria-label="Cadence kind">
-                  <option value="unknown">Unknown (no change)</option>
-                  <option value="recurring">Recurring</option>
-                  <option value="lump">Lump sum (annual / semi-annual)</option>
-                  <option value="one_time">One-time</option>
-                  <option value="exclude">Exclude from run-rate</option>
-                </select>
-              </label>
-              <div id="edit-cadence-period-row" class="edit-cadence-period-row">
-                <label class="edit-field edit-field-inline">
-                  <span>Every</span>
-                  <input type="number" id="edit-cadence-period-count" min="1" step="1" placeholder="12" aria-label="Period count" />
-                </label>
-                <label class="edit-field edit-field-inline">
-                  <span>Unit</span>
-                  <select id="edit-cadence-period-unit" aria-label="Period unit">
-                    <option value="months">Months</option>
-                    <option value="weeks">Weeks</option>
-                    <option value="days">Days</option>
-                  </select>
-                </label>
-              </div>
-              <label class="edit-field edit-cadence-runrate">
-                <input type="checkbox" id="edit-cadence-runrate" />
-                <span>Include in run-rate (core view)</span>
-              </label>
-              <label class="edit-field">
-                <span>Note</span>
-                <input type="text" id="edit-cadence-note" placeholder="Optional note" aria-label="Cadence note" />
-              </label>
-              <fieldset class="edit-scope-fieldset edit-cadence-scope-fieldset">
-                <legend>Cadence applies to</legend>
-                <label class="edit-scope-option">
-                  <input type="radio" name="edit-cadence-scope" value="transaction" checked />
-                  This transaction only
-                </label>
-                <label class="edit-scope-option">
-                  <input type="radio" name="edit-cadence-scope" value="merchant" />
-                  All future for this merchant
-                </label>
-              </fieldset>
-              <p id="edit-cadence-preview" class="edit-cadence-preview" aria-live="polite"></p>
-            </section>
             <fieldset class="edit-scope-fieldset">
               <legend>Apply to</legend>
               <label class="edit-scope-option">
@@ -284,10 +202,100 @@
       </div>
     </section>
 
+    <section id="panel-cadence" class="panel">
+      <p class="hint panel-subtitle">Set cadence for recurring expenses — scope merchants, suggest, then review.</p>
+      <ol class="workflow-stepper" id="cadence-stepper" aria-label="Cadence workflow">
+        <li class="workflow-step active" data-step="1"><span class="workflow-step-num">1</span> Scope</li>
+        <li class="workflow-step" data-step="2"><span class="workflow-step-num">2</span> Suggest</li>
+        <li class="workflow-step" data-step="3"><span class="workflow-step-num">3</span> Review</li>
+      </ol>
+      <div id="cadence-step-1" class="workflow-step-panel">
+      <form id="cadence-search-form" class="edit-search-form cadence-search-form">
+        <input type="search" id="cadence-search-q" placeholder="Merchant or description…" autocomplete="off" />
+        <select id="cadence-search-month" aria-label="Budget month">
+          <option value="">All months</option>
+        </select>
+        <select id="cadence-search-category" aria-label="Category filter">
+          <option value="">All categories</option>
+        </select>
+        <button type="submit">Search merchants</button>
+      </form>
+      <details id="cadence-advanced-filters" class="edit-advanced-filters">
+        <summary>More filters</summary>
+        <div class="edit-advanced-grid">
+          <label class="edit-advanced-field">
+            <span>Sub-category</span>
+            <select id="cadence-search-sub" aria-label="Sub-category filter">
+              <option value="">All sub-categories</option>
+            </select>
+          </label>
+          <label class="edit-advanced-field">
+            <span>Expense type</span>
+            <select id="cadence-search-expense-type" aria-label="Expense type filter">
+              <option value="">All expense types</option>
+            </select>
+          </label>
+          <label class="edit-advanced-field">
+            <span>Classification</span>
+            <select id="cadence-search-classification" aria-label="Classification filter">
+              <option value="">All classifications</option>
+            </select>
+          </label>
+        </div>
+      </details>
+      <div id="cadence-active-filters" class="active-filters hidden" aria-label="Active filters"></div>
+      <p id="cadence-merchant-meta" class="edit-search-meta"></p>
+      <div id="cadence-merchant-list" class="edit-results"></div>
+      <div id="cadence-pagination" class="edit-pagination hidden">
+        <button type="button" id="btn-cadence-prev" class="btn-secondary">Previous</button>
+        <span id="cadence-page-info" class="edit-page-info"></span>
+        <button type="button" id="btn-cadence-next" class="btn-secondary">Next</button>
+      </div>
+      <div class="workflow-step-nav">
+        <button type="button" id="btn-cadence-next-suggest" class="btn-primary" disabled>Next: Suggest cadence</button>
+      </div>
+      </div>
+      <div id="cadence-step-2" class="workflow-step-panel hidden">
+      <p id="cadence-suggest-summary" class="cadence-suggest-summary hint"></p>
+      <div id="cadence-bulk-toolbar" class="review-bulk-toolbar">
+        <div class="review-bulk-row">
+          <span class="review-bulk-label">Bulk cadence</span>
+          <span id="cadence-bulk-count" class="review-bulk-count" aria-live="polite"></span>
+          <label class="review-bulk-groups-label" for="cadence-suggest-batch">Merchants</label>
+          <select id="cadence-suggest-batch" class="review-bulk-select" aria-label="Batch size">
+            <option value="10" selected>10</option>
+            <option value="25">25</option>
+            <option value="50">50</option>
+          </select>
+          <button type="button" id="btn-cadence-suggest-batch" class="review-bulk-action">✨ Suggest cadence (AI)</button>
+        </div>
+        <span id="cadence-suggest-status" class="review-suggest-status" aria-live="polite"></span>
+      </div>
+      <div class="workflow-step-nav">
+        <button type="button" id="btn-cadence-back-scope" class="btn-secondary">Back: Scope</button>
+      </div>
+      </div>
+      <div id="cadence-step-3" class="workflow-step-panel hidden">
+      <div class="workflow-step-nav workflow-step-nav-top">
+        <button type="button" id="btn-cadence-clear-queue" class="btn-secondary cadence-clear-btn" disabled>Clear suggestions</button>
+        <button type="button" id="btn-cadence-back-suggest" class="btn-secondary">Back: Suggest</button>
+        <button type="button" id="btn-cadence-start-over" class="btn-link">Start over</button>
+      </div>
+      <div id="cadence-queue" class="edit-cadence-queue hidden" aria-label="Cadence suggestions to review"></div>
+      <p id="cadence-queue-empty" class="hint cadence-queue-empty hidden">No suggestions in queue. Go back and run ✨ Suggest cadence (AI).</p>
+      </div>
+    </section>
+
     <section id="panel-actions" class="panel">
+      <p class="hint panel-subtitle">Import bank CSVs and run categorization.</p>
+      <ol class="workflow-stepper" id="import-stepper" aria-label="Import workflow">
+        <li class="workflow-step active" data-step="1"><span class="workflow-step-num">1</span> Upload</li>
+        <li class="workflow-step" data-step="2"><span class="workflow-step-num">2</span> Process</li>
+      </ol>
+      <div id="import-step-1" class="workflow-step-panel">
       <div class="card">
         <h2>Inbox</h2>
-        <p>Choose bank CSV exports from your computer. Files are copied to <code id="inbox-path"></code>, then scanned into the database. After <strong>Run processing</strong>, the CSV is moved to <code id="processed-path">processed/</code>.</p>
+        <p class="hint">Upload bank CSVs to <code id="inbox-path"></code>; after processing they move to <code id="processed-path">processed/</code>.</p>
         <div class="inbox-upload-row">
           <input type="file" id="inbox-file-input" accept=".csv,text/csv" multiple hidden />
           <button type="button" id="btn-choose-scan" class="btn-primary">Choose CSV files &amp; scan</button>
@@ -296,10 +304,14 @@
         <p id="inbox-selected-files" class="hint inbox-selected-files hidden"></p>
         <pre id="scan-result"></pre>
       </div>
+      <div class="workflow-step-nav">
+        <button type="button" id="btn-import-next-process" class="btn-primary">Next: Run processing</button>
+      </div>
+      </div>
+      <div id="import-step-2" class="workflow-step-panel hidden">
       <div class="card">
         <h2>Process transactions</h2>
-        <p>Runs the <strong>same pipeline as the CLI script</strong>: descriptions, lookup rules, AI review rows, business/custom rules, and cadence. Saves results to the database and updates <code>transaction-lookups.xlsx</code> when enabled.</p>
-        <p class="hint">Processes every CSV in <code>input/</code> in order (or one file via API <code>?filename=</code>). Each file is archived to <code>processed/</code>, replacing same name if it already exists.</p>
+        <p class="hint">Run the full categorization pipeline (same as the CLI) and save to the database.</p>
         <button type="button" id="btn-categorize">Run processing</button>
         <div id="categorize-progress" class="progress-panel hidden" aria-live="polite">
           <div class="progress-bar-track">
@@ -309,6 +321,10 @@
           <ul id="categorize-progress-log" class="progress-log"></ul>
         </div>
         <pre id="categorize-result"></pre>
+      </div>
+      <div class="workflow-step-nav">
+        <button type="button" id="btn-import-back-upload" class="btn-secondary">Back: Upload</button>
+      </div>
       </div>
     </section>
 
@@ -339,8 +355,41 @@
         <button type="button" id="btn-import-lookups">Import transaction-lookups.xlsx</button>
         <pre id="import-lookups-result"></pre>
       </div>
+      <div class="card settings-rules-card">
+        <h2>Custom rules</h2>
+        <p class="hint custom-rules-hint">Patterns saved to <code>transaction-lookups.xlsx</code> → CustomRules.</p>
+        <div id="custom-rules-list-wrap" class="custom-rules-list-wrap">
+          <ul id="custom-rules-list" class="custom-rules-list"></ul>
+        </div>
+        <button type="button" id="btn-custom-rules-toggle" class="btn-link hidden">Show all rules</button>
+        <label class="custom-rules-add-label" for="custom-rule-input">New rule (plain English)</label>
+        <textarea id="custom-rule-input" rows="4" placeholder='If Generated Description contains "check" and Amount is 60, AI Category = Education, AI Sub-Category = Music Lessons'></textarea>
+        <div class="custom-rules-actions">
+          <button type="button" id="btn-custom-rule-save-apply">Save &amp; apply rule</button>
+          <button type="button" id="btn-custom-rules-reapply" class="btn-link custom-rules-reapply">Re-apply all rules</button>
+        </div>
+        <pre id="custom-rules-result" class="custom-rules-result" aria-live="polite"></pre>
+      </div>
+      <div class="card settings-rules-card">
+        <h2>Cadence rules</h2>
+        <p class="hint">Saved merchant cadence patterns. Create via Cadence → Review &amp; save, or Excel → import.</p>
+        <div id="cadence-rules-list-wrap" class="custom-rules-list-wrap">
+          <ul id="cadence-rules-list" class="custom-rules-list"></ul>
+        </div>
+        <label class="custom-rules-add-label" for="cadence-rule-input">New cadence rule (plain English — preview only)</label>
+        <textarea id="cadence-rule-input" rows="3" placeholder='e.g. Mercury Insurance is yearly lump, exclude from run-rate. Netflix is monthly recurring.' aria-describedby="cadence-rule-note"></textarea>
+        <p id="cadence-rule-note" class="hint">Plain-English compile and Save &amp; apply is planned; use the Cadence tab queue for now.</p>
+      </div>
     </section>
   </main>
+
+  <div id="app-busy-overlay" class="review-busy-overlay hidden" aria-hidden="true">
+    <div class="review-busy-card" role="status">
+      <div class="review-busy-spinner" aria-hidden="true"></div>
+      <p class="review-busy-title">Working…</p>
+      <p class="review-busy-hint">Please wait. Do not leave this page.</p>
+    </div>
+  </div>
 
   <div id="cadence-insight-overlay" class="modal-overlay hidden" role="presentation" aria-hidden="true">
     <div
@@ -360,6 +409,7 @@
       <div id="cadence-insight-actions" class="modal-actions hidden">
         <div class="modal-action-row">
           <button type="button" id="btn-cadence-insight-dismiss" class="btn-secondary">Dismiss</button>
+          <button type="button" id="btn-cadence-insight-skip-variable" class="btn-secondary">Skip — variable (no cadence)</button>
           <button type="button" id="btn-cadence-insight-save-tx" class="btn-secondary">This transaction only</button>
           <button type="button" id="btn-cadence-insight-save-merchant" class="btn-primary">Save merchant rule</button>
         </div>

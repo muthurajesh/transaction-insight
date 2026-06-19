@@ -1,7 +1,7 @@
 # Transaction Insight — Agentic AI Architecture Design
 
 **Status:** Design proposal (Jun 2026)  
-**Scope:** Web app + SQLite + local LLM. **Out of scope:** CLI scripts, Excel workbooks, bulk import utilities.  
+**Scope:** Web app + SQLite + local LLM. **Out of scope:** legacy CLI/scripts package (removed); optional Excel backup/export only.  
 **Audience:** Future implementation chats — pair with [AI_SESSION_CONTEXT.md](./AI_SESSION_CONTEXT.md) and [ROADMAP.md](./ROADMAP.md).
 
 ---
@@ -18,7 +18,7 @@ This document proposes evolving the product into an **agent-native personal fina
 4. **SQLite is the sole source of truth** — lookups, merchant labels, cadence rules, and custom rules live in the database; the pipeline reads/writes DB, not spreadsheets.
 5. **Specialized agents replace monolithic phases** — each domain (classification, cadence, rules) gets its own agent with scoped tools, memory, and eval hooks.
 
-The transformation is **incremental**: the existing `transaction_insight/pipeline.py` phases become *implementations behind agent tools*, not a rewrite on day one.
+The transformation is **incremental**: the existing `webapp/pipeline/run.py` phases become *implementations behind agent tools*, not a rewrite on day one.
 
 ---
 
@@ -57,7 +57,7 @@ The transformation is **incremental**: the existing `transaction_insight/pipelin
 
 **Specific limitations:**
 
-1. **Pipeline is not agentic** — phases in `pipeline.py` run in fixed order; the LLM cannot decide to skip classification, re-run descriptions, or branch based on data quality.
+1. **Pipeline is not agentic** — phases in `webapp/pipeline/run.py` run in fixed order; the LLM cannot decide to skip classification, re-run descriptions, or branch based on data quality.
 2. **Chat shortcuts bypass reasoning** — `_maybe_direct_answer()` in `chat.py` uses regex to route "top categories" and cadence intents without LLM planning, creating two parallel routing systems.
 3. **No workflow persistence** — if processing fails at phase 6, there is no checkpoint; user re-runs from scratch.
 4. **Propose/confirm is fragmented** — cadence modal, edit insights modal, and Confirm Categories are three different UX patterns for the same HITL principle.
@@ -347,7 +347,7 @@ Step 4: OFFER     → "Save as custom report?" → confirm
 
 ### 6.3 Workflow vs current pipeline mapping
 
-| Current `pipeline.py` phase | Becomes |
+| Current `webapp/pipeline/run.py` phase | Becomes |
 |----------------------------|---------|
 | Load lookup workbook | `apply_db_rules` tool (reads SQLite) |
 | Descriptions (LLM) | Classification Agent tool |
@@ -749,7 +749,7 @@ Run via `python -m webapp.agents.evals --agent classification` in CI.
 | Create tool registry with existing analytics tools | `webapp/agents/tools/` |
 | Wire `agent_runs` logging | All agent entry points |
 | Add `category_rules`, `description_cache`, `custom_rules` tables | `webapp/db/schema.py` |
-| Pipeline reads merchant_labels + new tables before LLM | `pipeline.py`, `core.py` |
+| Pipeline reads merchant_labels + new tables before LLM | `webapp/pipeline/run.py`, `webapp/adapters/lookup_store.py` |
 | Migrate Excel lookups → SQLite one-time import | `lookups_import.py` |
 
 **Exit criteria:** Pipeline runs without Excel; agent_runs populated on process.

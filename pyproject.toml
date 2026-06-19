@@ -1,7 +1,7 @@
 [project]
 name = "transaction-insight"
 version = "0.1.0"
-description = "Personal finance CSV processing with shared CLI and web pipeline"
+description = "Personal finance CSV processing web app"
 requires-python = ">=3.11"
 dependencies = [
     "pandas>=2.0.0",
@@ -14,4 +14,4 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["transaction_insight*"]
+include = ["webapp*"]

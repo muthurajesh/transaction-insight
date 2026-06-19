@@ -424,7 +424,7 @@ CSV → [Parse dates, sort ASC] → [Detect payroll spillover / set Budget Month
 **LLM role:** Nuance only (Zelle intent, mixed merchants, new vendors).  
 **Lookup role:** Your edits persist — merge “Cloud Services” vs “Cloud services” duplicates.
 
-**Providers:** `ollama` \| `lmstudio` \| `openai` (already in `process_transactions.py`).
+**Providers:** `ollama` \| `lmstudio` \| `openai` (via `config/.env` and `webapp/config.py` / `webapp/llm/client.py`).
 
 ---
 

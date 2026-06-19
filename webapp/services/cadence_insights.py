@@ -5,6 +5,13 @@ import re
 import sqlite3
 from typing import Any
 
+from webapp.processing import (
+    CADENCE_MIN_HISTORY_MONTHS,
+    CADENCE_SPIKE_RATIO,
+    CADENCE_YEARLY_GAP_MAX,
+    CADENCE_YEARLY_GAP_MIN,
+)
+
 from webapp.services.cadence_rule_similarity import suppress_duplicate_cadence_proposal
 from webapp.services.expense_cadence import (
     CADENCE_KIND_LUMP,
@@ -49,6 +56,166 @@ Guidelines:
 - recommend_save_rule=false for one-off or when existing_cadence_rule already matches.
 - apply_scope=merchant when pattern applies to all future charges for this payee.
 - Be concise; cite amounts and months from data_stats."""
+
+
+def _month_index(value: str) -> int | None:
+    text = str(value or "").strip()
+    if len(text) < 7 or text[4] != "-":
+        return None
+    try:
+        year = int(text[:4])
+        month = int(text[5:7])
+        if month < 1 or month > 12:
+            return None
+        return year * 12 + month
+    except ValueError:
+        return None
+
+
+def gather_merchant_cadence_pattern(
+    conn: sqlite3.Connection,
+    merchant_key: str,
+) -> dict[str, Any]:
+    """
+    Infer spend rhythm from SQLite history (mirrors pipeline analyze_merchant_cadence_profiles).
+    """
+    monthly_rows = conn.execute(
+        """
+        SELECT budget_month AS m,
+               SUM(ABS(amount)) AS total,
+               COUNT(*) AS tx_count
+        FROM transactions
+        WHERE merchant_key = ?
+          AND flow_type = 'Expense'
+          AND budget_month IS NOT NULL AND TRIM(budget_month) != ''
+        GROUP BY budget_month
+        ORDER BY m
+        """,
+        (merchant_key,),
+    ).fetchall()
+
+    totals = [float(r["total"] or 0) for r in monthly_rows]
+    months = [str(r["m"]) for r in monthly_rows]
+    months_active = len(months)
+
+    dominant_rows = conn.execute(
+        """
+        SELECT amount, COUNT(*) AS c
+        FROM transactions
+        WHERE merchant_key = ? AND flow_type = 'Expense'
+        GROUP BY amount
+        ORDER BY c DESC, ABS(amount) DESC
+        LIMIT 3
+        """,
+        (merchant_key,),
+    ).fetchall()
+    dominant_amount = None
+    dominant_count = 0
+    if dominant_rows:
+        dominant_amount = float(dominant_rows[0]["amount"] or 0)
+        dominant_count = int(dominant_rows[0]["c"] or 0)
+
+    pattern = "monthly"
+    confidence = "low"
+    note = ""
+    high_months: list[str] = []
+    gap_months: list[int] = []
+    typical = 0.0
+
+    dominant_gap_months: list[int] = []
+    if dominant_amount is not None and dominant_count >= 2:
+        dom_indices = conn.execute(
+            """
+            SELECT DISTINCT budget_month AS m
+            FROM transactions
+            WHERE merchant_key = ?
+              AND flow_type = 'Expense'
+              AND amount = ?
+              AND budget_month IS NOT NULL AND TRIM(budget_month) != ''
+            ORDER BY m
+            """,
+            (merchant_key, dominant_amount),
+        ).fetchall()
+        dom_month_idxs = sorted(
+            idx
+            for idx in (_month_index(str(r["m"])) for r in dom_indices)
+            if idx is not None
+        )
+        dominant_gap_months = [
+            dom_month_idxs[i + 1] - dom_month_idxs[i] for i in range(len(dom_month_idxs) - 1)
+        ]
+        if any(CADENCE_YEARLY_GAP_MIN <= g <= CADENCE_YEARLY_GAP_MAX for g in dominant_gap_months):
+            pattern = "yearly"
+            confidence = "high"
+            high_months = [str(r["m"]) for r in dom_indices]
+            gap_months = dominant_gap_months
+            amt = abs(float(dominant_amount))
+            note = (
+                f"Repeating ~${amt:,.2f} charge every ~12 months "
+                f"({dominant_count} occurrence(s))"
+            )
+
+    if pattern == "monthly" and months_active >= CADENCE_MIN_HISTORY_MONTHS and totals:
+        sorted_totals = sorted(totals)
+        mid = len(sorted_totals) // 2
+        typical = (
+            float(sorted_totals[mid])
+            if len(sorted_totals) % 2 == 1
+            else (float(sorted_totals[mid - 1]) + float(sorted_totals[mid])) / 2.0
+        )
+        if typical > 0:
+            threshold = typical * CADENCE_SPIKE_RATIO
+            high_months = [
+                months[i] for i, total in enumerate(totals) if float(total) >= threshold
+            ]
+            note = f"Typical month ~${typical:,.2f}"
+            if len(high_months) >= 2:
+                indices = sorted(
+                    i for i, m in enumerate(months) if m in high_months and _month_index(m) is not None
+                )
+                gap_months = []
+                for i in range(len(indices) - 1):
+                    a = _month_index(months[indices[i]])
+                    b = _month_index(months[indices[i + 1]])
+                    if a is not None and b is not None:
+                        gap_months.append(b - a)
+                if any(CADENCE_YEARLY_GAP_MIN <= g <= CADENCE_YEARLY_GAP_MAX for g in gap_months):
+                    pattern = "yearly"
+                    confidence = "high"
+                    note = (
+                        f"{len(high_months)} spike month(s); ~annual pattern "
+                        f"(typical month ~${typical:,.2f})"
+                    )
+                else:
+                    pattern = "unplanned"
+                    note = (
+                        f"{len(high_months)} spike month(s); no annual spacing "
+                        f"(typical ~${typical:,.2f})"
+                    )
+            elif len(high_months) == 1:
+                pattern = "onetime"
+                note = f"Single spike month in history (typical ~${typical:,.2f})"
+            elif months_active >= CADENCE_MIN_HISTORY_MONTHS:
+                pattern = "monthly"
+                confidence = "medium"
+                note = f"Spend in {months_active} month(s); no large spikes vs typical ~${typical:,.2f}"
+
+    return {
+        "pattern": pattern,
+        "confidence": confidence,
+        "typical_monthly": typical,
+        "high_months": high_months,
+        "gap_months_between_spikes": gap_months or dominant_gap_months,
+        "dominant_amount_gaps": dominant_gap_months,
+        "months_active": months_active,
+        "monthly_spend": [
+            {"month": str(r["m"]), "total": float(r["total"] or 0), "tx_count": int(r["tx_count"] or 0)}
+            for r in monthly_rows
+        ],
+        "dominant_amount": dominant_amount,
+        "dominant_amount_count": dominant_count,
+        "note": note,
+    }
 
 
 def find_merchant_key_from_text(conn: sqlite3.Connection, text: str) -> str | None:
@@ -162,7 +329,63 @@ def _gather_merchant_stats(
 
     resolved = resolve_effective_cadence(conn, merchant_key=merchant_key)
     stats["current_effective_cadence"] = resolved
+    stats["pattern_features"] = gather_merchant_cadence_pattern(conn, merchant_key)
     return stats
+
+
+def package_cadence_proposal(
+    conn: sqlite3.Connection,
+    *,
+    merchant_key: str,
+    transaction_id: str | None,
+    proposal: dict[str, Any],
+    stats: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Attach merchant context, sample tx, previews, and duplicate suppression."""
+    resolved_stats = stats or _gather_merchant_stats(
+        conn, merchant_key=merchant_key, transaction_id=transaction_id
+    )
+    existing_rule = get_cadence_rule(conn, merchant_key)
+
+    out = dict(proposal)
+    out["merchant_key"] = merchant_key
+    out["transaction_id"] = transaction_id
+    out["stats"] = resolved_stats
+
+    top_amounts = resolved_stats.get("top_amounts") or []
+    if top_amounts:
+        out["sample_amount"] = top_amounts[0]["amount"]
+
+    sample_tx = None
+    if top_amounts:
+        target_amt = float(top_amounts[0]["amount"])
+        for row in resolved_stats.get("recent_transactions") or []:
+            if float(row.get("amount") or 0) == target_amt:
+                sample_tx = row
+                break
+    if not sample_tx and resolved_stats.get("recent_transactions"):
+        sample_tx = resolved_stats["recent_transactions"][0]
+    if sample_tx:
+        out["sample_transaction"] = {
+            "transaction_id": sample_tx.get("transaction_id"),
+            "ai_category": sample_tx.get("ai_category") or "Uncategorized",
+            "ai_sub_category": "",
+            "amount": sample_tx.get("amount"),
+        }
+        if out.get("sample_amount") is None:
+            out["sample_amount"] = sample_tx.get("amount")
+
+    out["effective_amounts"] = _preview_amounts(
+        conn,
+        merchant_key=merchant_key,
+        transaction_id=transaction_id,
+        proposal=out,
+    )
+    return suppress_duplicate_cadence_proposal(
+        out,
+        merchant_key=merchant_key,
+        existing_rule=existing_rule,
+    )
 
 
 def _preview_amounts(
@@ -335,44 +558,14 @@ def propose_cadence(
         merchant_key=resolved_key,
         transaction_id=transaction_id,
     )
-    existing_rule = get_cadence_rule(conn, resolved_key)
 
     def _finalize(base: dict[str, Any]) -> dict[str, Any]:
-        out = dict(base)
-        out["merchant_key"] = resolved_key
-        out["transaction_id"] = transaction_id
-        out["stats"] = stats
-        top_amounts = stats.get("top_amounts") or []
-        if top_amounts:
-            out["sample_amount"] = top_amounts[0]["amount"]
-        sample_tx = None
-        if top_amounts:
-            target_amt = float(top_amounts[0]["amount"])
-            for row in stats.get("recent_transactions") or []:
-                if float(row.get("amount") or 0) == target_amt:
-                    sample_tx = row
-                    break
-        if not sample_tx and stats.get("recent_transactions"):
-            sample_tx = stats["recent_transactions"][0]
-        if sample_tx:
-            out["sample_transaction"] = {
-                "transaction_id": sample_tx.get("transaction_id"),
-                "ai_category": sample_tx.get("ai_category") or "Uncategorized",
-                "ai_sub_category": "",
-                "amount": sample_tx.get("amount"),
-            }
-            if out.get("sample_amount") is None:
-                out["sample_amount"] = sample_tx.get("amount")
-        out["effective_amounts"] = _preview_amounts(
+        return package_cadence_proposal(
             conn,
             merchant_key=resolved_key,
             transaction_id=transaction_id,
-            proposal=out,
-        )
-        return suppress_duplicate_cadence_proposal(
-            out,
-            merchant_key=resolved_key,
-            existing_rule=existing_rule,
+            proposal=base,
+            stats=stats,
         )
 
     user_payload = {
@@ -380,7 +573,7 @@ def propose_cadence(
         "transaction_id": transaction_id,
         "user_hint": (hint or "").strip(),
         "data_stats": stats,
-        "existing_cadence_rule": existing_rule,
+        "existing_cadence_rule": stats.get("existing_cadence_rule"),
     }
 
     try:

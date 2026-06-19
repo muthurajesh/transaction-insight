@@ -13,7 +13,7 @@ from webapp.services.expense_cadence import sync_cadence_rules_from_lookup_recor
 
 
 def default_lookup_workbook_path() -> Path:
-    from transaction_insight.config import default_lookup_path
+    from webapp.config import default_lookup_path
 
     return default_lookup_path()
 

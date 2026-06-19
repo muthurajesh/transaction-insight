@@ -5,12 +5,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Iterator
 
-from transaction_insight.config import PipelineConfig, default_lookup_path
-from transaction_insight.core import load_csv
-from transaction_insight.inbox_archive import move_csv_to_processed
-from transaction_insight.pipeline import run_pipeline
 from webapp.adapters.dataframe_store import save_processed_dataframe
-from webapp.config import INBOX_DIR, PROCESSED_DIR
+from webapp.config import INBOX_DIR, PROCESSED_DIR, PipelineConfig, default_lookup_path
+from webapp.inbox import move_csv_to_processed
+from webapp.pipeline import run_pipeline
+from webapp.processing import load_csv
 from webapp.services.data_store import clear_data_store
 
 ProgressCallback = Callable[[dict[str, Any]], None]
@@ -50,10 +49,11 @@ def process_csv_file(
         skip_lookup_update=skip_lookup_update,
         skip_cadence_detection=skip_cadence_detection,
         update_lookup_workbook=update_lookup_workbook,
-        update_history=False,
         source_file=path.name,
     )
-    result = run_pipeline(df, config, on_progress=on_progress, input_path=path)
+    result = run_pipeline(
+        df, config, conn=conn, on_progress=on_progress, input_path=path
+    )
     save_stats = save_processed_dataframe(
         conn, result.dataframe, source_file=path.name, clear_existing=False
     )
