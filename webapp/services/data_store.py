@@ -12,6 +12,9 @@ TABLES_TO_CLEAR = (
     "ingested_files",
     "lookup_snapshots",
     "custom_reports",
+    "description_lookup",
+    "category_rules",
+    "pipeline_custom_rules",
 )
 
 

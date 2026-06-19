@@ -311,6 +311,77 @@ def available_months(
     }
 
 
+def category_average_last_n_full_months(
+    conn: sqlite3.Connection,
+    *,
+    categories: list[str],
+    month_count: int,
+) -> dict[str, Any]:
+    """Sum spend by budget month for categories, averaged over the N most recent full months."""
+    cats = [str(c).strip() for c in categories if str(c).strip()]
+    if not cats:
+        raise ValueError("categories is required")
+    n = int(month_count)
+    if n < 1:
+        raise ValueError("month_count must be >= 1")
+
+    overview = available_months(conn)
+    selected = (overview.get("full_months") or [])[:n]
+    if not selected:
+        return {
+            "categories": cats,
+            "month_count": n,
+            "months": [],
+            "total_spend": 0.0,
+            "average_spend": 0.0,
+            "transaction_count": 0,
+        }
+
+    placeholders = ",".join("?" * len(cats))
+    month_placeholders = ",".join("?" * len(selected))
+    rows = conn.execute(
+        f"""
+        SELECT budget_month,
+               COUNT(*) AS transaction_count,
+               SUM(-amount) AS spend
+        FROM transactions
+        WHERE flow_type = 'Expense'
+          AND amount < 0
+          AND ai_category IN ({placeholders})
+          AND budget_month IN ({month_placeholders})
+        GROUP BY budget_month
+        """,
+        (*cats, *selected),
+    ).fetchall()
+    by_month = {str(r["budget_month"]): r for r in rows}
+
+    months: list[dict[str, Any]] = []
+    total_spend = 0.0
+    tx_count = 0
+    for month in selected:
+        row = by_month.get(month)
+        spend = round(float(row["spend"] or 0), 2) if row else 0.0
+        count = int(row["transaction_count"] or 0) if row else 0
+        months.append(
+            {
+                "month": month,
+                "spend": spend,
+                "transaction_count": count,
+            }
+        )
+        total_spend += spend
+        tx_count += count
+
+    return {
+        "categories": cats,
+        "month_count": n,
+        "months": months,
+        "total_spend": round(total_spend, 2),
+        "average_spend": round(total_spend / len(selected), 2),
+        "transaction_count": tx_count,
+    }
+
+
 def list_transactions(
     conn: sqlite3.Connection,
     month: str,

@@ -7,13 +7,13 @@ from typing import Any
 
 import pandas as pd
 
-from transaction_insight.config import default_lookup_path
-from transaction_insight.core import (
+from webapp.processing import (
     CUSTOM_RULES_COLUMNS,
     CUSTOM_RULES_SHEET,
     apply_custom_rules,
     compile_custom_rules_sheet,
     create_client,
+    default_lookup_path,
     load_active_custom_rules,
     load_lookup_workbook,
     normalize_custom_rules_sheet,

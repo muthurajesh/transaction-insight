@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from transaction_insight.core import MERCHANT_CATEGORIES_SHEET, MERCHANT_CATEGORY_COLUMNS, open_excel_workbook
+from webapp.processing import MERCHANT_CATEGORIES_SHEET, MERCHANT_CATEGORY_COLUMNS, open_excel_workbook
 from webapp.db.schema import SCHEMA_SQL, _migrate_schema
 from webapp.services.review_suggest import (
     REVIEW_SUGGEST_BATCH_LIMITS,

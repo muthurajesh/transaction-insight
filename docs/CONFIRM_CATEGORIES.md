@@ -113,7 +113,8 @@ For single-transaction confirm, include `"transaction_id": "..."` (Check Payment
 | `webapp/services/review_suggest.py` | Lookup-first + LLM label suggestions (single + batch) |
 | `webapp/services/categorize.py` | Review queue listing; single-tx confirm |
 | `webapp/static/app.js` | Confirm modal UI; bulk suggest toolbar |
-| `transaction_insight/core.py` | `MERCHANT_CATEGORY_COLUMNS`, pipeline apply |
+| `webapp/processing/constants.py` | `MERCHANT_CATEGORY_COLUMNS`, pipeline apply |
+| `webapp/processing/lookups.py` | Lookup merge and workbook helpers |
 
 ## Still open
 

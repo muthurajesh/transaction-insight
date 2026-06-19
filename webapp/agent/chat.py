@@ -9,7 +9,7 @@ from typing import Any
 from pathlib import Path
 
 from webapp.agent.display import display_from_trace
-from webapp.agent.tools import TOOL_DEFINITIONS, available_months, run_tool
+from webapp.agent.tools import CHAT_TOOL_DEFINITIONS, available_months, run_tool
 from webapp.services.cadence_insights import (
     cadence_proposal_from_trace,
     find_merchant_key_from_text,
@@ -24,34 +24,46 @@ CHAT_SYSTEM = """You are a personal finance assistant with SQL access to a local
 Never invent dollar amounts. Pull data with tools before answering.
 
 ## How to get data
-- **Prefer `query_sql`** — write SELECT queries directly against `transactions`.
-- Helper tools (`month_total`, `list_transactions`, etc.) exist for common patterns; use them only if easier.
+- **Always prefer `query_sql`** for spending questions — averages, filters, comparisons, "last N months", categories, merchants.
+- Write SELECT against `transactions`. You may call `query_sql` multiple times to refine an answer.
+- Helper tools (`month_total`, `flow_totals_by_month`, …) return coarse aggregates only — **do not** use `flow_totals_by_month` when the user asks about a category, merchant, average, or a specific month window.
+- After tool results return, respond with `{{"answer": "..."}}` that directly answers the question (include dollar amounts and the time range).
 
-## Saved custom reports (AI write access)
-- **`custom_reports` table** — the ONLY table you may write to (via `save_custom_report` / `delete_custom_report`).
-- When the user likes an insight, offer to save it: `save_custom_report` with a clear **name** and parameterized `sql_template`.
-- Use SQLite named params: `:month` (YYYY-MM), `:months` (JSON array for multi-month), `:limit`, `:category`.
-- List saved reports: `list_custom_reports`. Re-run with new inputs: `run_custom_report`.
-
-## SQL tips
-- Monthly questions: filter on `budget_month` (`YYYY-MM`), not `date`.
-- Expense spend: `flow_type = 'Expense' AND amount < 0`; use `SUM(-amount)` for totals.
+## SQL patterns (SQLite)
+- Monthly rollups: `GROUP BY budget_month` with `budget_month` (`YYYY-MM`), not `date`.
+- Expense spend: `flow_type = 'Expense' AND amount < 0`; totals use `SUM(-amount)`.
 - Income: `flow_type = 'Income'`.
-- Categories: `ai_category`, detail: `ai_sub_category`, merchant: `merchant_key`.
+- Last N full months: use the "Recent full months" list in context — take the first N months, filter `budget_month IN (...)`.
+- Category filter: `ai_category IN (...)` — map natural language (eating out, groceries, gym) to the closest `ai_category` values from context.
+- Average over months: sum per month, then divide by number of months in the window.
+- Merchant filter: `merchant_key = '...'` or `LIKE`.
 
-## Expense cadence views (Expense analytics tools)
-- **cash** — raw bank outflows (default).
-- **core** — run-rate only (excludes annual/lump/one-time per cadence rules).
-- **normalized** — monthly equivalent (spreads yearly/semi-annual charges).
-- Pass `expense_view` on `month_total`, `top_categories`, `flow_totals_by_month` when user asks for
-  "normalized monthly", "run-rate", "core spending", or "spread annual" expenses.
-- Raw SQL `SUM(-amount)` is always **cash**; use helper tools for core/normalized.
-- Top expenses (largest outflows): `ORDER BY amount ASC` (more negative first).
+## Example — average dining spend, last 5 full months
+```sql
+SELECT budget_month, SUM(-amount) AS spend
+FROM transactions
+WHERE flow_type = 'Expense' AND amount < 0
+  AND ai_category IN ('Dining', 'Restaurants', 'Restaurants/Dining', 'Food & Dining')
+  AND budget_month IN ('2026-05','2026-04','2026-03','2026-02','2026-01')
+GROUP BY budget_month
+ORDER BY budget_month DESC
+```
+
+## Read-only policy
+- Chat has **read-only** database access. You cannot create, update, or delete transactions, users, permissions, cadence rules, or saved reports.
+- `query_sql` only allows SELECT on: `transactions`, `merchant_labels`, `cadence_rules`, `custom_reports`.
+- `propose_cadence_rule` returns a proposal for the UI — it does **not** save until the user confirms in the app.
+
+## Saved custom reports (read-only)
+- List saved reports: `list_custom_reports`. Re-run with new inputs: `run_custom_report`.
+- If the user asks to save or delete a report, explain that must be done in Settings (chat cannot modify reports).
+
+## Expense cadence views (helper tools only)
+- **cash** — raw bank outflows (default). Raw SQL `SUM(-amount)` is always cash.
+- **core** / **normalized** — pass `expense_view` on helper tools when user asks for run-rate or spread annual charges.
 
 ## Expense cadence rules
-- When the user explains how a merchant charge should be treated (yearly insurance, bi-weekly gym, one-time repair),
-  call **`propose_cadence_rule`** with `merchant_key` and/or `hint` — do not invent cadence without the tool.
-- The app shows a confirm modal; cadence saves to `cadence_rules` only after user approval.
+- When the user explains how a merchant charge should be treated, call **`propose_cadence_rule`** with `merchant_key` and/or `hint`.
 
 ## Data model cheat sheet
 {data_cheatsheet}
@@ -70,15 +82,6 @@ When you have enough data to answer, respond with ONLY:
 def _chat_payload(answer: str, trace: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     trace = trace or []
     display = display_from_trace(trace)
-    if display:
-        title = str(display.get("title") or "").strip()
-        summary = str(display.get("summary") or "").strip()
-        if title and summary:
-            answer = f"**{title}**\n\n{summary}"
-        elif title:
-            answer = f"**{title}**"
-        elif summary:
-            answer = summary
     payload: dict[str, Any] = {"answer": answer, "tool_trace": trace}
     if display:
         payload["display"] = display
@@ -114,20 +117,13 @@ def _parse_action(text: str) -> dict[str, Any]:
     return {"answer": text}
 
 
-_MONTH_NAMES = {
-    "january": "01",
-    "february": "02",
-    "march": "03",
-    "april": "04",
-    "may": "05",
-    "june": "06",
-    "july": "07",
-    "august": "08",
-    "september": "09",
-    "october": "10",
-    "november": "11",
-    "december": "12",
-}
+# Tools that return immediately (UI workflow); all other tools feed results back to the LLM.
+
+
+def _immediate_tool_answer(tool_name: str, result: Any, trace: list[dict[str, Any]]) -> str | None:
+    if tool_name == "propose_cadence_rule" and isinstance(result, dict) and result.get("insight"):
+        return _format_cadence_proposal(result)
+    return None
 
 
 def _format_top_categories(
@@ -242,7 +238,7 @@ def _format_query_rows(result: dict[str, Any], *, title: str) -> str:
 
 def _format_custom_reports_list(reports: list[dict[str, Any]]) -> str:
     if not reports:
-        return "You have no saved custom reports yet. Ask me to save a query after we find an insight you like."
+        return "You have no saved custom reports yet. Save reports from Settings after running a query you like."
     lines = ["**Saved custom reports**\n", "| Name | Parameters | Description |", "| --- | --- | --- |"]
     for r in reports:
         params = ", ".join(r.get("parameters") or []) or "—"
@@ -279,70 +275,6 @@ def _format_custom_report_run(result: dict[str, Any]) -> str:
     if used:
         title = f"{title} ({', '.join(f'{k}={v}' for k, v in used.items())})"
     return _format_query_rows(result, title=title)
-
-
-def _parse_month_from_message(user_message: str) -> str | None:
-    m = re.search(r"\b(20\d{2})-(0[1-9]|1[0-2])\b", user_message)
-    if m:
-        return m.group(0)
-    msg = user_message.lower()
-    for name, num in _MONTH_NAMES.items():
-        pat = rf"\b{name}\s+(20\d{{2}})\b"
-        hit = re.search(pat, msg)
-        if hit:
-            return f"{hit.group(1)}-{num}"
-    return None
-
-
-def _resolve_month_from_message(conn: sqlite3.Connection, user_message: str) -> str | None:
-    explicit = _parse_month_from_message(user_message)
-    if explicit:
-        return explicit
-    msg = user_message.lower()
-    if any(p in msg for p in ("last month", "latest month", "most recent month", "previous month")):
-        overview = available_months(conn)
-        full = overview.get("full_months") or []
-        if full:
-            return full[0]
-        months = overview.get("months") or []
-        if months:
-            latest = months[0]
-            return latest["month"] if isinstance(latest, dict) else latest
-    return None
-
-
-def _parse_limit_from_message(user_message: str, *, default: int = 100) -> int:
-    msg = user_message.lower()
-    patterns = (
-        r"\bshow\s+me\s+(\d{1,3})\b",
-        r"\b(?:top|first|last|list)\s+(\d{1,3})\b",
-        r"\b(\d{1,3})\s+of\b",
-        r"\b(\d{1,3})\s+(?:transactions?|rows?|results?)\b",
-        r"\blimit\s+(\d{1,3})\b",
-    )
-    for pat in patterns:
-        hit = re.search(pat, msg)
-        if hit:
-            n = int(hit.group(1))
-            if 1 <= n <= 500:
-                return n
-    return default
-
-
-def _find_category_in_message(conn: sqlite3.Connection, user_message: str) -> str | None:
-    msg = user_message.lower()
-    rows = conn.execute(
-        """
-        SELECT DISTINCT ai_category FROM transactions
-        WHERE ai_category IS NOT NULL AND TRIM(ai_category) != ''
-        ORDER BY LENGTH(ai_category) DESC
-        """
-    ).fetchall()
-    for row in rows:
-        cat = str(row["ai_category"] or "").strip()
-        if cat and cat.lower() in msg:
-            return cat
-    return None
 
 
 def _answer_from_trace(trace: list[dict[str, Any]]) -> str | None:
@@ -387,147 +319,11 @@ def _answer_from_trace(trace: list[dict[str, Any]]) -> str | None:
             return _format_custom_reports_list(reports)
         if tool == "run_custom_report" and "rows" in result:
             return _format_custom_report_run(result)
-        if tool == "save_custom_report" and result.get("report_id"):
-            return (
-                f"Saved custom report **{result.get('name')}** "
-                f"(id `{result.get('report_id')}`). "
-                f"Parameters: {', '.join(result.get('parameters') or []) or 'none'}. "
-                "Ask me to run it for any month."
-            )
         if tool == "propose_cadence_rule" and result.get("insight"):
             return _format_cadence_proposal(result)
+        if tool == "query_sql" and "rows" in result:
+            return _format_query_rows(result, title="Query results")
     return None
-
-
-def _detect_flow(user_message: str) -> str | None:
-    msg = user_message.lower()
-    if any(w in msg for w in ("income", "payroll", "salary", "paycheck")):
-        return "Income"
-    if any(w in msg for w in ("spend", "expense", "spending", "outflow")):
-        return "Expense"
-    return None
-
-
-def _has_category_intent(user_message: str) -> bool:
-    msg = user_message.lower()
-    return any(
-        p in msg
-        for p in (
-            "top categor",
-            "categories",
-            "by category",
-            "spending by category",
-            "expense categor",
-            "breakdown",
-            "group by category",
-            "high expense categor",
-        )
-    )
-
-
-def _detect_expense_view(user_message: str) -> str:
-    msg = user_message.lower()
-    if any(
-        p in msg
-        for p in (
-            "normalized",
-            "monthly equivalent",
-            "spread annual",
-            "spread yearly",
-            "budget impact",
-            "per month average",
-        )
-    ):
-        return "normalized"
-    if any(
-        p in msg
-        for p in (
-            "run-rate",
-            "run rate",
-            "runrate",
-            "core spending",
-            "core expense",
-            "monthly run",
-        )
-    ):
-        return "core"
-    return "cash"
-
-
-def _is_multi_month_question(user_message: str) -> bool:
-    msg = user_message.lower()
-    return any(
-        p in msg
-        for p in (
-            "each month",
-            "all months",
-            "every month",
-            "by month",
-            "per month",
-            "monthly income",
-            "monthly spend",
-            "monthly expense",
-        )
-    )
-
-
-def _maybe_top_categories_answer(
-    conn: sqlite3.Connection, user_message: str
-) -> dict[str, Any] | None:
-    if not _has_category_intent(user_message):
-        return None
-    month = _resolve_month_from_message(conn, user_message)
-    if not month:
-        return None
-    limit = _parse_limit_from_message(user_message, default=10)
-    expense_view = _detect_expense_view(user_message)
-    args: dict[str, Any] = {
-        "month": month,
-        "limit": limit,
-        "expense_view": expense_view,
-    }
-    result = run_tool(conn, "top_categories", args)
-    trace = [{"tool": "top_categories", "args": args, "result": result}]
-    from webapp.services.expense_cadence import expense_view_label
-
-    view_label = expense_view_label(expense_view) if expense_view != "cash" else ""
-    return _chat_payload(_format_top_categories(result, month, expense_view_label=view_label), trace)
-
-
-def _maybe_list_transactions_answer(
-    conn: sqlite3.Connection, user_message: str
-) -> dict[str, Any] | None:
-    msg = user_message.lower()
-    if _has_category_intent(user_message):
-        return None
-    if not any(
-        w in msg
-        for w in (
-            "transaction",
-            "transactions",
-            "show all",
-            "list all",
-            "list transactions",
-            "transactions for",
-            "table format",
-            "in a table",
-        )
-    ):
-        return None
-    if "show me" in msg and "transaction" not in msg and "list" not in msg:
-        return None
-    month = _resolve_month_from_message(conn, user_message)
-    if not month:
-        return None
-    category = _find_category_in_message(conn, user_message)
-    flow = _detect_flow(user_message) or "Expense"
-    limit = _parse_limit_from_message(user_message)
-    args: dict[str, Any] = {"month": month, "flow": flow, "limit": limit}
-    if category:
-        args["category"] = category
-    result = run_tool(conn, "list_transactions", args)
-    trace = [{"tool": "list_transactions", "args": args, "result": result}]
-    return _chat_payload(_format_transaction_list(result), trace)
 
 
 def _has_cadence_intent(user_message: str) -> bool:
@@ -596,33 +392,11 @@ def _maybe_list_custom_reports_answer(
 
 
 def _maybe_direct_answer(conn: sqlite3.Connection, user_message: str) -> dict[str, Any] | None:
+    """Bypass the LLM only for unambiguous workflow actions (cadence modal, report list)."""
     cadence = _maybe_cadence_propose_answer(conn, user_message)
     if cadence:
         return cadence
-
-    reports = _maybe_list_custom_reports_answer(conn, user_message)
-    if reports:
-        return reports
-
-    categories = _maybe_top_categories_answer(conn, user_message)
-    if categories:
-        return categories
-
-    listed = _maybe_list_transactions_answer(conn, user_message)
-    if listed:
-        return listed
-
-    if not _is_multi_month_question(user_message):
-        return None
-    flow = _detect_flow(user_message)
-    if not flow:
-        return None
-    args: dict[str, Any] = {"flow": flow, "full_months_only": True}
-    if flow == "Expense":
-        args["expense_view"] = _detect_expense_view(user_message)
-    result = run_tool(conn, "flow_totals_by_month", args)
-    trace = [{"tool": "flow_totals_by_month", "args": args, "result": result}]
-    return _chat_payload(_format_flow_totals(result), trace)
+    return _maybe_list_custom_reports_answer(conn, user_message)
 
 
 def _inbox_csv_context() -> str:
@@ -646,12 +420,76 @@ def _db_month_context(conn: sqlite3.Connection) -> str:
         m for m in (overview.get("months") or []) if not m.get("full_month") and m.get("transaction_count")
     ]
     text = f"Processed full months in DB: {', '.join(parts)}"
+    if full:
+        text += (
+            f"\nRecent full months (newest first — use for 'last N months'): "
+            f"{', '.join(full[:12])}"
+        )
     if partial:
         spill = ", ".join(
             f"{m['month']} ({m['transaction_count']} tx, partial)" for m in partial
         )
         text += f". Partial/spillover only: {spill}"
     return text
+
+
+def _db_category_context(conn: sqlite3.Connection) -> str:
+    rows = conn.execute(
+        """
+        SELECT DISTINCT ai_category FROM transactions
+        WHERE ai_category IS NOT NULL AND TRIM(ai_category) != ''
+        ORDER BY ai_category
+        """
+    ).fetchall()
+    cats = [str(r["ai_category"]).strip() for r in rows if r["ai_category"]]
+    if not cats:
+        return "Categories in DB (ai_category): (none labeled yet)"
+    if len(cats) > 72:
+        return (
+            f"Categories in DB ({len(cats)} total, ai_category): "
+            f"{', '.join(cats[:72])}, …"
+        )
+    return f"Categories in DB (ai_category): {', '.join(cats)}"
+
+
+def _synthesize_answer_from_trace(
+    messages: list[dict[str, str]], trace: list[dict[str, Any]]
+) -> str | None:
+    if not trace:
+        return None
+    summary = chat_completion(
+        messages
+        + [
+            {
+                "role": "user",
+                "content": (
+                    "Using ONLY the tool results already fetched, write a clear markdown answer "
+                    "for the user's question. Include specific dollar amounts, the time range, "
+                    "and a short plain-language summary. "
+                    'Respond with ONLY {"answer": "..."} — no more tool calls.'
+                ),
+            }
+        ]
+    )
+    parsed = _parse_action(summary)
+    if "answer" in parsed:
+        return str(parsed["answer"])
+    return None
+
+
+def _tool_call_signature(tool_name: str, args: dict[str, Any]) -> str:
+    return f"{tool_name}:{json.dumps(args, sort_keys=True, default=str)}"
+
+
+def _errors_from_trace(trace: list[dict[str, Any]]) -> list[str]:
+    errors: list[str] = []
+    for entry in trace:
+        result = entry.get("result") or {}
+        err = result.get("error")
+        if err:
+            tool = entry.get("tool", "tool")
+            errors.append(f"{tool}: {err}")
+    return errors
 
 
 def _finalize_answer(
@@ -664,52 +502,25 @@ def _finalize_answer(
     if "answer" in action and not action.get("tool"):
         return str(action["answer"])
 
-    if action.get("tool"):
-        tool_name = str(action["tool"])
-        args = action.get("args") or {}
-        try:
-            result = run_tool(conn, tool_name, args)
-            trace.append({"tool": tool_name, "args": args, "result": result})
-            if tool_name == "flow_totals_by_month":
-                return _format_flow_totals(result)
-            if tool_name == "month_total" and "total" in result:
-                m = result.get("month", "")
-                flow = result.get("flow_type", "Total")
-                return (
-                    f"**{flow} for {m}:** ${result['total']:,.2f} "
-                    f"({result.get('transaction_count', 0)} transactions)"
-                )
-            if tool_name == "list_transactions" and "transactions" in result:
-                return _format_transaction_list(result)
-            if tool_name == "list_custom_reports":
-                return _format_custom_reports_list(result)
-            if tool_name == "run_custom_report" and "rows" in result:
-                return _format_custom_report_run(result)
-            if tool_name == "save_custom_report" and result.get("report_id"):
-                return _answer_from_trace(trace) or str(result)
-        except Exception as exc:
-            trace.append({"tool": tool_name, "args": args, "result": {"error": str(exc)}})
+    synthesized = _synthesize_answer_from_trace(messages, trace)
+    if synthesized:
+        return synthesized
 
     from_trace = _answer_from_trace(trace)
     if from_trace:
         return from_trace
 
-    summary = chat_completion(
-        messages
-        + [
-            {
-                "role": "user",
-                "content": (
-                    "Summarize the tool results above for the user in plain language. "
-                    'Respond with ONLY {"answer": "..."} — no more tool calls.'
-                ),
-            }
-        ]
-    )
-    parsed = _parse_action(summary)
-    if "answer" in parsed:
-        return str(parsed["answer"])
-    return summary
+    errors = _errors_from_trace(trace)
+    if errors:
+        return (
+            "I could not complete that question — the database query was rejected or failed:\n\n"
+            + "\n".join(f"- {e}" for e in errors[:3])
+        )
+
+    text = (raw or "").strip()
+    if text:
+        return text
+    return "I could not complete that question. Try rephrasing or narrowing the time range."
 
 
 def list_chat_history(conn: sqlite3.Connection) -> list[dict[str, Any]]:
@@ -754,12 +565,14 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
         )
         return direct
 
-    tools_desc = json.dumps(TOOL_DEFINITIONS, indent=2)
+    tools_desc = json.dumps(CHAT_TOOL_DEFINITIONS, indent=2)
     system = CHAT_SYSTEM.format(
         data_cheatsheet=_load_data_cheatsheet(),
         tools=tools_desc,
     )
-    context = "\n".join([_inbox_csv_context(), _db_month_context(conn)])
+    context = "\n".join(
+        [_inbox_csv_context(), _db_month_context(conn), _db_category_context(conn)]
+    )
 
     _save_message(conn, "user", user_message)
     trace: list[dict[str, Any]] = []
@@ -784,6 +597,22 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
             return _chat_payload(answer, trace)
 
         args = action.get("args") or {}
+        signature = _tool_call_signature(tool_name, args)
+        if any(
+            _tool_call_signature(e.get("tool", ""), e.get("args") or {}) == signature
+            for e in trace
+        ):
+            trace.append(
+                {
+                    "tool": tool_name,
+                    "args": args,
+                    "result": {"error": "Duplicate tool call — using prior results."},
+                }
+            )
+            answer = _finalize_answer(conn, messages, trace, "")
+            _save_message(conn, "assistant", answer, json.dumps(trace))
+            return _chat_payload(answer, trace)
+
         try:
             result = run_tool(conn, tool_name, args)
         except Exception as exc:
@@ -791,47 +620,10 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
 
         trace.append({"tool": tool_name, "args": args, "result": result})
 
-        if tool_name == "flow_totals_by_month" and "months" in result:
-            answer = _format_flow_totals(result)
-            _save_message(conn, "assistant", answer, json.dumps(trace))
-            return _chat_payload(answer, trace)
-
-        if tool_name == "top_categories" and isinstance(result, list):
-            month = str(args.get("month") or "")
-            view = str(args.get("expense_view") or "cash")
-            view_label = ""
-            if view != "cash":
-                from webapp.services.expense_cadence import expense_view_label
-
-                view_label = expense_view_label(view)
-            answer = _format_top_categories(result, month, expense_view_label=view_label)
-            _save_message(conn, "assistant", answer, json.dumps(trace))
-            return _chat_payload(answer, trace)
-
-        if tool_name == "list_transactions" and "transactions" in result:
-            answer = _format_transaction_list(result)
-            _save_message(conn, "assistant", answer, json.dumps(trace))
-            return _chat_payload(answer, trace)
-
-        if tool_name == "list_custom_reports":
-            answer = _format_custom_reports_list(result)
-            _save_message(conn, "assistant", answer, json.dumps(trace))
-            return _chat_payload(answer, trace)
-
-        if tool_name == "run_custom_report" and isinstance(result, dict) and "rows" in result:
-            answer = _format_custom_report_run(result)
-            _save_message(conn, "assistant", answer, json.dumps(trace))
-            return _chat_payload(answer, trace)
-
-        if tool_name == "save_custom_report" and isinstance(result, dict) and result.get("report_id"):
-            answer = _answer_from_trace(trace) or json.dumps(result)
-            _save_message(conn, "assistant", answer, json.dumps(trace))
-            return _chat_payload(answer, trace)
-
-        if tool_name == "propose_cadence_rule" and isinstance(result, dict) and result.get("insight"):
-            answer = _format_cadence_proposal(result)
-            _save_message(conn, "assistant", answer, json.dumps(trace))
-            return _chat_payload(answer, trace)
+        immediate = _immediate_tool_answer(tool_name, result, trace)
+        if immediate is not None:
+            _save_message(conn, "assistant", immediate, json.dumps(trace))
+            return _chat_payload(immediate, trace)
 
         messages.append({"role": "assistant", "content": json.dumps(action)})
         messages.append(

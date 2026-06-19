@@ -109,6 +109,36 @@ CREATE TABLE IF NOT EXISTS custom_reports (
 );
 
 CREATE INDEX IF NOT EXISTS idx_custom_reports_name ON custom_reports(name);
+
+CREATE TABLE IF NOT EXISTS description_lookup (
+    source_key TEXT PRIMARY KEY,
+    user_description TEXT,
+    simple_description TEXT,
+    original_description TEXT,
+    generated_description TEXT NOT NULL,
+    source TEXT,
+    model TEXT,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS category_rules (
+    source_category TEXT PRIMARY KEY,
+    ai_category TEXT NOT NULL,
+    budget_tier TEXT,
+    type TEXT,
+    sub_type TEXT,
+    notes TEXT,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS pipeline_custom_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_text TEXT NOT NULL,
+    status TEXT NOT NULL,
+    compiled_rule TEXT,
+    last_error TEXT,
+    updated_at TEXT NOT NULL
+);
 """
 
 _TRANSACTION_CADENCE_COLUMNS = (
@@ -118,6 +148,13 @@ _TRANSACTION_CADENCE_COLUMNS = (
     ("include_in_run_rate", "INTEGER"),
     ("cadence_source", "TEXT"),
     ("cadence_note", "TEXT"),
+)
+
+_MERCHANT_LABEL_EXTRA_COLUMNS = (
+    ("budget_tier", "TEXT"),
+    ("classification", "TEXT"),
+    ("flow_type", "TEXT"),
+    ("notes", "TEXT"),
 )
 
 
@@ -131,6 +168,43 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     for name, col_type in _TRANSACTION_CADENCE_COLUMNS:
         if name not in tx_cols:
             conn.execute(f"ALTER TABLE transactions ADD COLUMN {name} {col_type}")
+
+    ml_cols = _existing_columns(conn, "merchant_labels")
+    for name, col_type in _MERCHANT_LABEL_EXTRA_COLUMNS:
+        if name not in ml_cols:
+            conn.execute(f"ALTER TABLE merchant_labels ADD COLUMN {name} {col_type}")
+
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS description_lookup (
+            source_key TEXT PRIMARY KEY,
+            user_description TEXT,
+            simple_description TEXT,
+            original_description TEXT,
+            generated_description TEXT NOT NULL,
+            source TEXT,
+            model TEXT,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS category_rules (
+            source_category TEXT PRIMARY KEY,
+            ai_category TEXT NOT NULL,
+            budget_tier TEXT,
+            type TEXT,
+            sub_type TEXT,
+            notes TEXT,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS pipeline_custom_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rule_text TEXT NOT NULL,
+            status TEXT NOT NULL,
+            compiled_rule TEXT,
+            last_error TEXT,
+            updated_at TEXT NOT NULL
+        );
+        """
+    )
 
     conn.execute(
         """

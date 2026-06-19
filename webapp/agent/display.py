@@ -94,6 +94,26 @@ def display_from_tool_result(
             ),
         )
 
+    if tool == "category_average":
+        if not isinstance(result, dict) or not result.get("months"):
+            return None
+        months = result.get("months") or []
+        cats = result.get("categories") or []
+        label = ", ".join(cats) if len(cats) <= 2 else f"{cats[0]} (+{len(cats) - 1})"
+        n = int(result.get("month_count") or len(months))
+        labels = [str(m["month"]) for m in months]
+        data = [float(m["spend"] or 0) for m in months]
+        return chart_display(
+            title=f"{label} — last {n} month(s)",
+            chart_type="bar",
+            labels=labels,
+            datasets=[{"label": "Spend", "data": data}],
+            summary=(
+                f"Average per month: ${result.get('average_spend', 0):,.2f} "
+                f"· Total: ${result.get('total_spend', 0):,.2f}"
+            ),
+        )
+
     if tool == "top_categories":
         if not isinstance(result, list) or not result:
             return None

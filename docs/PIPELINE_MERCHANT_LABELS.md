@@ -7,7 +7,7 @@
 
 User edits labels in **Edit Transactions** (SQLite). On **next month Run processing**:
 
-- Pipeline reads **`transaction-lookups.xlsx`** (BusinessCategoryRules, Categories, LLM)
+- Pipeline reads **`finance.db`** lookup tables (`LOOKUP_SOURCE=db`) — not Excel on each run
 - Pipeline does **not** read SQLite `merchant_labels`
 - Web edits (except “same merchant all amounts” scope) may be **overwritten** on re-process
 
@@ -20,7 +20,7 @@ When Run processing categorizes a row, **confirmed SQLite merchant labels** shou
 ## Current data flow
 
 ```text
-CSV → run_pipeline (core.py) → dataframe_store.save_processed_dataframe → SQLite transactions
+CSV → run_pipeline (webapp/pipeline/run.py) → dataframe_store.save_processed_dataframe → SQLite transactions
                                       ↓
                             merchant_labels upsert (from pipeline output only)
 ```
@@ -39,12 +39,12 @@ Populated by:
 
 1. **CustomRules** (unchanged — final pass)
 2. **SQLite `merchant_labels`** where `label_status = 'confirmed'` and user/web source
-3. **Excel** BusinessCategoryRules / Categories
+3. **DB category rules** / merchant rows from lookup tables
 4. **LLM** review for remaining `needs_review` rows
 
 ### Hook point
 
-**Option A (recommended):** In `webapp/adapters/dataframe_store.py` **before** or **after** `save_processed_dataframe`, apply labels from DB to dataframe — does not require changing CLI `core.py`.
+**Option A (recommended):** In `webapp/adapters/dataframe_store.py` **before** or **after** `save_processed_dataframe`, apply labels from DB to dataframe — no pipeline refactor required.
 
 **Option B:** Inject SQLite labels inside `run_pipeline` via adapter callback — more invasive.
 

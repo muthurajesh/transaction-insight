@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from transaction_insight.core import (
+from webapp.processing import (
     CADENCE_MONTHLY,
     CADENCE_ONETIME,
     CADENCE_UNPLANNED,
@@ -744,7 +744,7 @@ def flow_totals_expense_by_view(
     view: str = "cash",
     full_months_only: bool = True,
 ) -> dict[str, Any]:
-    from transaction_insight.analytics import available_months
+    from webapp.analytics import available_months
 
     v = validate_expense_view(view)
     overview = available_months(conn)

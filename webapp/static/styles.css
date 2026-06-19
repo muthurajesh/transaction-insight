@@ -430,9 +430,19 @@ button:hover { background: var(--accent-hover); }
 }
 
 .review-bulk-select,
-.review-bulk-action {
+.review-bulk-action,
+.cadence-clear-btn {
   height: var(--bulk-control-height);
   box-sizing: border-box;
+}
+
+.cadence-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1rem;
+  margin: 0;
+  white-space: nowrap;
 }
 
 .review-bulk-select {
@@ -460,6 +470,258 @@ button:hover { background: var(--accent-hover); }
   color: var(--muted);
   font-size: 0.85rem;
   min-width: 0;
+}
+
+.edit-cadence-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.edit-cadence-queue.hidden {
+  display: none;
+}
+
+.edit-cadence-queue-item {
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.edit-cadence-queue-item h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+  word-break: break-word;
+}
+
+.edit-cadence-queue-meta {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-bottom: 0.35rem;
+}
+
+.edit-cadence-queue-insight {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  margin: 0 0 0.5rem;
+}
+
+.edit-cadence-queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cadence-filter-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  width: 100%;
+}
+
+.panel-subtitle {
+  margin: 0 0 0.75rem;
+  font-size: 0.88rem;
+}
+
+.workflow-stepper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  counter-reset: workflow-step;
+}
+
+.workflow-step {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.workflow-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: var(--bg);
+}
+
+.workflow-step.active {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.workflow-step.active .workflow-step-num {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.workflow-step.done {
+  color: var(--text);
+}
+
+.workflow-step.done .workflow-step-num {
+  border-color: #3dd68c;
+  color: #3dd68c;
+}
+
+.workflow-step-panel.hidden {
+  display: none;
+}
+
+.workflow-step-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+}
+
+.workflow-step-nav-top {
+  margin: 0 0 0.75rem;
+}
+
+.cadence-suggest-summary {
+  margin: 0 0 0.65rem;
+}
+
+.edit-results-table.cadence-merchant-table {
+  min-width: 720px;
+}
+
+.cadence-queue-empty {
+  margin: 0.5rem 0 0;
+}
+
+.empty-state-card {
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.empty-state-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
+.empty-state-card p {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+}
+
+.empty-state-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  display: inline-block;
+  font-size: 0.88rem;
+}
+
+.empty-state-steps li {
+  margin: 0.35rem 0;
+}
+
+.empty-state-steps .btn-link {
+  font-size: inherit;
+  padding: 0;
+  vertical-align: baseline;
+}
+
+.active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin: 0 0 0.65rem;
+}
+
+.active-filters.hidden {
+  display: none;
+}
+
+.active-filters-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-right: 0.15rem;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.filter-chip:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.filter-chip-label {
+  color: var(--muted);
+}
+
+.filter-chip-remove {
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--muted);
+  margin-left: 0.1rem;
+}
+
+.filter-clear-all {
+  font-size: 0.78rem;
+  padding: 0.15rem 0.35rem;
+  margin-left: 0.15rem;
+}
+
+.edit-results-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  margin: 0 0 0.5rem;
+}
+
+.edit-results-toolbar .edit-search-meta {
+  margin: 0;
+}
+
+.edit-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  white-space: nowrap;
+}
+
+.edit-row-actions .btn-link {
+  font-size: 0.82rem;
+  padding: 0.15rem 0.25rem;
 }
 
 .review-suggest-note {
@@ -715,8 +977,10 @@ button:hover { background: var(--accent-hover); }
   margin-bottom: 0.35rem;
 }
 
-#custom-rule-input {
+#custom-rule-input,
+#cadence-rule-input {
   width: 100%;
+  box-sizing: border-box;
   padding: 0.5rem;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -726,6 +990,7 @@ button:hover { background: var(--accent-hover); }
   font-size: 0.85rem;
   resize: vertical;
   margin-bottom: 0.65rem;
+  min-height: 4.5rem;
 }
 
 .custom-rules-actions {
@@ -997,7 +1262,9 @@ button:hover { background: var(--accent-hover); }
   color: var(--text);
 }
 
-.edit-results-table td.amount { text-align: right; white-space: nowrap; }
+.edit-results-table th.amount {
+  text-align: right;
+}
 
 .edit-results-table td.cadence-col {
   white-space: nowrap;
@@ -1340,6 +1607,22 @@ button:hover { background: var(--accent-hover); }
 }
 
 .card h2 { margin: 0 0 0.5rem; font-size: 1rem; }
+
+.settings-rules-card .custom-rules-list-wrap {
+  max-height: 240px;
+}
+
+.settings-rules-card .custom-rules-actions {
+  margin-top: 0.5rem;
+}
+
+.settings-rules-card .custom-rules-actions button {
+  width: auto;
+}
+
+.settings-rules-card .custom-rules-reapply {
+  margin-left: 0.75rem;
+}
 pre {
   background: var(--bg);
   padding: 0.75rem;

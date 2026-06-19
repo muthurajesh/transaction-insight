@@ -6,7 +6,7 @@ from typing import Any
 
 import pandas as pd
 
-from transaction_insight import core
+import webapp.processing as core
 
 from webapp.services.expense_cadence import (
     cadence_fields_from_pipeline_row,

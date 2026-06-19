@@ -32,7 +32,7 @@ User example from chat: **InsurerCo Prem Pay** — annual premium should not dom
 
 ### 1. Shared aggregation helper
 
-Add to `expense_cadence.py` (or `transaction_insight/analytics_cadence.py`):
+Add to `webapp/services/expense_cadence.py`:
 
 ```python
 def sum_expenses_for_view(
@@ -65,7 +65,7 @@ For each row: resolve cadence (tx columns → `cadence_rules` → default), then
 
 | Tool | File | Change |
 |------|------|--------|
-| `month_total` | `transaction_insight/analytics.py` | Add `expense_view: str = "cash"`; use helper for Expense flow |
+| `month_total` | `webapp/analytics/queries.py` | Add `expense_view: str = "cash"`; use helper for Expense flow |
 | `top_categories` | same | Group by `ai_category` using effective amounts per row |
 | `flow_totals_by_month` | same | Monthly totals per view |
 | `month_vs_avg`, `list_outliers` | same | Optional in B; defer if scope tight |
@@ -134,7 +134,7 @@ curl -s 'http://127.0.0.1:8000/api/...'  # or chat: "normalized top categories A
 
 ## Files touched (expected)
 
-- `transaction_insight/analytics.py` (or new `analytics_cadence.py`)
+- `webapp/analytics/queries.py`
 - `webapp/agent/tools.py`
 - `webapp/agent/chat.py`
 - `webapp/agent/display.py`

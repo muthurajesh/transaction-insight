@@ -20,16 +20,17 @@ Other tables (`merchant_labels`, `chat_messages`, …) are optional; most user q
 
 ## What the web app stores
 
-SQLite database (`data/finance.db`) populated by **Run processing** (same pipeline as CLI).
+SQLite database (`data/finance.db`) populated by **Run processing** in the web app.
 
 | Table | Purpose |
 |-------|---------|
 | `transactions` | All processed rows from CSV exports |
 | `merchant_labels` | Confirmed labels per merchant (from processing + Confirm Categories) |
+| `description_lookup`, `category_rules`, `pipeline_custom_rules`, `cadence_rules` | Pipeline lookups (default source with `LOOKUP_SOURCE=db`) |
 | `ingested_files` | Scan-inbox history (hash per CSV); optional |
 | `chat_messages` | Chat history |
 
-Lookup rules and description cache live in **`scripts/transaction-lookups.xlsx`** (used during processing, not queried by chat tools).
+Optional seed/backup: **`scripts/transaction-lookups.xlsx`** — imported when DB lookup tables are empty; not queried directly by chat tools.
 
 ## `transactions` — key columns
 
@@ -49,7 +50,7 @@ Lookup rules and description cache live in **`scripts/transaction-lookups.xlsx`*
 | `label_status` | `confirmed`, `needs_review`, `pending` | Review queue |
 | `rationale` | `pipeline`, `user confirmed`, etc. | |
 
-**Not in DB (CLI Excel only):** `Income Attribution Month`, `Payroll Spillover`, `Include in Spend?` — spillover is already applied into `budget_month` during processing.
+**Not in DB:** legacy Excel-only columns (`Income Attribution Month`, `Payroll Spillover`, `Include in Spend?`) — spillover is already applied into `budget_month` during Run processing.
 
 ## Payroll spillover (already baked in)
 
@@ -60,7 +61,7 @@ Paychecks in the **last 7 days** of a month (`PAYROLL_SPILLOVER_DAYS`) are attri
 
 ## Expense totals (tool semantics)
 
-Expense tools sum **negative outflows only** (`flow_type = Expense` AND `amount < 0`), matching CLI spend rules. Internal transfers and CC payments are excluded from spend via pipeline classification.
+Expense tools sum **negative outflows only** (`flow_type = Expense` AND `amount < 0`), matching pipeline spend rules. Internal transfers and CC payments are excluded from spend via pipeline classification.
 
 ## Full vs partial months
 

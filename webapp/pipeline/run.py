@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -7,8 +8,8 @@ from typing import Any, Callable
 import pandas as pd
 from openai import OpenAI
 
-from transaction_insight import core
-from transaction_insight.config import PipelineConfig
+import webapp.processing as core
+from webapp.config import PipelineConfig
 
 ProgressCallback = Callable[[dict[str, Any]], None]
 
@@ -80,6 +81,7 @@ def run_pipeline(
     df: pd.DataFrame,
     config: PipelineConfig,
     *,
+    conn: sqlite3.Connection | None = None,
     on_progress: ProgressCallback | None = None,
     input_path: Path | None = None,
     timer: core.PhaseTimer | None = None,
@@ -89,7 +91,9 @@ def run_pipeline(
     → business → custom rules → cadence). Does not write Excel; callers persist output.
     """
     lookup_path = config.resolved_lookup_path()
-    history_path = config.resolved_history_path()
+    use_db_lookups = (
+        conn is not None and config.use_db_lookups() and not config.skip_lookup_update
+    )
 
     client, model, provider, use_json_mode, description_batch_size, classification_batch_size = (
         resolve_llm(config)
@@ -100,10 +104,19 @@ def run_pipeline(
     lookups_workbook: dict[str, pd.DataFrame] = {}
     stats: dict[str, Any] = {"provider": provider, "model": model}
 
-    with core.PhaseTimer.track(timer, "Load lookup workbook"):
-        _phase_progress(on_progress, percent=0, message="Loading lookup workbook")
+    with core.PhaseTimer.track(timer, "Load lookups"):
+        _phase_progress(on_progress, percent=0, message="Loading lookups")
         if not config.skip_lookup_update:
-            lookups_workbook = core.load_lookup_workbook(lookup_path)
+            if use_db_lookups:
+                from webapp.adapters.lookup_store import (
+                    ensure_lookups_seeded,
+                    load_lookup_workbook_from_db,
+                )
+
+                ensure_lookups_seeded(conn, lookup_path)
+                lookups_workbook = load_lookup_workbook_from_db(conn)
+            else:
+                lookups_workbook = core.load_lookup_workbook(lookup_path)
             if not config.rebuild_description_lookup:
                 description_lookup_map = core.build_description_lookup_map(lookups_workbook)
                 stats["description_lookup_entries"] = len(description_lookup_map)
@@ -191,7 +204,12 @@ def run_pipeline(
         _phase_progress(on_progress, percent=38, message="Applying lookup rules")
         if not config.skip_lookup_update:
             if not lookups_workbook:
-                lookups_workbook = core.load_lookup_workbook(lookup_path)
+                if use_db_lookups and conn is not None:
+                    from webapp.adapters.lookup_store import load_lookup_workbook_from_db
+
+                    lookups_workbook = load_lookup_workbook_from_db(conn)
+                else:
+                    lookups_workbook = core.load_lookup_workbook(lookup_path)
             if lookups_workbook:
                 stats["lookup_rows_touched"] = core.apply_lookup_rules(
                     df, lookups_workbook, spend_mask=spend_mask
@@ -240,7 +258,12 @@ def run_pipeline(
         _phase_progress(on_progress, percent=80, message="Business rules")
         if not config.skip_lookup_update:
             if not lookups_workbook:
-                lookups_workbook = core.load_lookup_workbook(lookup_path)
+                if use_db_lookups and conn is not None:
+                    from webapp.adapters.lookup_store import load_lookup_workbook_from_db
+
+                    lookups_workbook = load_lookup_workbook_from_db(conn)
+                else:
+                    lookups_workbook = core.load_lookup_workbook(lookup_path)
             existing_business = lookups_workbook.get("BusinessCategoryRules")
             core.apply_business_rules_to_df(
                 df,
@@ -263,8 +286,12 @@ def run_pipeline(
     active_custom_rules: list[dict[str, Any]] = []
     with core.PhaseTimer.track(timer, "Custom rules"):
         _phase_progress(on_progress, percent=84, message="Custom rules")
-        if not lookups_workbook and lookup_path.exists():
+        if not lookups_workbook and lookup_path.exists() and not use_db_lookups:
             lookups_workbook = core.load_lookup_workbook(lookup_path)
+        elif not lookups_workbook and use_db_lookups and conn is not None:
+            from webapp.adapters.lookup_store import load_lookup_workbook_from_db
+
+            lookups_workbook = load_lookup_workbook_from_db(conn)
         if lookups_workbook:
             custom_rules_sheet = core.normalize_custom_rules_sheet(
                 lookups_workbook.get(core.CUSTOM_RULES_SHEET)
@@ -290,7 +317,7 @@ def run_pipeline(
         )
 
         if not config.skip_cadence_detection:
-            analytics_ledger = core.build_analytics_ledger(df, history_path)
+            analytics_ledger = core.build_analytics_ledger(df)
             profiles = core.analyze_merchant_cadence_profiles(analytics_ledger)
             if profiles:
                 stats["cadence_detected"] = core.apply_detected_expense_cadence(
@@ -303,26 +330,38 @@ def run_pipeline(
         if active_custom_rules:
             stats["custom_rules_applied"] = core.apply_custom_rules(df, active_custom_rules)
 
-    with core.PhaseTimer.track(timer, "Save lookups & history"):
+    with core.PhaseTimer.track(timer, "Save lookups"):
         if config.update_lookup_workbook and not config.skip_lookup_update:
-            _phase_progress(on_progress, percent=95, message="Saving lookup workbook")
-            core.update_lookup_workbook(
-                df,
-                lookup_path,
-                suggested_business=suggested_business,
-                new_description_entries=new_description_entries,
-                rebuild_description_lookup=config.rebuild_description_lookup,
-                custom_rules_sheet=custom_rules_sheet,
-            )
+            _phase_progress(on_progress, percent=95, message="Saving lookups")
+            if use_db_lookups and conn is not None:
+                from webapp.adapters.lookup_store import save_lookup_workbook_to_db
 
-        if config.update_history:
-            _phase_progress(on_progress, percent=98, message="Updating history workbook")
-            stats["history"] = core.update_history_workbook(
-                df,
-                history_path,
-                source_file=config.source_file,
-                ingest_warning_count=ingest_warning_count,
-            )
+                save_lookup_workbook_to_db(
+                    conn,
+                    df,
+                    lookup_path=lookup_path,
+                    client=client,
+                    model=model,
+                    batch_size=classification_batch_size,
+                    use_json_mode=use_json_mode,
+                    suggested_business=suggested_business,
+                    new_description_entries=new_description_entries,
+                    rebuild_description_lookup=config.rebuild_description_lookup,
+                    custom_rules_sheet=custom_rules_sheet,
+                )
+            else:
+                core.update_lookup_workbook(
+                    df,
+                    lookup_path,
+                    client=client,
+                    model=model,
+                    batch_size=classification_batch_size,
+                    use_json_mode=use_json_mode,
+                    suggested_business=suggested_business,
+                    new_description_entries=new_description_entries,
+                    rebuild_description_lookup=config.rebuild_description_lookup,
+                    custom_rules_sheet=custom_rules_sheet,
+                )
 
     _emit(
         on_progress,

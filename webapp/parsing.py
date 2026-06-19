@@ -1,4 +1,4 @@
-"""Web helpers; CSV loading delegates to transaction_insight.core."""
+"""Web helpers; CSV loading delegates to webapp.processing."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import hashlib
 
 import pandas as pd
 
-from transaction_insight.core import (
+from webapp.processing.parse import (
     heuristic_generated_description,
     load_csv,
     merchant_key,

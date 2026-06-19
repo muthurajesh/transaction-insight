@@ -6,7 +6,7 @@ import sqlite3
 from difflib import SequenceMatcher
 from typing import Any
 
-from transaction_insight.core import (
+from webapp.processing import (
     CUSTOM_RULES_SHEET,
     MERCHANT_CATEGORIES_SHEET,
     load_active_custom_rules,

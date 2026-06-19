@@ -36,10 +36,11 @@ def chat_completion(
     messages: list[dict[str, str]],
     *,
     temperature: float = 0.2,
+    model: str | None = None,
 ) -> str:
     client = get_client()
     resp = client.chat.completions.create(
-        model=LLM_MODEL,
+        model=model or LLM_MODEL,
         messages=messages,
         temperature=temperature,
     )
