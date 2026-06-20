@@ -8,6 +8,7 @@ from webapp.agent.chat import (
     _maybe_direct_answer,
     chat,
 )
+from webapp.agent.tools import run_tool
 from webapp.db.schema import SCHEMA_SQL, _migrate_schema
 from webapp.analytics import category_average_last_n_full_months
 
@@ -52,6 +53,12 @@ class LlmFirstRoutingTests(unittest.TestCase):
         msg = "In the last 5 months, what is my average expense for eating outside"
         self.assertIsNone(_maybe_direct_answer(conn, msg))
 
+    def test_compare_not_short_circuited(self):
+        conn = _conn()
+        _seed_dining(conn)
+        msg = "compare April and May 2026 expenses by categories"
+        self.assertIsNone(_maybe_direct_answer(conn, msg))
+
     def test_list_custom_reports_still_short_circuits(self):
         conn = _conn()
         payload = _maybe_direct_answer(conn, "show my saved custom reports")
@@ -77,24 +84,22 @@ class CategoryAverageAnalyticsTests(unittest.TestCase):
 
 
 class ChatReadOnlyToolTests(unittest.TestCase):
+    def test_helper_tools_blocked_in_chat_mode(self):
+        conn = _conn()
+        with self.assertRaises(ValueError) as ctx:
+            run_tool(conn, "top_categories", {"month": "2026-04"}, chat_mode=True)
+        self.assertIn("query_sql", str(ctx.exception))
+
     def test_save_custom_report_blocked(self):
         conn = _conn()
         with self.assertRaises(ValueError) as ctx:
-            from webapp.agent.tools import run_tool
-
             run_tool(
                 conn,
                 "save_custom_report",
                 {"name": "x", "sql_template": "SELECT 1"},
+                chat_mode=True,
             )
-        self.assertIn("read-only", str(ctx.exception).lower())
-
-    def test_delete_custom_report_blocked(self):
-        conn = _conn()
-        with self.assertRaises(ValueError):
-            from webapp.agent.tools import run_tool
-
-            run_tool(conn, "delete_custom_report", {"report": "x"})
+        self.assertIn("Unknown tool", str(ctx.exception))
 
 
 class ChatAgentLoopTests(unittest.TestCase):
@@ -128,6 +133,36 @@ class ChatAgentLoopTests(unittest.TestCase):
         self.assertEqual(mock_llm.call_count, 2)
         self.assertEqual(result["tool_trace"][0]["tool"], "query_sql")
         self.assertNotIn("867", result["answer"])
+
+    @patch("webapp.agent.chat.chat_completion")
+    def test_compare_rejects_bad_sql_then_retries(self, mock_llm):
+        conn = _conn()
+        _seed_dining(conn)
+        bad_sql = """
+            SELECT ai_category, ROUND(SUM(-amount), 2) AS total
+            FROM transactions
+            WHERE flow_type='Expense' AND amount<0
+              AND budget_month IN ('2026-04','2026-05')
+            GROUP BY ai_category
+        """
+        good_sql = """
+            SELECT ai_category,
+              ROUND(SUM(CASE WHEN budget_month='2026-04' THEN -amount ELSE 0 END), 2) AS apr,
+              ROUND(SUM(CASE WHEN budget_month='2026-05' THEN -amount ELSE 0 END), 2) AS may
+            FROM transactions
+            WHERE flow_type='Expense' AND amount<0
+              AND budget_month IN ('2026-04','2026-05')
+            GROUP BY ai_category
+        """
+        mock_llm.side_effect = [
+            json.dumps({"tool": "query_sql", "args": {"sql": bad_sql}}),
+            json.dumps({"tool": "query_sql", "args": {"sql": good_sql}}),
+            json.dumps({"answer": "April vs May comparison by category is in the table."}),
+        ]
+        result = chat(conn, "compare April and May 2026 expenses by categories")
+        self.assertEqual(result["tool_trace"][0]["result"].get("validation_rejected"), True)
+        self.assertEqual(result["tool_trace"][1]["tool"], "query_sql")
+        self.assertIsNone(result["tool_trace"][1]["result"].get("validation_rejected"))
 
 
 if __name__ == "__main__":

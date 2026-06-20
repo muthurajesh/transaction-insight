@@ -72,37 +72,51 @@ Expense tools sum **negative outflows only** (`flow_type = Expense` AND `amount 
 
 For “what months do I have?” or monthly tables, prefer **`full_months`** from `available_months`. Mention partial months only if the user asks.
 
-## Tools — when to use which
+## Chat tools (query_sql-first)
 
-| Tool | Use when user asks… |
-|------|---------------------|
-| **`query_sql`** | **Most questions** — lists, filters, custom totals, ad-hoc analysis |
-| `save_custom_report` | User wants to **save** a query for reuse (writes `custom_reports` only) |
-| `list_custom_reports` | “Show my saved reports / custom queries” |
-| `run_custom_report` | Re-run a saved report with new `month`, `months`, `limit`, etc. |
-| `delete_custom_report` | Remove a saved report |
-| `flow_totals_by_month` | Each/all/every month income or spending; monthly breakdown |
-| `month_total` | One specific month total (`month` optional → latest full month). Expense: optional `expense_view` (`cash` / `core` / `normalized`) |
-| `available_months` | What months exist, date range of data |
-| `top_categories` | Top spending categories for one month (`expense_view` optional) |
-| `month_vs_avg` | How a month compares to average spending |
-| `list_outliers` | Unusual category spend vs history |
-| `list_transactions` | **List individual rows** for a month (optional `category` filter) |
+Chat uses **`query_sql`** for almost all analysis. The LLM writes read-only SELECT; results are validated (e.g. compare questions must not merge months).
 
-### Examples → tool
+| Tool | Use when |
+|------|----------|
+| **`query_sql`** | Spending, categories, merchants, comparisons, averages, trends, lists |
+| `list_custom_reports` / `run_custom_report` | Saved reports from Settings |
+| `propose_cadence_rule` | User explains annual/recurring charge treatment (UI confirm) |
 
-| User question | Tool + args |
-|---------------|-------------|
-| “Show each month income” | `flow_totals_by_month` `{flow: Income}` |
-| “How much did I spend in March?” | `month_total` `{month: 2026-03, flow: Expense}` |
-| “Normalized monthly spend in April?” | `month_total` `{month: 2026-04, flow: Expense, expense_view: normalized}` |
-| “Core run-rate spending in May?” | `month_total` `{month: 2026-05, expense_view: core}` |
-| “What months are loaded?” | `available_months` `{}` |
-| “Top categories last month” | `top_categories` `{month: <latest full>}` |
-| “Top categories April (normalized)” | `top_categories` `{month: 2026-04, expense_view: normalized}` |
-| “Show all Insurance transactions for April 2026” | `list_transactions` `{month: 2026-04, category: Insurance}` |
-| “Save top 10 expenses as a report” | `save_custom_report` with parameterized SQL + name |
-| “Run Top 10 Expenses for March 2026” | `run_custom_report` `{report: "Top 10 Expenses", params: {month: "2026-03"}}` |
+Legacy helper tools (`month_total`, `top_categories`, …) exist for non-chat code paths — **not exposed in Chat**.
+
+### Examples → query_sql
+
+| User question | Approach |
+|---------------|----------|
+| “Compare April and May 2026 by category” | Pivot with `CASE WHEN budget_month=…` or `GROUP BY ai_category, budget_month` |
+| “How much did I spend in March?” | `WHERE budget_month='2026-03' AND flow_type='Expense' AND amount<0` |
+| “Show each month income” | `GROUP BY budget_month` with `flow_type='Income'` |
+| “Top categories in April” | `GROUP BY ai_category` for one `budget_month` |
+| “List Insurance transactions in April” | `SELECT … WHERE budget_month=… AND ai_category='Insurance'` |
+
+### Compare months (do not combine)
+
+```sql
+SELECT ai_category,
+  ROUND(SUM(CASE WHEN budget_month='2026-04' THEN -amount ELSE 0 END), 2) AS apr_2026,
+  ROUND(SUM(CASE WHEN budget_month='2026-05' THEN -amount ELSE 0 END), 2) AS may_2026
+FROM transactions
+WHERE flow_type='Expense' AND amount<0 AND budget_month IN ('2026-04','2026-05')
+GROUP BY ai_category
+```
+
+Wrong for compare: `GROUP BY ai_category` only with `budget_month IN (...)` — merges months.
+
+## Non-chat analytics helpers
+
+These remain available to the app (not Chat):
+
+| Tool | Use when |
+|------|----------|
+| `flow_totals_by_month` | Monthly income/expense totals across all months |
+| `month_total` | One month total (optional cadence `expense_view`) |
+| `top_categories` | Top categories for one month |
+| `available_months` | What months exist in DB |
 
 ## Expense cadence views (`expense_view`)
 
@@ -145,7 +159,7 @@ Multi-month: `WHERE budget_month IN (SELECT value FROM json_each(:months))` with
 3. CSV moves to `processed/` after success
 4. Chat queries the DB via tools
 
-**Scan inbox** = raw import only, no AI categories. Prefer Run processing.
+**Scan inbox** = legacy raw import only (no AI). Use **Import & Categorize** → choose CSV, which uploads and runs processing.
 
 ## Answer style
 

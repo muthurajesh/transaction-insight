@@ -18,15 +18,17 @@ This project automates that enrichment:
 
 | Step | Where |
 |------|--------|
-| Upload / scan CSV | **Import & Categorize** → copy bank export into `input/` |
-| AI processing | **Run processing** (`webapp/pipeline/`) |
+| Upload & process CSV | **Import & Categorize** → choose CSV (upload + run processing) |
 | Fix uncertain merchants | **Confirm Categories** |
+| Clean duplicate labels | **AI Rules** — merge synonyms (user confirms before apply) |
 | Edit rows, cadence, custom rules | **Edit Transactions**, **Cadence**, Settings |
 | Ask questions | **Chat** (“How much did I spend in 2026-04?”) |
 
 **Processing core:** [`webapp/pipeline/`](webapp/pipeline/) orchestrates [`webapp/processing/`](webapp/processing/) (LLM, rules, cadence). Lookups default to **SQLite** (`LOOKUP_SOURCE=db`); Excel is optional backup (`EXPORT_LOOKUPS=1`).
 
 Configure Ollama or LM Studio via `config/.env` (`LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_MODEL`). Optional: `FINANCE_DB_PATH`, `FINANCE_INBOX_DIR` (defaults to `input/`).
+
+See [How AI is used](#how-ai-is-used) for every LLM touchpoint and how to extend behavior with rules.
 
 ### Quick start
 
@@ -49,6 +51,98 @@ uvicorn webapp.main:app --reload --host 127.0.0.1 --port 8000
 Or use `./start.sh` if present. Open http://127.0.0.1:8000.
 
 See [docs/CONFIRM_CATEGORIES.md](docs/CONFIRM_CATEGORIES.md) for the label queue. Chat dollar amounts use the same spend rules as the pipeline (negative outflows only).
+
+## How AI is used
+
+Transaction Insight mixes **deterministic code** (parsing, dedup, SQL, lookup tables, compiled rules) with **local LLM calls** where judgment is needed. The default posture is **AI proposes → you confirm → then data is saved**. Nothing in the review or taxonomy flows auto-writes without your approval.
+
+### Design principles
+
+| Layer | Role | Examples |
+|-------|------|----------|
+| **Deterministic** | Exact, repeatable | `transaction_id` hash, amount signs, `flow_type`, payroll spillover, SQL totals |
+| **Lookup rules** | Your saved patterns | `category_rules`, `merchant_labels`, `description_lookup`, `cadence_rules` |
+| **Compiled rules** | English → JSON, then fixed logic | **Custom Rules** in Settings (if/then on merchant, amount, description) |
+| **AI judgment** | Ambiguous text, new merchants, taxonomy cleanup | Descriptions, classification, suggestions, chat, **AI Rules** proposals |
+| **You** | Final authority | Confirm Categories, cadence modal, Apply on AI Rules, save Custom Rules |
+
+Models are configured in `config/.env`. You can split **pipeline** vs **chat** models (`PIPELINE_MODEL`, `CHAT_MODEL`) — see [LLM setup](#llm-setup-ollama--common-default) below.
+
+### Where AI runs (by tab / phase)
+
+| When | Where in app | What the LLM does | Persists without you? |
+|------|----------------|-------------------|------------------------|
+| **Run processing** | Import & Categorize | **Descriptions** — bank text → merchant label. **Classification** — category, sub-category, fixed/variable for unknown merchants. **Business rules** — personal vs business nuance. **Custom Rules** — compiles Pending rules to JSON, then applies. | Yes — pipeline writes to `finance.db` and lookup tables. Re-run improves as cache grows. |
+| **Review queue** | Confirm Categories → ✨ Suggest labels | Proposes labels for merchants still `needs_review` (lookup-first, then LLM). | No — you confirm in the modal. |
+| **After an edit** | Edit Transactions → Apply → AI insight modal | Explains the pattern; may suggest a **Custom Rule** (plain English). | No — save rule is optional. |
+| **Cadence** | Cadence tab → ✨ Suggest cadence (AI); Chat | Proposes recurring vs lump vs one-time from merchant history + your hint. | No — Review & save in modal or cadence queue. |
+| **Label cleanup** | **AI Rules** tab | **Analyze** (heuristics only) or **Suggest with AI** — duplicate categories, sub-categories, merchant spellings. | No — you select proposals, preview, then Apply. |
+| **Analytics** | Chat | LLM writes read-only **`query_sql`** against your SQLite data; answers are validated (e.g. month comparisons must not merge periods). Cadence keywords open propose flow. | Chat history only; reports save only if you ask. |
+
+**Not AI:** Import upload, inbox archive, Excel optional export, table counts, most Edit Transactions field updates (direct SQLite), and cadence **math** (`effective_amount`, cash/core/normalized views).
+
+### Three ways to improve logic over time
+
+Use the right tool for the scope of the problem:
+
+#### 1. Lookups & confirmed labels (pipeline memory)
+
+**Best for:** “Always categorize Netflix as Entertainment” or “this bank `Category` maps to Utilities.”
+
+| Mechanism | Where you set it | Effect on next Run processing |
+|-----------|------------------|-------------------------------|
+| Confirm merchant | **Confirm Categories** | `merchant_labels` in SQLite (+ optional Excel row) |
+| Category rules | Settings → import Excel or DB | `category_rules` |
+| Description cache | Automatic after processing | `description_lookup` — skips description LLM for known text |
+| Cadence | **Cadence** tab → save rule | `cadence_rules` |
+
+These are **deterministic at runtime**: the pipeline reads them before calling the LLM.
+
+#### 2. Custom Rules (per-merchant / pattern if-then)
+
+**Best for:** “Apple $9.99 is Business,” “checks for $60 are Music Lessons,” “highest Comcast charge each month is insurance, others are rental.”
+
+| Step | Where |
+|------|--------|
+| Write rule | Settings → **Custom rules** (plain English), or **Edit insights** → Save as custom rule |
+| Compile | LLM turns text into JSON (`assign`, `monthly_split_max`, …) |
+| Apply | Runs on every **Run processing** (highest priority after other rules) |
+
+Detail: [docs/EDIT_INSIGHTS.md](docs/EDIT_INSIGHTS.md). These are **programmatic** once compiled — the AI only helps author and compile them.
+
+#### 3. AI Rules (taxonomy — global label vocabulary)
+
+**Best for:** “`ATM`, `ATM Withdrawal`, and `ATM withdrawal` should be one sub-category,” “merge `Charitable Giving` into `Charitable`,” “same merchant spelled three ways.”
+
+| Step | Where |
+|------|--------|
+| Discover | **AI Rules** → **Analyze labels** (fast duplicates) or **Suggest with AI** (semantic merges + confidence) |
+| Review | Each proposal shows type, rationale, confidence, affected row counts |
+| Apply | Select → Preview (dry run) → **Apply selected** (explicit confirm) |
+
+This is a **different abstraction** from Custom Rules: it cleans **label dictionaries** across the database, not per-transaction if/then. Nothing applies automatically today; proposals include a confidence score for possible future auto-apply when you trust the pattern.
+
+Detail: [docs/AI_TAXONOMY_RULES.md](docs/AI_TAXONOMY_RULES.md).
+
+### Suggested workflow (monthly)
+
+1. **Import & Categorize** — process new CSV(s); let lookups + LLM handle bulk labeling.  
+2. **Confirm Categories** — confirm or ✨ suggest labels for uncertain merchants.  
+3. **AI Rules** — periodically merge duplicate categories/subs/merchant names.  
+4. **Cadence** — set run-rate rules for irregular merchants (insurance, annual fees).  
+5. **Edit Transactions** — fix one-offs; save **Custom Rules** when the same pattern will repeat.  
+6. **Chat** — explore spend; use cadence keywords + merchant name to open cadence proposals.
+
+### Further reading
+
+| Doc | Topic |
+|-----|--------|
+| [docs/AI_SESSION_CONTEXT.md](docs/AI_SESSION_CONTEXT.md) | Product direction, pitfalls, for new AI coding sessions |
+| [docs/AI_TAXONOMY_RULES.md](docs/AI_TAXONOMY_RULES.md) | AI Rules tab API and behavior |
+| [docs/EDIT_INSIGHTS.md](docs/EDIT_INSIGHTS.md) | Post-edit insights and Custom Rule suggestions |
+| [docs/EXPENSE_CADENCE_PHASE_D.md](docs/EXPENSE_CADENCE_PHASE_D.md) | AI cadence propose + confirm |
+| [docs/CONFIRM_CATEGORIES.md](docs/CONFIRM_CATEGORIES.md) | Review queue and confirm scopes |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | What’s shipped vs planned (e.g. auto-apply taxonomy at confidence threshold) |
 
 ## Where files live
 
@@ -179,9 +273,11 @@ After categories are correct, separate **normal monthly run-rate** from **irregu
 
 Manage cadence in the **Cadence** tab and `cadence_rules` in SQLite. Import **ExpenseCadenceRules** from Excel via Settings. Chat and analytics support **cash**, **core**, and **normalized** views — see [docs/EXPENSE_CADENCE.md](docs/EXPENSE_CADENCE.md).
 
-## CustomRules (freeform → AI → apply)
+## Custom Rules (freeform → AI compile → apply)
 
-**Highest priority:** Active custom rules run after category rules, LLM review, and cadence lookup.
+**Highest priority at pipeline time:** Active custom rules run after category rules, LLM classification, and cadence lookup. The LLM **compiles** your English into JSON once; each run applies that JSON deterministically.
+
+See [How AI is used — Custom Rules](#2-custom-rules-per-merchant--pattern-if-then) for when to use these vs **AI Rules**.
 
 | Column | Purpose |
 |--------|---------|
@@ -205,5 +301,6 @@ Example: split duplicate monthly charges by amount, or tag Apple $9.99 as Busine
 | `data/finance.db` | SQLite database (gitignored) |
 | `config/` | `.env` and presets |
 | `docs/ROADMAP.md` | Master plan — phases and detail doc links |
+| `docs/AI_TAXONOMY_RULES.md` | AI Rules tab — taxonomy merge proposals |
 | `docs/AI_SESSION_CONTEXT.md` | Bootstrap context for new AI chats |
 | `requirements.txt` | Python dependencies |

@@ -1,72 +1,36 @@
-# Run processing — file picker upload
+# Import & Categorize — upload and process
 
-**Status:** Not implemented  
-**Pattern:** Mirror ingest upload-and-scan
+**Status:** Shipped  
+**UI:** Import & Categorize tab
 
-## Goal
+## Flow
 
-UX parity: user picks CSV from disk for **Run processing** without manually copying to `input/`.
+1. User clicks **Choose CSV files** (multipart upload → `input/`)
+2. Upload completes → **Run processing** starts automatically (SSE progress)
+3. Pipeline categorizes rows and saves to `finance.db`; CSV moves to `processed/`
 
-## Reference implementation
+**Run processing** button re-runs the pipeline on any CSV still in `input/` (e.g. manually copied exports).
 
-Ingest already has:
+## APIs
 
-- `POST /api/ingest/upload-and-scan`
-- `webapp/services/inbox_upload.py`
-- UI: “Choose CSV files & scan” on Import tab
+| Endpoint | Role |
+|----------|------|
+| `POST /api/ingest/upload` | Copy CSV(s) to inbox |
+| `GET /api/process/stream` | SSE progress for full pipeline |
+| `POST /api/process` | Non-streaming batch process |
 
-## Proposed flow
+Legacy (not used by UI):
 
-1. User clicks **Choose files & process** on Import / Run section
-2. Multipart upload → copy to `input/` (or temp staging)
-3. Call existing `process_csv_file` / batch process for selected files only
-4. Return job summary: files processed, row counts, errors
-
-## API sketch
-
-```http
-POST /api/process/upload-and-run
-Content-Type: multipart/form-data
-files: [file1.csv, file2.csv]
-```
-
-Response:
-
-```json
-{
-  "processed": [{"filename": "...", "rows": 42, "status": "ok"}],
-  "errors": []
-}
-```
-
-Reuse `inbox_upload.save_uploaded_files()` then existing process service.
-
-## UI
-
-- Button next to “Run processing” on all inbox files
-- Same file input pattern as scan (`<input type="file" multiple accept=".csv">`)
-- Progress / result toast
+| Endpoint | Role |
+|----------|------|
+| `POST /api/ingest/upload-and-scan` | Upload + raw ingest without AI |
+| `POST /api/ingest/scan` | Raw ingest for files already in inbox |
 
 ## Files
 
-| File | Change |
-|------|--------|
-| `webapp/services/inbox_upload.py` | Shared save helper (if not already) |
-| `webapp/main.py` | New endpoint |
-| `webapp/static/app.js` | Button + fetch |
-| `webapp/static/index.html` | File input |
-
-## Non-goals
-
-- Process files not in inbox without upload
-- Parallel upload queue / background jobs (v1: synchronous like scan)
-
-## Verification
-
-1. Upload new CSV via picker
-2. File lands in `input/`, processing runs
-3. Transactions appear in DB / Confirm Categories
-
-## Context
-
-Roadmap §5 optional UX parity; ingest upload shipped in same project chat.
+| File | Role |
+|------|------|
+| `webapp/services/inbox_upload.py` | Save uploads to inbox |
+| `webapp/services/process.py` | `run_pipeline` + SQLite save |
+| `webapp/static/app.js` | `uploadCsvFiles`, `runCategorizeStream` |
+| `webapp/static/index.html` | Import & process panel |

@@ -27,6 +27,22 @@ def _money_format(amount: float) -> str:
     return f"-{text}" if n < 0 else text
 
 
+_COLUMN_TITLE_OVERRIDES: dict[str, str] = {
+    "ai_category": "AI Category",
+    "ai_sub_category": "AI Sub-category",
+}
+
+
+def _column_title(column: str) -> str:
+    """Human-readable column header from SQL field name (snake_case)."""
+    key = str(column or "").strip().lower()
+    if key in _COLUMN_TITLE_OVERRIDES:
+        return _COLUMN_TITLE_OVERRIDES[key]
+    titled = key.replace("_", " ").title()
+    # str.title() lowercases "AI" → "Ai"; restore common abbreviations.
+    return titled.replace("Ai ", "AI ")
+
+
 def table_display(
     *,
     title: str,
@@ -193,7 +209,7 @@ def display_from_tool_result(
         if tool == "run_custom_report" and result.get("parameters_used"):
             used = ", ".join(f"{k}={v}" for k, v in result["parameters_used"].items())
             title = f"{title} ({used})"
-        cols = [{"field": c, "title": c.replace("_", " ").title()} for c in columns_raw]
+        cols = [{"field": c, "title": _column_title(c)} for c in columns_raw]
         return table_display(
             title=title,
             summary=f"{result.get('row_count', len(rows))} row(s)",

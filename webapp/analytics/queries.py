@@ -193,6 +193,81 @@ def top_categories(
     ]
 
 
+def compare_categories_by_months(
+    conn: sqlite3.Connection,
+    months: list[str],
+    *,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Side-by-side expense totals by ai_category for 2+ budget months."""
+    cleaned = sorted({str(m).strip() for m in months if str(m).strip()})
+    if len(cleaned) < 2:
+        raise ValueError("Provide at least two budget months (YYYY-MM) to compare.")
+
+    placeholders = ",".join("?" * len(cleaned))
+    rows = conn.execute(
+        f"""
+        SELECT ai_category AS category,
+               budget_month,
+               COUNT(*) AS transaction_count,
+               ROUND(SUM(-amount), 2) AS spend
+        FROM transactions
+        WHERE budget_month IN ({placeholders})
+          AND flow_type = 'Expense'
+          AND amount < 0
+          AND ai_category IS NOT NULL AND TRIM(ai_category) != ''
+        GROUP BY ai_category, budget_month
+        """,
+        cleaned,
+    ).fetchall()
+
+    by_category: dict[str, dict[str, Any]] = {}
+    totals_by_month: dict[str, float] = {m: 0.0 for m in cleaned}
+    for row in rows:
+        cat = str(row["category"] or "").strip()
+        month = str(row["budget_month"] or "").strip()
+        spend = float(row["spend"] or 0)
+        tx_count = int(row["transaction_count"] or 0)
+        bucket = by_category.setdefault(
+            cat,
+            {"category": cat, "by_month": {m: 0.0 for m in cleaned}, "transaction_count": 0},
+        )
+        bucket["by_month"][month] = spend
+        bucket["transaction_count"] += tx_count
+        totals_by_month[month] = totals_by_month.get(month, 0.0) + spend
+
+    categories: list[dict[str, Any]] = []
+    first, last = cleaned[0], cleaned[-1]
+    for cat, bucket in by_category.items():
+        by_month = bucket["by_month"]
+        first_spend = float(by_month.get(first) or 0)
+        last_spend = float(by_month.get(last) or 0)
+        change = round(last_spend - first_spend, 2)
+        change_pct = round((change / first_spend) * 100, 1) if first_spend else None
+        categories.append(
+            {
+                "category": cat,
+                "by_month": {m: round(float(by_month.get(m) or 0), 2) for m in cleaned},
+                "transaction_count": bucket["transaction_count"],
+                "change": change,
+                "change_pct": change_pct,
+            }
+        )
+
+    categories.sort(
+        key=lambda c: (-sum(c["by_month"].values()), c["category"].lower())
+    )
+    if limit > 0:
+        categories = categories[:limit]
+
+    return {
+        "months": cleaned,
+        "categories": categories,
+        "totals_by_month": {m: round(totals_by_month.get(m, 0.0), 2) for m in cleaned},
+        "category_count": len(by_category),
+    }
+
+
 def month_vs_avg(conn: sqlite3.Connection, month: str) -> dict[str, Any]:
     rows = conn.execute(
         """

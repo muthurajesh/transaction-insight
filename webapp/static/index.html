@@ -18,6 +18,7 @@
     <button type="button" class="tab" data-tab="review">Confirm Categories</button>
     <button type="button" class="tab" data-tab="edit">Edit Transactions</button>
     <button type="button" class="tab" data-tab="cadence">Cadence</button>
+    <button type="button" class="tab" data-tab="taxonomy">AI Rules</button>
     <button type="button" class="tab" data-tab="actions">Import &amp; Categorize</button>
     <button type="button" class="tab" data-tab="settings">Settings</button>
   </nav>
@@ -26,6 +27,19 @@
     <section id="panel-chat" class="panel active">
       <div id="chat-layout" class="chat-layout">
         <div class="chat-main">
+          <div class="chat-toolbar">
+            <button type="button" id="btn-chat-clear" class="btn-secondary btn-chat-toolbar">Clear screen</button>
+            <button type="button" id="btn-chat-history" class="btn-secondary btn-chat-toolbar">View history</button>
+            <div class="chat-download-wrap">
+              <label for="chat-download-format" class="sr-only">Export format</label>
+              <select id="chat-download-format" class="chat-download-format" aria-label="Export format">
+                <option value="json">JSON (full)</option>
+                <option value="markdown">Markdown (readable)</option>
+                <option value="csv">CSV (spreadsheet)</option>
+              </select>
+              <button type="button" id="btn-chat-download" class="btn-secondary btn-chat-toolbar">Download history</button>
+            </div>
+          </div>
           <div id="chat-log"></div>
           <form id="chat-form" class="chat-form">
             <div class="chat-composer">
@@ -73,8 +87,7 @@
         <h2 class="empty-state-title">All caught up</h2>
         <p>No merchants waiting for label confirmation.</p>
         <ul class="empty-state-steps">
-          <li>Import new CSVs on <button type="button" class="btn-link tab-jump" data-tab="actions">Import &amp; Categorize</button></li>
-          <li>Run processing to populate this queue</li>
+          <li>Upload a CSV and run processing on <button type="button" class="btn-link tab-jump" data-tab="actions">Import &amp; Categorize</button></li>
           <li>Repeating patterns → <button type="button" class="btn-link tab-jump" data-tab="settings">Settings → Custom rules</button></li>
         </ul>
       </div>
@@ -134,6 +147,18 @@
           </div>
           <p id="edit-source-summary" class="edit-source-summary"></p>
           <form id="edit-label-form" class="edit-label-form">
+            <label class="edit-field">
+              <span>Merchant label</span>
+              <div class="combo-field" data-combo="edit-merchant-key">
+                <input type="text" id="edit-merchant-key" required placeholder="Select or type…" autocomplete="off" />
+                <button type="button" class="combo-toggle" tabindex="-1" aria-label="Show all merchants">▾</button>
+                <ul class="combo-menu hidden" role="listbox" aria-label="Merchant labels"></ul>
+              </div>
+            </label>
+            <label class="edit-field edit-field-checkbox">
+              <input type="checkbox" id="edit-update-merchant-label" checked />
+              <span>Save merchant label for future imports</span>
+            </label>
             <label class="edit-field">
               <span>Category</span>
               <div class="combo-field" data-combo="edit-ai-category">
@@ -286,33 +311,53 @@
       </div>
     </section>
 
-    <section id="panel-actions" class="panel">
-      <p class="hint panel-subtitle">Import bank CSVs and run categorization.</p>
-      <ol class="workflow-stepper" id="import-stepper" aria-label="Import workflow">
-        <li class="workflow-step active" data-step="1"><span class="workflow-step-num">1</span> Upload</li>
-        <li class="workflow-step" data-step="2"><span class="workflow-step-num">2</span> Process</li>
-      </ol>
-      <div id="import-step-1" class="workflow-step-panel">
+    <section id="panel-taxonomy" class="panel">
+      <p class="hint panel-subtitle">AI-detected label duplicates and synonyms — review and apply only what you approve.</p>
+      <div class="card taxonomy-summary-card">
+        <h2>Label health</h2>
+        <p class="hint">Unlike Custom Rules (per-merchant if/then), these are <strong>taxonomy rules</strong>: merge duplicate categories, sub-categories, or merchant spellings across your data.</p>
+        <div id="taxonomy-summary" class="taxonomy-summary-grid" aria-live="polite">
+          <p class="hint">Run analyze to scan your database.</p>
+        </div>
+        <div class="taxonomy-toolbar">
+          <button type="button" id="btn-taxonomy-analyze" class="btn-secondary">Analyze labels</button>
+          <button type="button" id="btn-taxonomy-suggest" class="btn-primary">✨ Suggest with AI</button>
+          <span id="taxonomy-status" class="taxonomy-status" aria-live="polite"></span>
+        </div>
+      </div>
       <div class="card">
-        <h2>Inbox</h2>
-        <p class="hint">Upload bank CSVs to <code id="inbox-path"></code>; after processing they move to <code id="processed-path">processed/</code>.</p>
+        <div class="taxonomy-list-header">
+          <h2>Proposed rules</h2>
+          <div class="taxonomy-list-actions">
+            <label class="taxonomy-select-all">
+              <input type="checkbox" id="taxonomy-select-all" />
+              Select all
+            </label>
+            <button type="button" id="btn-taxonomy-preview" class="btn-secondary" disabled>Preview selected</button>
+            <button type="button" id="btn-taxonomy-apply" class="btn-primary" disabled>Apply selected</button>
+          </div>
+        </div>
+        <p id="taxonomy-empty" class="hint taxonomy-empty">No proposals yet. Click <strong>Analyze labels</strong> for fast duplicates, or <strong>Suggest with AI</strong> for semantic merges.</p>
+        <div id="taxonomy-datalists" class="sr-only" aria-hidden="true">
+          <datalist id="taxonomy-category-options"></datalist>
+          <datalist id="taxonomy-sub-options"></datalist>
+        </div>
+        <div id="taxonomy-proposals" class="taxonomy-proposals" aria-label="Taxonomy rule proposals"></div>
+      </div>
+    </section>
+
+    <section id="panel-actions" class="panel">
+      <p class="hint panel-subtitle">Upload a bank CSV export and run categorization.</p>
+      <div class="card">
+        <h2>Import &amp; process</h2>
+        <p class="hint">CSV files land in <code id="inbox-path"></code>; after processing they move to <code id="processed-path">processed/</code>.</p>
         <div class="inbox-upload-row">
           <input type="file" id="inbox-file-input" accept=".csv,text/csv" multiple hidden />
-          <button type="button" id="btn-choose-scan" class="btn-primary">Choose CSV files &amp; scan</button>
-          <button type="button" id="btn-scan-existing" class="btn-secondary">Scan existing inbox</button>
+          <button type="button" id="btn-choose-upload" class="btn-primary">Choose CSV files</button>
+          <button type="button" id="btn-categorize" class="btn-secondary">Run processing</button>
         </div>
         <p id="inbox-selected-files" class="hint inbox-selected-files hidden"></p>
-        <pre id="scan-result"></pre>
-      </div>
-      <div class="workflow-step-nav">
-        <button type="button" id="btn-import-next-process" class="btn-primary">Next: Run processing</button>
-      </div>
-      </div>
-      <div id="import-step-2" class="workflow-step-panel hidden">
-      <div class="card">
-        <h2>Process transactions</h2>
-        <p class="hint">Run the full categorization pipeline (same as the CLI) and save to the database.</p>
-        <button type="button" id="btn-categorize">Run processing</button>
+        <pre id="upload-result"></pre>
         <div id="categorize-progress" class="progress-panel hidden" aria-live="polite">
           <div class="progress-bar-track">
             <div id="categorize-progress-fill" class="progress-bar-fill" style="width: 0%"></div>
@@ -321,10 +366,6 @@
           <ul id="categorize-progress-log" class="progress-log"></ul>
         </div>
         <pre id="categorize-result"></pre>
-      </div>
-      <div class="workflow-step-nav">
-        <button type="button" id="btn-import-back-upload" class="btn-secondary">Back: Upload</button>
-      </div>
       </div>
     </section>
 
@@ -388,6 +429,53 @@
       <div class="review-busy-spinner" aria-hidden="true"></div>
       <p class="review-busy-title">Working…</p>
       <p class="review-busy-hint">Please wait. Do not leave this page.</p>
+    </div>
+  </div>
+
+  <div id="chat-history-overlay" class="modal-overlay hidden" role="presentation" aria-hidden="true">
+    <div
+      id="chat-history-modal"
+      class="modal-card modal-card-wide chat-history-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="chat-history-title"
+    >
+      <h2 id="chat-history-title">Chat history</h2>
+      <p class="hint chat-history-subtitle">Stored in your local database. Newest first · 10 messages per page.</p>
+      <div id="chat-history-list" class="chat-history-list" aria-live="polite"></div>
+      <div class="chat-history-pagination">
+        <button type="button" id="btn-chat-history-prev" class="btn-secondary" disabled>Previous</button>
+        <span id="chat-history-page-info" class="chat-history-page-info">Page 1</span>
+        <button type="button" id="btn-chat-history-next" class="btn-secondary" disabled>Next</button>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="btn-chat-history-close" class="btn-primary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="taxonomy-apply-overlay" class="modal-overlay hidden" role="presentation" aria-hidden="true">
+    <div
+      id="taxonomy-apply-modal"
+      class="modal-card modal-card-wide taxonomy-apply-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="taxonomy-apply-title"
+    >
+      <div class="modal-header">
+        <h2 id="taxonomy-apply-title">Apply taxonomy rules</h2>
+        <button type="button" id="btn-taxonomy-apply-close" class="btn-edit-close" aria-label="Close">×</button>
+      </div>
+      <div id="taxonomy-apply-body" class="modal-body">
+        <p class="hint">Loading preview…</p>
+      </div>
+      <div id="taxonomy-apply-actions" class="modal-actions">
+        <p id="taxonomy-apply-error" class="review-confirm-error hidden" role="alert"></p>
+        <div class="modal-action-row">
+          <button type="button" id="btn-taxonomy-apply-cancel" class="btn-secondary">Cancel</button>
+          <button type="button" id="btn-taxonomy-apply-confirm" class="btn-primary">Apply to database</button>
+        </div>
+      </div>
     </div>
   </div>
 
