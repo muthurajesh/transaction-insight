@@ -231,6 +231,9 @@ def search_transactions(
                t.budget_month,
                t.amount,
                t.merchant_key,
+               t.simple_description,
+               t.user_description,
+               t.original_description,
                COALESCE(NULLIF(t.simple_description, ''), NULLIF(t.user_description, ''),
                         NULLIF(t.original_description, '')) AS description,
                t.flow_type,
@@ -275,6 +278,9 @@ def get_transaction(conn: sqlite3.Connection, transaction_id: str) -> dict[str, 
                budget_month,
                amount,
                merchant_key,
+               simple_description,
+               user_description,
+               original_description,
                COALESCE(NULLIF(simple_description, ''), NULLIF(user_description, ''),
                         NULLIF(original_description, '')) AS description,
                flow_type,
@@ -322,6 +328,9 @@ def list_matching_transactions(
                    budget_month,
                    amount,
                    merchant_key,
+                   simple_description,
+                   user_description,
+                   original_description,
                    COALESCE(NULLIF(simple_description, ''), NULLIF(user_description, ''),
                             NULLIF(original_description, '')) AS description,
                    flow_type,
@@ -348,6 +357,9 @@ def list_matching_transactions(
                budget_month,
                amount,
                merchant_key,
+               simple_description,
+               user_description,
+               original_description,
                COALESCE(NULLIF(simple_description, ''), NULLIF(user_description, ''),
                         NULLIF(original_description, '')) AS description,
                flow_type,
@@ -413,6 +425,7 @@ def bulk_update_labels(
     flow_type: str | None = None,
     expense_type: str | None = None,
     classification: str | None = None,
+    new_merchant_key: str | None = None,
     update_merchant_label: bool = False,
     merchant_key: str | None = None,
     cadence: dict[str, Any] | None = None,
@@ -429,7 +442,11 @@ def bulk_update_labels(
     sub = (ai_sub_category or "").strip()
     placeholders = ",".join("?" * len(ids))
 
-    if update_merchant_label and merchant_key:
+    label_merchant = (new_merchant_key or merchant_key or "").strip()[:120]
+    if not label_merchant:
+        raise ValueError("merchant label is required")
+
+    if update_merchant_label:
         now = datetime.now(timezone.utc).isoformat()
         conn.execute(
             """
@@ -447,7 +464,7 @@ def bulk_update_labels(
                 updated_at=excluded.updated_at
             """,
             (
-                merchant_key,
+                label_merchant,
                 category,
                 sub,
                 expense_type or "Variable",
@@ -463,6 +480,9 @@ def bulk_update_labels(
         "rationale = 'user edited'",
     ]
     values: list[Any] = [category, sub]
+
+    set_parts.append("merchant_key = ?")
+    values.append(label_merchant)
 
     if flow_type:
         set_parts.append("flow_type = ?")
@@ -515,9 +535,9 @@ def bulk_update_labels(
 
     cadence_rule_saved = False
     if cadence_norm and cadence_scope == "merchant":
-        mk = (merchant_key or "").strip()
+        mk = label_merchant
         if not mk:
-            raise ValueError("merchant_key is required when cadence_scope is merchant")
+            raise ValueError("merchant label is required when cadence_scope is merchant")
         include_bool = (
             None
             if cadence_norm["include_in_run_rate"] is None
@@ -540,6 +560,8 @@ def bulk_update_labels(
         "rows_updated": cur.rowcount,
         "transaction_ids": ids,
     }
+    if label_merchant:
+        result["merchant_key"] = label_merchant
     if cadence_norm:
         result["cadence_applied"] = True
         result["cadence_scope"] = cadence_scope

@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from webapp.agent.chat import chat, list_chat_history
+from webapp.agent.chat import chat
+from webapp.agent.chat_history import export_chat_history, list_chat_history, list_chat_history_page
 from webapp.config import (
     CHAT_MODEL,
     DB_PATH,
@@ -67,6 +68,12 @@ from webapp.services.transaction_edit import (
     get_transaction,
     list_matching_transactions,
     search_transactions,
+)
+from webapp.services.taxonomy_rules import (
+    analyze_taxonomy,
+    apply_taxonomy_proposals,
+    preview_taxonomy_proposals,
+    suggest_taxonomy_proposals_with_llm,
 )
 
 
@@ -127,6 +134,18 @@ class ImportLookupsRequest(BaseModel):
     path: str | None = None
 
 
+class TaxonomyProposalsRequest(BaseModel):
+    proposals: list[dict[str, Any]] = Field(min_length=1)
+    reconcile: bool = False
+    sample_limit: int | None = None
+
+
+class TaxonomyApplyRequest(BaseModel):
+    proposals: list[dict[str, Any]] = Field(min_length=1)
+    reconcile: bool = False
+    confirm: str = ""
+
+
 class CustomRuleCreateRequest(BaseModel):
     rule: str = Field(min_length=1)
 
@@ -146,6 +165,7 @@ class TransactionBulkLabelRequest(BaseModel):
     flow_type: str | None = None
     expense_type: str | None = None
     classification: str | None = None
+    new_merchant_key: str = Field(min_length=1)
     update_merchant_label: bool = False
     merchant_key: str | None = None
     cadence: TransactionCadencePayload | None = None
@@ -253,20 +273,9 @@ def api_status() -> dict[str, Any]:
         conn.close()
 
 
-@app.post("/api/ingest/scan")
-def api_ingest_scan(force: bool = False) -> dict[str, Any]:
-    conn = _conn()
-    try:
-        return {"results": scan_inbox(conn, INBOX_DIR, force=force)}
-    finally:
-        conn.close()
-
-
-@app.post("/api/ingest/upload-and-scan")
-async def api_ingest_upload_and_scan(
-    files: list[UploadFile] = File(...),
-    force: bool = False,
-) -> dict[str, Any]:
+async def _save_uploaded_csvs(
+    files: list[UploadFile],
+) -> tuple[list[dict[str, Any]], list[Path]]:
     if not files:
         raise HTTPException(400, "Select at least one CSV file")
 
@@ -290,6 +299,37 @@ async def api_ingest_upload_and_scan(
         except Exception as exc:
             uploads.append({"original_name": raw_name, "ok": False, "error": str(exc)})
 
+    return uploads, saved_paths
+
+
+@app.post("/api/ingest/upload")
+async def api_ingest_upload(
+    files: list[UploadFile] = File(...),
+) -> dict[str, Any]:
+    """Copy CSV uploads into the inbox; Run processing enriches and saves to SQLite."""
+    uploads, saved_paths = await _save_uploaded_csvs(files)
+    if not saved_paths:
+        return {"uploads": uploads}
+    return {"uploads": uploads, "saved_count": len(saved_paths)}
+
+
+@app.post("/api/ingest/scan")
+def api_ingest_scan(force: bool = False) -> dict[str, Any]:
+    """Legacy raw CSV import without pipeline categorization."""
+    conn = _conn()
+    try:
+        return {"results": scan_inbox(conn, INBOX_DIR, force=force)}
+    finally:
+        conn.close()
+
+
+@app.post("/api/ingest/upload-and-scan")
+async def api_ingest_upload_and_scan(
+    files: list[UploadFile] = File(...),
+    force: bool = False,
+) -> dict[str, Any]:
+    """Legacy: upload then raw ingest. Prefer /api/ingest/upload + /api/process."""
+    uploads, saved_paths = await _save_uploaded_csvs(files)
     if not saved_paths:
         return {"uploads": uploads, "results": []}
 
@@ -867,6 +907,7 @@ def api_transactions_bulk_label(body: TransactionBulkLabelRequest) -> dict[str, 
                 flow_type=body.flow_type,
                 expense_type=body.expense_type,
                 classification=body.classification,
+                new_merchant_key=body.new_merchant_key,
                 update_merchant_label=body.update_merchant_label,
                 merchant_key=body.merchant_key,
                 cadence=cadence_payload,
@@ -946,6 +987,64 @@ def api_review_confirm(merchant_key: str, body: ReviewConfirmRequest) -> dict[st
         conn.close()
 
 
+@app.get("/api/taxonomy-rules/analyze")
+def api_taxonomy_analyze() -> dict[str, Any]:
+    """Heuristic duplicate detection — no LLM, no writes."""
+    conn = _conn()
+    try:
+        return analyze_taxonomy(conn)
+    finally:
+        conn.close()
+
+
+@app.post("/api/taxonomy-rules/suggest")
+def api_taxonomy_suggest() -> dict[str, Any]:
+    """LLM + heuristic taxonomy proposals for user review (never auto-applied)."""
+    conn = _conn()
+    try:
+        return suggest_taxonomy_proposals_with_llm(conn)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, f"LLM suggestion failed: {exc}") from exc
+    finally:
+        conn.close()
+
+
+@app.post("/api/taxonomy-rules/preview")
+def api_taxonomy_preview(body: TaxonomyProposalsRequest) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        return preview_taxonomy_proposals(
+            conn,
+            body.proposals,
+            reconcile=body.reconcile,
+            sample_limit=body.sample_limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.post("/api/taxonomy-rules/apply")
+def api_taxonomy_apply(body: TaxonomyApplyRequest) -> dict[str, Any]:
+    if body.confirm != "APPLY":
+        raise HTTPException(
+            400,
+            'Confirmation required: send {"confirm": "APPLY", "proposals": [...]}',
+        )
+    conn = _conn()
+    try:
+        return apply_taxonomy_proposals(
+            conn, body.proposals, reconcile=body.reconcile
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    finally:
+        conn.close()
+
+
 @app.get("/api/settings")
 def api_settings() -> dict[str, Any]:
     conn = _conn()
@@ -994,10 +1093,32 @@ def api_settings_import_lookups(body: ImportLookupsRequest | None = None) -> dic
 
 
 @app.get("/api/chat/history")
-def api_chat_history() -> dict[str, Any]:
+def api_chat_history(
+    page: int | None = None,
+    limit: int = 10,
+    order: str = "desc",
+) -> dict[str, Any]:
     conn = _conn()
     try:
+        if page is not None:
+            return list_chat_history_page(conn, page=page, limit=limit, order=order)
         return {"messages": list_chat_history(conn)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/chat/history/export")
+def api_chat_history_export(format: str = "json") -> Response:
+    conn = _conn()
+    try:
+        body, media_type, filename = export_chat_history(conn, format)
+        return Response(
+            content=body,
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     finally:
         conn.close()
 

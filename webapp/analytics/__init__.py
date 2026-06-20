@@ -3,6 +3,7 @@
 from webapp.analytics.queries import (
     available_months,
     category_average_last_n_full_months,
+    compare_categories_by_months,
     flow_totals_by_month,
     list_outliers,
     list_transactions,
@@ -14,6 +15,7 @@ from webapp.analytics.queries import (
 __all__ = [
     "available_months",
     "category_average_last_n_full_months",
+    "compare_categories_by_months",
     "flow_totals_by_month",
     "list_outliers",
     "list_transactions",

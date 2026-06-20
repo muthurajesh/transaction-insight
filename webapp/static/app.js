@@ -27,6 +27,7 @@ function setTab(name) {
   if (name === "chat") loadChatHistory();
   if (name === "edit") loadTransactionEditor();
   if (name === "cadence") loadCadencePanel();
+  if (name === "taxonomy") loadTaxonomyPanel();
 }
 
 document.querySelectorAll(".tab-jump").forEach((btn) => {
@@ -197,9 +198,17 @@ function appendToolTrace(parent, toolTrace) {
   pre.textContent = toolTrace
     .map((x) => {
       const args = x.args && Object.keys(x.args).length ? ` ${JSON.stringify(x.args)}` : "";
-      return `${x.tool}${args}`;
+      let line = `${x.tool}${args}`;
+      const sql = x.result?.sql || x.args?.sql;
+      if (x.tool === "query_sql" && sql) {
+        line += `\n  SQL: ${sql}`;
+      }
+      if (x.result?.validation_rejected) {
+        line += "\n  (validation rejected — retried)";
+      }
+      return line;
     })
-    .join("\n");
+    .join("\n\n");
   details.appendChild(pre);
   parent.appendChild(details);
 }
@@ -265,9 +274,39 @@ function removeChatPending() {
 let chatBusy = false;
 let chatHistoryLoaded = false;
 let chatHistoryPromise = null;
+let chatHistoryModalPage = 1;
+const CHAT_SCREEN_CLEARED_KEY = "chatScreenCleared";
+
+function isChatScreenCleared() {
+  return sessionStorage.getItem(CHAT_SCREEN_CLEARED_KEY) === "1";
+}
+
+function formatChatTimestamp(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso).slice(0, 19);
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function clearChatScreen() {
+  const log = $("#chat-log");
+  if (log) log.innerHTML = "";
+  sessionStorage.setItem(CHAT_SCREEN_CLEARED_KEY, "1");
+  chatHistoryLoaded = true;
+}
 
 async function loadChatHistory() {
   if (chatHistoryLoaded) return;
+  if (isChatScreenCleared()) {
+    chatHistoryLoaded = true;
+    return;
+  }
   if (chatHistoryPromise) return chatHistoryPromise;
   const log = $("#chat-log");
   if (!log) return;
@@ -291,6 +330,131 @@ async function loadChatHistory() {
   })();
   return chatHistoryPromise;
 }
+
+function renderChatHistoryModal(data) {
+  const host = $("#chat-history-list");
+  const pageInfo = $("#chat-history-page-info");
+  const prevBtn = $("#btn-chat-history-prev");
+  const nextBtn = $("#btn-chat-history-next");
+  if (!host) return;
+
+  const messages = data.messages || [];
+  if (!messages.length) {
+    host.innerHTML = '<p class="hint">No chat history yet.</p>';
+  } else {
+    host.innerHTML = messages
+      .map((m) => {
+        const role = m.role === "user" ? "user" : "assistant";
+        const label = role === "user" ? "You" : "Assistant";
+        return `
+          <article class="chat-history-item ${role}">
+            <div class="chat-history-item-head">
+              <span class="chat-history-item-role">${escapeHtml(label)}</span>
+              <time datetime="${escapeAttr(m.created_at || "")}">${escapeHtml(formatChatTimestamp(m.created_at))}</time>
+            </div>
+            <div class="chat-history-item-body">${escapeHtml(m.content || "")}</div>
+          </article>`;
+      })
+      .join("");
+  }
+
+  const page = data.page || 1;
+  const pages = data.pages || 1;
+  const total = data.total ?? 0;
+  chatHistoryModalPage = page;
+  if (pageInfo) {
+    pageInfo.textContent = `Page ${page} of ${pages} · ${total} message(s)`;
+  }
+  if (prevBtn) prevBtn.disabled = page <= 1;
+  if (nextBtn) nextBtn.disabled = page >= pages;
+}
+
+async function openChatHistoryModal() {
+  const overlay = $("#chat-history-overlay");
+  if (!overlay) return;
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+  await loadChatHistoryModalPage(1);
+}
+
+function closeChatHistoryModal() {
+  const overlay = $("#chat-history-overlay");
+  if (!overlay) return;
+  overlay.classList.add("hidden");
+  overlay.setAttribute("aria-hidden", "true");
+}
+
+async function loadChatHistoryModalPage(page) {
+  const host = $("#chat-history-list");
+  if (host) host.innerHTML = '<p class="hint">Loading…</p>';
+  try {
+    const data = await api(
+      `/api/chat/history?page=${encodeURIComponent(page)}&limit=10&order=desc`
+    );
+    renderChatHistoryModal(data);
+  } catch (err) {
+    if (host) host.innerHTML = `<p class="hint">Error: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+async function downloadChatHistory() {
+  const format = ($("#chat-download-format")?.value || "json").trim();
+  const btn = $("#btn-chat-download");
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(
+      `/api/chat/history/export?format=${encodeURIComponent(format)}`
+    );
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || res.statusText);
+    }
+    const blob = await res.blob();
+    const disp = res.headers.get("Content-Disposition") || "";
+    const match = disp.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : `chat-history.${format === "markdown" ? "md" : format}`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert(err.message || "Download failed");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+(function initChatHistoryControls() {
+  $("#btn-chat-clear")?.addEventListener("click", () => {
+    if (chatBusy) return;
+    clearChatScreen();
+  });
+  $("#btn-chat-history")?.addEventListener("click", () => {
+    openChatHistoryModal().catch(() => {});
+  });
+  $("#btn-chat-history-close")?.addEventListener("click", closeChatHistoryModal);
+  $("#chat-history-overlay")?.addEventListener("click", (e) => {
+    if (e.target?.id === "chat-history-overlay") closeChatHistoryModal();
+  });
+  $("#btn-chat-history-prev")?.addEventListener("click", () => {
+    if (chatHistoryModalPage > 1) {
+      loadChatHistoryModalPage(chatHistoryModalPage - 1).catch(() => {});
+    }
+  });
+  $("#btn-chat-history-next")?.addEventListener("click", () => {
+    loadChatHistoryModalPage(chatHistoryModalPage + 1).catch(() => {});
+  });
+  $("#btn-chat-download")?.addEventListener("click", () => {
+    downloadChatHistory().catch(() => {});
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeChatHistoryModal();
+  });
+})();
 
 const CHAT_HELP_COMMANDS = [
   {
@@ -433,6 +597,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
   const sendBtn = $("#btn-chat-send");
   const msg = input.value.trim();
   if (!msg) return;
+  sessionStorage.removeItem(CHAT_SCREEN_CLEARED_KEY);
   input.value = "";
   chatBusy = true;
   if (sendBtn) sendBtn.disabled = true;
@@ -514,15 +679,66 @@ $("#chat-form").addEventListener("submit", async (e) => {
 
 let reviewOptionsCache = null;
 
-function ensureReviewDatalists(options) {
+function getRelevantSubCategories(category, options) {
+  const byCat = options?.sub_categories_by_category || {};
+  const cat = String(category || "").trim();
+  if (!cat) return [];
+  if (Array.isArray(byCat[cat])) {
+    return [...byCat[cat]].sort((a, b) => a.localeCompare(b));
+  }
+  const key = Object.keys(byCat).find((k) => k.toLowerCase() === cat.toLowerCase());
+  return key ? [...byCat[key]].sort((a, b) => a.localeCompare(b)) : [];
+}
+
+function orderedSubCategories(category, options) {
+  const all = options?.sub_categories || [];
+  const relevant = getRelevantSubCategories(category, options);
+  const relevantSet = new Set(relevant.map((s) => s.toLowerCase()));
+  const others = all
+    .filter((s) => !relevantSet.has(String(s).toLowerCase()))
+    .sort((a, b) => a.localeCompare(b));
+  return [...relevant, ...others];
+}
+
+function splitOrderedSubCategories(category, options) {
+  const cat = String(category || "").trim();
+  const ordered = orderedSubCategories(cat, options);
+  if (!cat) return { relevant: [], others: ordered };
+  const relevant = getRelevantSubCategories(cat, options);
+  const relevantSet = new Set(relevant.map((s) => s.toLowerCase()));
+  const others = ordered.filter((s) => !relevantSet.has(String(s).toLowerCase()));
+  return { relevant, others };
+}
+
+function renderDatalistOptions(datalistEl, items) {
+  if (!datalistEl) return;
+  datalistEl.innerHTML = (items || [])
+    .map((c) => `<option value="${escapeAttr(c)}"></option>`)
+    .join("");
+}
+
+function ensureReviewDatalists(options, category = "") {
   const host = $("#review-datalists");
   if (!host) return;
   const catId = "review-categories";
   const subId = "review-subcategories";
   host.innerHTML = `
     <datalist id="${catId}">${options.categories.map((c) => `<option value="${escapeAttr(c)}"></option>`).join("")}</datalist>
-    <datalist id="${subId}">${options.sub_categories.map((c) => `<option value="${escapeAttr(c)}"></option>`).join("")}</datalist>
+    <datalist id="${subId}"></datalist>
   `;
+  renderDatalistOptions(document.getElementById(subId), orderedSubCategories(category, options));
+}
+
+function refreshReviewSubDatalist(category) {
+  if (!reviewOptionsCache) return;
+  renderDatalistOptions(
+    document.getElementById("review-subcategories"),
+    orderedSubCategories(category, reviewOptionsCache)
+  );
+}
+
+function populateSubCategorySelect(sel, options, category, allLabel, current) {
+  populateEditSelect(sel, orderedSubCategories(category, options), allLabel, current);
 }
 
 function reviewField(name, label, tooltip, controlHtml, { fullWidth = false } = {}) {
@@ -958,7 +1174,6 @@ let cadenceMerchantOffset = 0;
 let cadenceLastMerchants = [];
 const CADENCE_MERCHANT_PAGE_SIZE = 50;
 const CADENCE_SKIP_VARIABLE_NOTE = "Variable spending — no fixed cadence";
-let importWizardStep = 1;
 
 function renderCadencePreviewLine(amounts) {
   if (!amounts) return "";
@@ -1012,9 +1227,11 @@ function populateEditSearchCategorySelect(categories) {
 }
 
 function populateEditAdvancedFilters(options) {
-  populateEditSelect(
+  const category = ($("#edit-search-category")?.value || "").trim();
+  populateSubCategorySelect(
     $("#edit-search-sub"),
-    options.sub_categories,
+    options,
+    category,
     "All sub-categories",
     $("#edit-search-sub")?.value
   );
@@ -1151,23 +1368,64 @@ function editSortHeader(label, field) {
   return `<th class="edit-sort-th" data-sort="${field}" scope="col" tabindex="0" aria-sort="${active ? editSortDir + "ending" : "none"}">${escapeHtml(label)}${arrow}</th>`;
 }
 
-function attachComboField(wrapper, options) {
+function attachComboField(wrapper, getOptions, { sectioned = false, getCategory = null, onSelect = null } = {}) {
   if (!wrapper || wrapper.dataset.comboReady === "1") return;
   const input = wrapper.querySelector("input");
   const btn = wrapper.querySelector(".combo-toggle");
   const menu = wrapper.querySelector(".combo-menu");
   if (!input || !btn || !menu) return;
 
-  const allOptions = [...options];
+  function getOptionsContext() {
+    const raw = typeof getOptions === "function" ? getOptions() : getOptions;
+    if (raw && !Array.isArray(raw) && raw.sub_categories) return raw;
+    const subCategories = Array.isArray(raw) ? raw : [];
+    return {
+      sub_categories: subCategories,
+      sub_categories_by_category:
+        editOptionsCache?.sub_categories_by_category
+        || reviewOptionsCache?.sub_categories_by_category
+        || {},
+    };
+  }
 
   function renderMenu(filterText = "") {
     const q = filterText.trim().toLowerCase();
-    const items = q
-      ? allOptions.filter((o) => o.toLowerCase().includes(q))
-      : allOptions;
-    menu.innerHTML = items
+    if (!sectioned) {
+      const raw = typeof getOptions === "function" ? getOptions() : getOptions;
+      const allItems = Array.isArray(raw) ? raw : raw?.sub_categories || [];
+      const items = q ? allItems.filter((o) => o.toLowerCase().includes(q)) : allItems;
+      menu.innerHTML = items
+        .map((o) => `<li role="option" tabindex="-1">${escapeHtml(o)}</li>`)
+        .join("");
+      return;
+    }
+
+    const category = getCategory ? String(getCategory() || "").trim() : "";
+    const { relevant, others } = splitOrderedSubCategories(category, getOptionsContext());
+    const ordered = [...relevant, ...others];
+    const items = q ? ordered.filter((o) => o.toLowerCase().includes(q)) : ordered;
+
+    if (!sectioned || !category || q || !relevant.length) {
+      menu.innerHTML = items
+        .map((o) => `<li role="option" tabindex="-1">${escapeHtml(o)}</li>`)
+        .join("");
+      return;
+    }
+
+    const relevantItems = relevant.filter((o) => !q || o.toLowerCase().includes(q));
+    const otherItems = others.filter((o) => !q || o.toLowerCase().includes(q));
+    let html = `<li class="combo-section" aria-hidden="true">Under ${escapeHtml(category)}</li>`;
+    html += relevantItems
       .map((o) => `<li role="option" tabindex="-1">${escapeHtml(o)}</li>`)
       .join("");
+    if (otherItems.length) {
+      html += `<li class="combo-divider" role="separator"></li>`;
+      html += `<li class="combo-section" aria-hidden="true">Other sub-categories</li>`;
+      html += otherItems
+        .map((o) => `<li role="option" tabindex="-1">${escapeHtml(o)}</li>`)
+        .join("");
+    }
+    menu.innerHTML = html;
   }
 
   function showAllOptions() {
@@ -1185,12 +1443,18 @@ function attachComboField(wrapper, options) {
     else hideMenu();
   });
 
+  input.addEventListener("focus", () => {
+    if (sectioned) renderMenu(input.value);
+  });
+
   menu.addEventListener("click", (e) => {
     const li = e.target.closest('li[role="option"]');
     if (!li) return;
-    input.value = li.textContent;
+    const value = li.textContent.trim();
+    input.value = value;
     hideMenu();
     input.focus();
+    if (onSelect) onSelect(value);
   });
 
   input.addEventListener("input", () => {
@@ -1204,13 +1468,77 @@ function attachComboField(wrapper, options) {
   wrapper.dataset.comboReady = "1";
 }
 
+function wireSubCategoryFilterRerank(categorySelector, subSelector, getOptions) {
+  const catEl = $(categorySelector);
+  if (!catEl || catEl.dataset.subRerankReady === "1") return;
+  catEl.addEventListener("change", () => {
+    const options = typeof getOptions === "function" ? getOptions() : getOptions;
+    populateSubCategorySelect(
+      $(subSelector),
+      options,
+      catEl.value,
+      "All sub-categories",
+      $(subSelector)?.value
+    );
+  });
+  catEl.dataset.subRerankReady = "1";
+}
+
 function setupEditCategoryControls(options) {
   populateEditSearchCategorySelect(options.categories || []);
   populateEditAdvancedFilters(options);
+  wireSubCategoryFilterRerank("#edit-search-category", "#edit-search-sub", () => editOptionsCache);
   if (!editCombosInitialized) {
-    attachComboField(document.querySelector('[data-combo="edit-ai-category"]'), options.categories || []);
-    attachComboField(document.querySelector('[data-combo="edit-ai-sub"]'), options.sub_categories || []);
+    attachComboField(
+      document.querySelector('[data-combo="edit-merchant-key"]'),
+      () => editOptionsCache?.merchant_keys || [],
+      { onSelect: (value) => applyEditMerchantLabelPrefill(value) }
+    );
+    attachComboField(
+      document.querySelector('[data-combo="edit-ai-category"]'),
+      () => editOptionsCache?.categories || []
+    );
+    attachComboField(
+      document.querySelector('[data-combo="edit-ai-sub"]'),
+      () => editOptionsCache?.sub_categories || [],
+      {
+        sectioned: true,
+        getCategory: () => ($("#edit-ai-category")?.value || "").trim(),
+      }
+    );
     editCombosInitialized = true;
+  }
+}
+
+function getEditMerchantLabelMap() {
+  const map = new Map();
+  (editOptionsCache?.merchants || []).forEach((row) => {
+    const key = String(row.merchant_key || "").trim();
+    if (key) map.set(key, row);
+  });
+  return map;
+}
+
+function applyEditMerchantLabelPrefill(merchantKey) {
+  const key = String(merchantKey || "").trim();
+  if (!key) return;
+  const row = getEditMerchantLabelMap().get(key);
+  if (!row) return;
+  const catInput = $("#edit-ai-category");
+  const subInput = $("#edit-ai-sub");
+  const flowSel = $("#edit-label-flow-type");
+  const expenseSel = $("#edit-label-expense-type");
+  const classSel = $("#edit-label-classification");
+  if (catInput && row.ai_category) catInput.value = row.ai_category;
+  if (subInput && row.ai_sub_category) subInput.value = row.ai_sub_category;
+  if (flowSel && row.flow_type) {
+    flowSel.value = row.flow_type === "Income" ? "Income" : "Expense";
+  }
+  if (expenseSel && row.expense_type) {
+    expenseSel.value = row.expense_type === "Fixed" ? "Fixed" : "Variable";
+  }
+  if (classSel && row.classification && EDIT_CLASSIFICATIONS.includes(row.classification)) {
+    classSel.value = row.classification;
   }
 }
 
@@ -1221,13 +1549,21 @@ function renderEditResults(transactions) {
   const rows = transactions
     .map((tx) => {
       const category = tx.ai_category || "—";
+      const sub = tx.ai_sub_category || "—";
+      const expenseType = tx.expense_type || "—";
+      const classification = tx.classification || "—";
       const merchant = tx.merchant_key || "";
+      const simpleDesc = (tx.simple_description || "").trim();
       return `
         <tr>
           <td>${escapeHtml(tx.date || "")}</td>
           <td class="amount">${escapeHtml(formatMoney(tx.amount))}</td>
+          <td>${escapeHtml(simpleDesc || "—")}</td>
           <td>${escapeHtml(merchant)}</td>
           <td>${escapeHtml(category)}</td>
+          <td>${escapeHtml(sub)}</td>
+          <td>${escapeHtml(expenseType)}</td>
+          <td>${escapeHtml(classification)}</td>
           <td class="edit-row-actions">
             <button type="button" class="btn-edit-row" data-tx-id="${escapeAttr(tx.transaction_id)}">Edit</button>
             <button type="button" class="btn-link btn-edit-cadence-link" data-merchant-key="${escapeAttr(merchant)}" title="Open Cadence tab for this merchant">Cadence</button>
@@ -1242,8 +1578,12 @@ function renderEditResults(transactions) {
         <tr>
           ${editSortHeader("Date", "date")}
           ${editSortHeader("Amount", "amount")}
+          <th scope="col">Simple description</th>
           ${editSortHeader("Merchant", "merchant")}
           ${editSortHeader("Category", "ai_category")}
+          <th scope="col">Sub-category</th>
+          <th scope="col">Type</th>
+          <th scope="col">Class</th>
           <th scope="col"></th>
         </tr>
       </thead>
@@ -1287,11 +1627,12 @@ function renderEditMatchList(matches) {
     const li = document.createElement("li");
     li.className = "edit-match-item";
     const labels = [tx.ai_category, tx.ai_sub_category].filter(Boolean).join(" / ") || "—";
+    const simpleDesc = (tx.simple_description || tx.description || "").trim();
     li.innerHTML = `
       <input type="checkbox" class="edit-match-cb" value="${escapeAttr(tx.transaction_id)}" checked />
       <div class="edit-match-item-body">
-        <div class="edit-match-item-title">${escapeHtml(tx.merchant_key || "")} · ${escapeHtml(formatMoney(tx.amount))}</div>
-        <div class="edit-match-item-meta">${escapeHtml(tx.date || "")} · ${escapeHtml(labels)}</div>
+        <div class="edit-match-item-title">${escapeHtml(simpleDesc || tx.merchant_key || "")} · ${escapeHtml(formatMoney(tx.amount))}</div>
+        <div class="edit-match-item-meta">${escapeHtml(tx.date || "")} · ${escapeHtml(tx.merchant_key || "")} · ${escapeHtml(labels)}</div>
       </div>
     `;
     list.appendChild(li);
@@ -1313,6 +1654,8 @@ async function openEditPanel(tx) {
   const singleScope = document.querySelector('input[name="edit-scope"][value="single"]');
   if (singleScope) singleScope.checked = true;
   const summary = $("#edit-source-summary");
+  const merchantInput = $("#edit-merchant-key");
+  const merchantSaveCb = $("#edit-update-merchant-label");
   const catInput = $("#edit-ai-category");
   const subInput = $("#edit-ai-sub");
   const flowSel = $("#edit-label-flow-type");
@@ -1321,13 +1664,20 @@ async function openEditPanel(tx) {
   const resultEl = $("#edit-apply-result");
   if (resultEl) resultEl.textContent = "";
   if (summary) {
+    const simpleDesc = (tx.simple_description || "").trim();
+    const originalDesc = (tx.original_description || "").trim();
     summary.innerHTML = `
-      <strong>${escapeHtml(tx.merchant_key || "")}</strong><br>
+      Bank: ${escapeHtml(simpleDesc || originalDesc || "—")}<br>
+      ${originalDesc && simpleDesc && originalDesc !== simpleDesc
+        ? `Original: ${escapeHtml(originalDesc)}<br>`
+        : ""}
       ${escapeHtml(tx.date || "")} · ${escapeHtml(formatMoney(tx.amount))}<br>
-      Category: ${escapeHtml(tx.ai_category || "—")}${tx.ai_sub_category ? ` / ${escapeHtml(tx.ai_sub_category)}` : ""}<br>
+      Current labels: ${escapeHtml(tx.ai_category || "—")}${tx.ai_sub_category ? ` / ${escapeHtml(tx.ai_sub_category)}` : ""}<br>
       Flow: ${escapeHtml(tx.flow_type || "Expense")} · Expense: ${escapeHtml(tx.expense_type || "—")} · Class: ${escapeHtml(tx.classification || "—")}
     `;
   }
+  if (merchantInput) merchantInput.value = tx.merchant_key || "";
+  if (merchantSaveCb) merchantSaveCb.checked = true;
   if (catInput) catInput.value = tx.ai_category || "";
   if (subInput) subInput.value = tx.ai_sub_category || "";
   if (flowSel) flowSel.value = tx.flow_type === "Income" ? "Income" : "Expense";
@@ -1353,6 +1703,10 @@ function closeEditPanel() {
   if (summary) summary.innerHTML = "";
   if (list) list.innerHTML = "";
   if (countEl) countEl.textContent = "";
+  const merchantInput = $("#edit-merchant-key");
+  const merchantSaveCb = $("#edit-update-merchant-label");
+  if (merchantInput) merchantInput.value = "";
+  if (merchantSaveCb) merchantSaveCb.checked = true;
   const catInput = $("#edit-ai-category");
   const subInput = $("#edit-ai-sub");
   const flowSel = $("#edit-label-flow-type");
@@ -1641,15 +1995,6 @@ async function loadCadenceScope({ resetPage = false } = {}) {
   ]);
 }
 
-function setImportWizardStep(step) {
-  importWizardStep = Math.max(1, Math.min(2, step));
-  setWorkflowStepper($("#import-stepper"), importWizardStep);
-  for (let i = 1; i <= 2; i++) {
-    const panel = $(`#import-step-${i}`);
-    if (panel) panel.classList.toggle("hidden", i !== importWizardStep);
-  }
-}
-
 function updateReviewWorkflow(itemCount) {
   const empty = $("#review-empty-state");
   const stepper = $("#review-stepper");
@@ -1883,9 +2228,10 @@ function populateCadenceFilters(options, status) {
     "All categories",
     $("#cadence-search-category")?.value
   );
-  populateEditSelect(
+  populateSubCategorySelect(
     $("#cadence-search-sub"),
-    options.sub_categories,
+    options,
+    ($("#cadence-search-category")?.value || "").trim(),
     "All sub-categories",
     $("#cadence-search-sub")?.value
   );
@@ -1901,6 +2247,7 @@ function populateCadenceFilters(options, status) {
     "All classifications",
     $("#cadence-search-classification")?.value
   );
+  wireSubCategoryFilterRerank("#cadence-search-category", "#cadence-search-sub", () => editOptionsCache);
 }
 
 async function loadCadencePanel() {
@@ -1970,14 +2317,6 @@ $("#btn-cadence-next")?.addEventListener("click", () => {
   if (cadenceMerchantOffset + CADENCE_MERCHANT_PAGE_SIZE >= cadenceMerchantTotal) return;
   cadenceMerchantOffset += CADENCE_MERCHANT_PAGE_SIZE;
   loadCadenceMerchantsPreview().catch(() => {});
-});
-
-$("#btn-import-next-process")?.addEventListener("click", () => {
-  setImportWizardStep(2);
-});
-
-$("#btn-import-back-upload")?.addEventListener("click", () => {
-  setImportWizardStep(1);
 });
 
 [
@@ -2473,6 +2812,7 @@ $("#edit-label-form")?.addEventListener("submit", async (e) => {
     return;
   }
   const scope = document.querySelector('input[name="edit-scope"]:checked')?.value || "single";
+  const newMerchantKey = ($("#edit-merchant-key")?.value || "").trim();
   const afterLabels = {
     ai_category: ($("#edit-ai-category")?.value || "").trim(),
     ai_sub_category: ($("#edit-ai-sub")?.value || "").trim(),
@@ -2489,25 +2829,30 @@ $("#edit-label-form")?.addEventListener("submit", async (e) => {
   };
   const payload = {
     transaction_ids: ids,
+    new_merchant_key: newMerchantKey,
     ai_category: afterLabels.ai_category,
     ai_sub_category: afterLabels.ai_sub_category,
     flow_type: afterLabels.flow_type,
     expense_type: afterLabels.expense_type,
     classification: afterLabels.classification,
-    update_merchant_label: scope === "merchant",
-    merchant_key: scope === "merchant" ? editSourceTx.merchant_key : null,
+    update_merchant_label: Boolean($("#edit-update-merchant-label")?.checked),
   };
   if (!payload.ai_category) {
     if (resultEl) resultEl.textContent = "Category is required.";
     return;
   }
+  if (!newMerchantKey) {
+    if (resultEl) resultEl.textContent = "Merchant label is required.";
+    return;
+  }
   const insightContext = {
-    merchant_key: editSourceTx.merchant_key,
+    merchant_key: newMerchantKey,
     scope,
     before: beforeLabels,
     after: afterLabels,
     amount: editSourceTx.amount != null ? Number(editSourceTx.amount) : null,
-    update_merchant_label: scope === "merchant",
+    update_merchant_label: payload.update_merchant_label,
+    merchant_key_before: editSourceTx.merchant_key || "",
   };
   if (applyBtn) applyBtn.disabled = true;
   if (resultEl) resultEl.textContent = "Saving…";
@@ -2516,6 +2861,12 @@ $("#edit-label-form")?.addEventListener("submit", async (e) => {
       method: "POST",
       body: JSON.stringify(payload),
     });
+    try {
+      const options = await api("/api/review/options");
+      editOptionsCache = options;
+    } catch (_) {
+      /* options refresh optional */
+    }
     closeEditPanel();
     await runEditSearch({ resetPage: false });
     loadStatus();
@@ -2678,6 +3029,15 @@ async function loadReview() {
     ]);
     reviewOptionsCache = options;
     ensureReviewDatalists(options);
+    if (!list.dataset.subRerankReady) {
+      list.addEventListener("focusin", (e) => {
+        if (!e.target.matches('input[name="sub"]')) return;
+        const form = e.target.closest("form");
+        const cat = form?.querySelector('[name="category"]')?.value?.trim() || "";
+        refreshReviewSubDatalist(cat);
+      });
+      list.dataset.subRerankReady = "1";
+    }
 
     const tips = options.tooltips || {};
     const suggestStatus = $("#review-suggest-status");
@@ -2776,11 +3136,19 @@ async function loadReview() {
       if (categoryInput) {
         categoryInput.addEventListener("change", () => {
           alignReviewClassificationFromCategory(reviewForm);
+          refreshReviewSubDatalist(categoryInput.value.trim());
         });
         categoryInput.addEventListener("input", () => {
           alignReviewClassificationFromCategory(reviewForm);
         });
         alignReviewClassificationFromCategory(reviewForm);
+      }
+
+      const subInput = reviewForm?.querySelector('[name="sub"]');
+      if (subInput) {
+        subInput.addEventListener("focus", () => {
+          refreshReviewSubDatalist(categoryInput?.value?.trim() || "");
+        });
       }
 
       reviewForm.addEventListener("submit", async (ev) => {
@@ -2831,21 +3199,13 @@ function escapeAttr(s) {
   return String(s).replace(/"/g, "&quot;");
 }
 
-function formatScanResultLines(results) {
-  return (results || []).map((r) => {
-    if (!r.ok) return `${r.file}: ERROR — ${r.error}`;
-    if (r.file_unchanged) return `${r.file}: skipped (unchanged file)`;
-    return `${r.file}: ${r.message || `${r.inserted} new, ${r.updated} updated, ${r.skipped} unchanged`}`;
-  });
-}
-
 function formatUploadResultLines(uploads) {
   return (uploads || []).map((u) => {
     if (!u.ok) return `${u.original_name}: upload failed — ${u.error}`;
     if (u.original_name && u.original_name !== u.saved_as) {
       return `${u.original_name} → saved as ${u.saved_as}`;
     }
-    return `${u.saved_as}: copied to inbox`;
+    return `${u.saved_as}: ready in inbox`;
   });
 }
 
@@ -2862,49 +3222,54 @@ function setInboxSelectedFiles(files) {
   el.classList.remove("hidden");
 }
 
-async function uploadAndScan(files) {
-  const resultEl = $("#scan-result");
-  const chooseBtn = $("#btn-choose-scan");
-  const scanBtn = $("#btn-scan-existing");
+async function uploadCsvFiles(files, { runAfterUpload = true } = {}) {
+  const resultEl = $("#upload-result");
+  const chooseBtn = $("#btn-choose-upload");
+  const processBtn = $("#btn-categorize");
+  let startedProcess = false;
   if (!files?.length) {
     if (resultEl) resultEl.textContent = "No files selected.";
-    return;
+    return false;
   }
-  if (resultEl) resultEl.textContent = "Uploading and scanning…";
+  if (resultEl) resultEl.textContent = "Uploading…";
   if (chooseBtn) chooseBtn.disabled = true;
-  if (scanBtn) scanBtn.disabled = true;
+  if (processBtn) processBtn.disabled = true;
   try {
     const form = new FormData();
     for (const file of files) {
       form.append("files", file);
     }
-    const res = await fetch("/api/ingest/upload-and-scan", {
+    const res = await fetch("/api/ingest/upload", {
       method: "POST",
       body: form,
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || res.statusText);
-    const lines = [
-      ...formatUploadResultLines(data.uploads),
-      ...formatScanResultLines(data.results),
-    ];
+    const lines = formatUploadResultLines(data.uploads);
+    const okCount = (data.uploads || []).filter((u) => u.ok).length;
     if (resultEl) {
       resultEl.textContent = lines.length ? lines.join("\n") : JSON.stringify(data, null, 2);
     }
     loadStatus();
-    setImportWizardStep(2);
+    if (okCount === 0) return false;
+    if (runAfterUpload) {
+      startedProcess = true;
+      await runCategorizeStream();
+    }
+    return true;
   } catch (err) {
     if (resultEl) resultEl.textContent = err.message;
+    return false;
   } finally {
     if (chooseBtn) chooseBtn.disabled = false;
-    if (scanBtn) scanBtn.disabled = false;
+    if (processBtn && !startedProcess) processBtn.disabled = false;
     setInboxSelectedFiles(null);
     const input = $("#inbox-file-input");
     if (input) input.value = "";
   }
 }
 
-$("#btn-choose-scan")?.addEventListener("click", () => {
+$("#btn-choose-upload")?.addEventListener("click", () => {
   $("#inbox-file-input")?.click();
 });
 
@@ -2912,30 +3277,7 @@ $("#inbox-file-input")?.addEventListener("change", (e) => {
   const files = e.target.files;
   if (!files?.length) return;
   setInboxSelectedFiles(files);
-  uploadAndScan(files).catch(() => {});
-});
-
-$("#btn-scan-existing")?.addEventListener("click", async () => {
-  const resultEl = $("#scan-result");
-  const chooseBtn = $("#btn-choose-scan");
-  const scanBtn = $("#btn-scan-existing");
-  if (resultEl) resultEl.textContent = "Scanning inbox…";
-  if (chooseBtn) chooseBtn.disabled = true;
-  if (scanBtn) scanBtn.disabled = true;
-  try {
-    const res = await api("/api/ingest/scan", { method: "POST" });
-    const lines = formatScanResultLines(res.results);
-    if (resultEl) {
-      resultEl.textContent = lines.length ? lines.join("\n") : JSON.stringify(res, null, 2);
-    }
-    loadStatus();
-    setImportWizardStep(2);
-  } catch (err) {
-    if (resultEl) resultEl.textContent = err.message;
-  } finally {
-    if (chooseBtn) chooseBtn.disabled = false;
-    if (scanBtn) scanBtn.disabled = false;
-  }
+  uploadCsvFiles(files).catch(() => {});
 });
 
 function setCategorizeProgress(percent, message) {
@@ -2974,7 +3316,7 @@ async function runCategorizeStream() {
     const files = st.inbox_csv_files || [];
     if (files.length === 0) {
       const msg =
-        "No CSV in input/. Use “Choose CSV files & scan”, or copy one export from processed/ back into input/.";
+        "No CSV in input/. Choose CSV files to upload, or copy an export from processed/ back into input/.";
       setCategorizeProgress(0, msg);
       result.textContent = msg;
       btn.disabled = false;
@@ -2990,7 +3332,7 @@ async function runCategorizeStream() {
     return;
   }
 
-  setCategorizeProgress(0, "Starting processing (CLI pipeline)…");
+  setCategorizeProgress(0, "Starting processing…");
   const es = new EventSource("/api/process/stream");
 
   es.onmessage = (ev) => {
@@ -3095,8 +3437,8 @@ async function runCategorizeStream() {
   };
 }
 
-$("#btn-categorize").addEventListener("click", () => {
-  runCategorizeStream();
+$("#btn-categorize")?.addEventListener("click", () => {
+  runCategorizeStream().catch(() => {});
 });
 
 async function loadSettings() {
@@ -3158,6 +3500,583 @@ $("#btn-import-lookups").addEventListener("click", async () => {
 
 loadStatus().catch((e) => {
   $("#status-line").textContent = `Offline: ${e.message}`;
+});
+
+/* --- AI Rules (taxonomy) --- */
+let taxonomyProposals = [];
+const taxonomySelected = new Set();
+let taxonomyApplyMode = "preview";
+let taxonomyOptionsCache = null;
+let taxonomyPreviewData = null;
+const taxonomyGroupPages = new Map();
+const TAXONOMY_PREVIEW_PAGE_SIZE = 25;
+
+async function ensureTaxonomyOptions() {
+  if (!taxonomyOptionsCache) {
+    taxonomyOptionsCache = await api("/api/review/options");
+    const catDl = $("#taxonomy-category-options");
+    const subDl = $("#taxonomy-sub-options");
+    if (catDl) {
+      catDl.innerHTML = (taxonomyOptionsCache.categories || [])
+        .map((c) => `<option value="${escapeAttr(c)}"></option>`)
+        .join("");
+    }
+    if (subDl) {
+      subDl.innerHTML = (taxonomyOptionsCache.sub_categories || [])
+        .map((c) => `<option value="${escapeAttr(c)}"></option>`)
+        .join("");
+    }
+  }
+  return taxonomyOptionsCache;
+}
+
+function taxonomyRuleTypeLabel(ruleType) {
+  if (ruleType === "category_merge") return "Category";
+  if (ruleType === "sub_category_merge") return "Sub-category";
+  if (ruleType === "label_unify") return "Unify";
+  if (ruleType === "merchant_alias") return "Merchant";
+  return ruleType || "Rule";
+}
+
+function taxonomyCustomRuleText(p) {
+  const toSub = p.to_label || "";
+  const toCat = p.target_category || p.scope_category || "";
+  if (p.rule_type === "label_unify") {
+    const variants = (p.from_sub_categories || [p.from_label]).join('", "');
+    return (
+      `When AI Sub-Category is one of "${variants}", ` +
+      `set AI Category to ${toCat || "(unchanged)"} and AI Sub-Category to ${toSub}.`
+    );
+  }
+  if (p.rule_type === "category_merge") {
+    return `When AI Category is ${p.from_label}, set AI Category to ${p.to_label}.`;
+  }
+  if (p.rule_type === "sub_category_merge") {
+    return (
+      `When AI Category is ${p.scope_category || "…"} and AI Sub-Category is ${p.from_label}, ` +
+      `set AI Category to ${toCat || p.scope_category} and AI Sub-Category to ${toSub}.`
+    );
+  }
+  if (p.rule_type === "merchant_alias") {
+    return `Treat merchant "${p.from_label}" the same as "${p.to_label}".`;
+  }
+  return "";
+}
+
+function taxonomyProposalTargetFields(p) {
+  const showCat =
+    p.rule_type === "label_unify" || p.rule_type === "sub_category_merge";
+  const showSub =
+    p.rule_type === "label_unify" || p.rule_type === "sub_category_merge";
+  const showCatOnly = p.rule_type === "category_merge";
+  if (!showCat && !showSub && !showCatOnly) return "";
+
+  const variants =
+    p.rule_type === "label_unify" && p.from_sub_categories?.length
+      ? `<p class="taxonomy-variant-list"><span class="hint">Variants:</span> ${p.from_sub_categories
+          .map((v) => escapeHtml(v))
+          .join(", ")}</p>`
+      : "";
+
+  const catSources =
+    p.source_categories?.length && p.rule_type === "label_unify"
+      ? `<p class="taxonomy-variant-list hint">Currently under: ${escapeHtml(p.source_categories.join(", "))}</p>`
+      : "";
+
+  return `
+    ${variants}
+    ${catSources}
+    <div class="taxonomy-target-fields">
+      ${
+        showSub
+          ? `<label class="taxonomy-target-label">Merge to sub-category
+               <input type="text" class="taxonomy-edit-to-sub" list="taxonomy-sub-options" value="${escapeAttr(p.to_label || "")}" />
+             </label>`
+          : ""
+      }
+      ${
+        showCatOnly
+          ? `<label class="taxonomy-target-label">Merge to category
+               <input type="text" class="taxonomy-edit-to-sub" list="taxonomy-category-options" value="${escapeAttr(p.to_label || "")}" />
+             </label>`
+          : ""
+      }
+      ${
+        showCat
+          ? `<label class="taxonomy-target-label">Target category
+               <input type="text" class="taxonomy-edit-to-cat" list="taxonomy-category-options" value="${escapeAttr(p.target_category || p.scope_category || "")}" />
+             </label>`
+          : ""
+      }
+      <button type="button" class="btn-link taxonomy-save-custom-rule" data-id="${escapeAttr(p.id)}">Save as Custom Rule…</button>
+    </div>`;
+}
+
+function readTaxonomyProposalFromCard(base) {
+  const card = document.querySelector(`.taxonomy-proposal[data-id="${CSS.escape(base.id)}"]`);
+  if (!card) return { ...base };
+  const toSub = card.querySelector(".taxonomy-edit-to-sub")?.value?.trim();
+  const toCat = card.querySelector(".taxonomy-edit-to-cat")?.value?.trim();
+  const updated = { ...base };
+  if (toSub) updated.to_label = toSub;
+  if (toCat) {
+    updated.target_category = toCat;
+    if (updated.rule_type === "sub_category_merge") {
+      updated.scope_category = updated.scope_category || toCat;
+    }
+  }
+  return updated;
+}
+
+function taxonomyConfidenceClass(confidence) {
+  const c = Number(confidence) || 0;
+  if (c >= 0.9) return "high";
+  if (c >= 0.75) return "medium";
+  return "low";
+}
+
+function renderTaxonomySummary(summary) {
+  const el = $("#taxonomy-summary");
+  if (!el || !summary) return;
+  const items = [
+    ["Categories", summary.category_count],
+    ["Category pairs", summary.pair_count],
+    ["Ambiguous subs", summary.ambiguous_sub_category_count],
+    ["Merchant alias groups", summary.alias_group_count],
+    ["Label drift rows", summary.drift_rows],
+    ["Proposals", summary.heuristic_proposal_count ?? summary.proposal_count ?? 0],
+  ];
+  el.innerHTML = items
+    .map(
+      ([label, value]) =>
+        `<div class="taxonomy-stat"><div class="taxonomy-stat-value">${escapeHtml(String(value ?? 0))}</div><div class="taxonomy-stat-label">${escapeHtml(label)}</div></div>`
+    )
+    .join("");
+}
+
+function updateTaxonomyActionButtons() {
+  const n = taxonomySelected.size;
+  const previewBtn = $("#btn-taxonomy-preview");
+  const applyBtn = $("#btn-taxonomy-apply");
+  if (previewBtn) previewBtn.disabled = n === 0;
+  if (applyBtn) applyBtn.disabled = n === 0;
+}
+
+function renderTaxonomyProposals(proposals) {
+  taxonomyProposals = proposals || [];
+  const host = $("#taxonomy-proposals");
+  const empty = $("#taxonomy-empty");
+  if (!host) return;
+
+  taxonomySelected.clear();
+  const selectAll = $("#taxonomy-select-all");
+  if (selectAll) selectAll.checked = false;
+  updateTaxonomyActionButtons();
+
+  if (!taxonomyProposals.length) {
+    host.innerHTML = "";
+    empty?.classList.remove("hidden");
+    return;
+  }
+  empty?.classList.add("hidden");
+
+  host.innerHTML = taxonomyProposals
+    .map((p) => {
+      const confClass = taxonomyConfidenceClass(p.confidence);
+      const fromDisplay =
+        p.rule_type === "label_unify" && p.from_sub_categories?.length
+          ? p.from_sub_categories.join(", ")
+          : p.from_label;
+      const samples =
+        p.sample_merchants?.length > 0
+          ? ` · e.g. ${escapeHtml(p.sample_merchants.slice(0, 3).join(", "))}`
+          : "";
+      return `
+        <article class="taxonomy-proposal" data-id="${escapeAttr(p.id)}">
+          <div class="taxonomy-proposal-head">
+            <input type="checkbox" class="taxonomy-proposal-check" data-id="${escapeAttr(p.id)}" aria-label="Select rule" />
+            <div class="taxonomy-proposal-main">
+              <p class="taxonomy-proposal-merge">
+                <span class="from-label">${escapeHtml(fromDisplay)}</span>
+                → <span class="to-label taxonomy-display-to">${escapeHtml(p.to_label)}</span>
+              </p>
+              <div class="taxonomy-proposal-meta">
+                <span class="taxonomy-badge taxonomy-badge-type-${escapeAttr(p.rule_type)}">${escapeHtml(taxonomyRuleTypeLabel(p.rule_type))}</span>
+                <span class="taxonomy-badge taxonomy-badge-source-${escapeAttr(p.source)}">${escapeHtml(p.source === "llm" ? "AI" : "Heuristic")}</span>
+                <span class="taxonomy-badge taxonomy-badge-conf-${confClass}">${Math.round((p.confidence || 0) * 100)}% conf</span>
+                ${p.automation_ready ? '<span class="taxonomy-badge taxonomy-badge-auto-ready">Future auto</span>' : ""}
+              </div>
+              <p class="taxonomy-proposal-rationale">${escapeHtml(p.rationale || "")}</p>
+              ${taxonomyProposalTargetFields(p)}
+              <p class="taxonomy-proposal-foot">${p.affected_transactions || 0} transaction(s) · $${Number(p.affected_spend || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} expense${samples}</p>
+            </div>
+          </div>
+        </article>`;
+    })
+    .join("");
+
+  host.querySelectorAll(".taxonomy-proposal-check").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const id = cb.dataset.id;
+      const card = cb.closest(".taxonomy-proposal");
+      if (cb.checked) {
+        taxonomySelected.add(id);
+        card?.classList.add("selected");
+      } else {
+        taxonomySelected.delete(id);
+        card?.classList.remove("selected");
+      }
+      updateTaxonomyActionButtons();
+      if (selectAll) {
+        selectAll.checked =
+          taxonomySelected.size > 0 && taxonomySelected.size === taxonomyProposals.length;
+      }
+    });
+  });
+
+  host.querySelectorAll(".taxonomy-edit-to-sub").forEach((input) => {
+    input.addEventListener("input", () => {
+      const card = input.closest(".taxonomy-proposal");
+      const display = card?.querySelector(".taxonomy-display-to");
+      if (display) display.textContent = input.value;
+    });
+  });
+
+  host.querySelectorAll(".taxonomy-save-custom-rule").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.id;
+      const p = taxonomyProposals.find((x) => x.id === id);
+      if (!p) return;
+      const edited = readTaxonomyProposalFromCard(p);
+      const text = taxonomyCustomRuleText(edited);
+      const area = $("#custom-rule-input");
+      if (area) area.value = text;
+      setTab("settings");
+      area?.focus();
+    });
+  });
+}
+
+function getSelectedTaxonomyProposals() {
+  return taxonomyProposals
+    .filter((p) => taxonomySelected.has(p.id))
+    .map((p) => readTaxonomyProposalFromCard(p));
+}
+
+function taxonomyPreviewFieldLabel(ruleType) {
+  if (ruleType === "category_merge") return "Category";
+  if (ruleType === "sub_category_merge" || ruleType === "label_unify") return "Labels";
+  if (ruleType === "merchant_alias") return "Merchant";
+  return "Label";
+}
+
+function taxonomyPreviewFieldValue(state, ruleType, scopeCategory, targetCategory) {
+  if (!state) return "—";
+  if (ruleType === "category_merge") return state.ai_category || "—";
+  if (ruleType === "sub_category_merge" || ruleType === "label_unify") {
+    const cat = state.ai_category || "—";
+    const sub = state.ai_sub_category || "—";
+    return `${cat} / ${sub}`;
+  }
+  if (ruleType === "merchant_alias") return state.merchant_key || "—";
+  return "—";
+}
+
+function taxonomyPreviewAfterValue(state, ruleType, group) {
+  if (!state) return "—";
+  if (ruleType === "category_merge") return group.to_label || state.ai_category || "—";
+  if (ruleType === "sub_category_merge" || ruleType === "label_unify") {
+    const cat = group.target_category || group.scope_category || state.ai_category || "—";
+    const sub = group.to_label || state.ai_sub_category || "—";
+    return `${cat} / ${sub}`;
+  }
+  if (ruleType === "merchant_alias") return group.to_label || state.merchant_key || "—";
+  return "—";
+}
+
+function taxonomyPreviewGroupKey(group, index) {
+  return String(group.proposal_id || `group-${index}`);
+}
+
+function buildTaxonomyPreviewHtml(data) {
+  const stats = data.preview || {};
+  const lines = [
+    ["Category rows updated", stats.category_merges],
+    ["Sub-category rows updated", stats.sub_category_merges],
+    ["Unified label rows", stats.label_unify],
+    ["Merchant alias transactions", stats.merchant_alias_transactions],
+    ["Merchant labels renamed", stats.merchant_labels_renamed],
+    ["Merchant labels deleted", stats.merchant_labels_deleted],
+    ["Cadence rules updated", stats.cadence_rules_updated],
+  ].filter(([, v]) => v != null && Number(v) > 0);
+
+  let html = `<p>Preview for <strong>${data.proposal_count}</strong> selected rule(s)${stats.dry_run ? " (dry run — nothing saved yet)" : ""}:</p>`;
+  if (lines.length) {
+    html += `<ul class="taxonomy-preview-stats">${lines
+      .map(([label, val]) => `<li>${escapeHtml(label)}: <strong>${val}</strong></li>`)
+      .join("")}</ul>`;
+  } else {
+    html += `<p class="hint">No row changes detected — rules may already be applied or labels do not match.</p>`;
+  }
+
+  const groups = data.sample_groups || [];
+  if (groups.length) {
+    html += `<p class="hint" style="margin-top:0.75rem">Matching transactions — <span class="taxonomy-preview-before">before</span> vs <span class="taxonomy-preview-after">after</span> (${TAXONOMY_PREVIEW_PAGE_SIZE} per page):</p>`;
+    groups.forEach((group, groupIdx) => {
+      const groupKey = taxonomyPreviewGroupKey(group, groupIdx);
+      const field = taxonomyPreviewFieldLabel(group.rule_type);
+      const scope =
+        group.rule_type === "sub_category_merge" && group.scope_category
+          ? ` under ${escapeHtml(group.scope_category)}`
+          : "";
+      const samples = group.samples || [];
+      const pageSize = TAXONOMY_PREVIEW_PAGE_SIZE;
+      const pageCount = Math.max(1, Math.ceil(samples.length / pageSize));
+      let page = taxonomyGroupPages.get(groupKey) || 0;
+      if (page >= pageCount) page = pageCount - 1;
+      taxonomyGroupPages.set(groupKey, page);
+      const start = page * pageSize;
+      const pageSamples = samples.slice(start, start + pageSize);
+
+      html += `<div class="taxonomy-preview-group" data-group-key="${escapeAttr(groupKey)}">`;
+      html += `<p class="taxonomy-preview-group-title">${escapeHtml(String(group.from_label))} → ${escapeHtml(String(group.to_label))}${scope}</p>`;
+      html += `<p class="taxonomy-preview-group-meta">${escapeHtml(field)} · ${group.total_matches || 0} matching transaction(s)</p>`;
+
+      if (!samples.length) {
+        html += `<p class="hint">No matching rows in database.</p></div>`;
+        return;
+      }
+
+      if (group.truncated) {
+        const cap = data.max_preview_rows_per_proposal || 2000;
+        html += `<p class="taxonomy-preview-truncated hint">Showing ${samples.length} of ${group.total_matches} transactions (server cap ${cap}).</p>`;
+      }
+
+      html += `<div class="taxonomy-preview-table-wrap"><table class="taxonomy-preview-table"><thead><tr>`;
+      html += `<th>Date</th><th>Merchant</th><th>Amount</th><th>Before</th><th>After</th>`;
+      html += `</tr></thead><tbody>`;
+      for (const row of pageSamples) {
+        const beforeVal = taxonomyPreviewFieldValue(
+          row.before,
+          group.rule_type,
+          group.scope_category,
+          group.target_category
+        );
+        const afterVal = taxonomyPreviewAfterValue(row.after, group.rule_type, group);
+        html += `<tr>`;
+        html += `<td>${escapeHtml(row.date || "")}</td>`;
+        html += `<td>${escapeHtml(row.before?.merchant_key || "—")}</td>`;
+        html += `<td class="amount">${escapeHtml(formatMoney(row.amount))}</td>`;
+        html += `<td class="taxonomy-preview-before">${escapeHtml(beforeVal)}</td>`;
+        html += `<td class="taxonomy-preview-after">${escapeHtml(afterVal)}</td>`;
+        html += `</tr>`;
+      }
+      html += `</tbody></table></div>`;
+
+      if (pageCount > 1) {
+        html += `<div class="taxonomy-preview-pagination">`;
+        html += `<button type="button" class="btn-secondary taxonomy-preview-page-btn" data-group-key="${escapeAttr(groupKey)}" data-dir="prev" ${page <= 0 ? "disabled" : ""}>Previous</button>`;
+        html += `<span class="taxonomy-preview-page-info">Page ${page + 1} of ${pageCount} · ${samples.length} row(s)</span>`;
+        html += `<button type="button" class="btn-secondary taxonomy-preview-page-btn" data-group-key="${escapeAttr(groupKey)}" data-dir="next" ${page >= pageCount - 1 ? "disabled" : ""}>Next</button>`;
+        html += `</div>`;
+      } else {
+        html += `<p class="taxonomy-preview-more">${samples.length} transaction(s) shown.</p>`;
+      }
+      html += `</div>`;
+    });
+  }
+
+  const warnings = stats.warnings || [];
+  if (warnings.length) {
+    html += `<div class="taxonomy-preview-warnings"><strong>Warnings</strong><ul>${warnings
+      .map((w) => `<li>${escapeHtml(w)}</li>`)
+      .join("")}</ul></div>`;
+  }
+  return html;
+}
+
+function refreshTaxonomyPreviewBody() {
+  const body = $("#taxonomy-apply-body");
+  if (body && taxonomyPreviewData) {
+    body.innerHTML = buildTaxonomyPreviewHtml(taxonomyPreviewData);
+  }
+}
+
+function openTaxonomyApplyModal(html, mode) {
+  taxonomyApplyMode = mode;
+  const overlay = $("#taxonomy-apply-overlay");
+  const body = $("#taxonomy-apply-body");
+  const title = $("#taxonomy-apply-title");
+  const confirmBtn = $("#btn-taxonomy-apply-confirm");
+  const errEl = $("#taxonomy-apply-error");
+  taxonomyGroupPages.clear();
+  if (title) {
+    title.textContent =
+      mode === "preview" ? "Preview taxonomy rules" : "Apply taxonomy rules";
+  }
+  if (body) body.innerHTML = html;
+  if (errEl) {
+    errEl.textContent = "";
+    errEl.classList.add("hidden");
+  }
+  if (confirmBtn) {
+    confirmBtn.classList.toggle("hidden", mode === "preview");
+    confirmBtn.disabled = false;
+  }
+  overlay?.classList.remove("hidden");
+  overlay?.setAttribute("aria-hidden", "false");
+}
+
+function closeTaxonomyApplyModal() {
+  const overlay = $("#taxonomy-apply-overlay");
+  overlay?.classList.add("hidden");
+  overlay?.setAttribute("aria-hidden", "true");
+  taxonomyPreviewData = null;
+  taxonomyGroupPages.clear();
+}
+
+async function runTaxonomyPreview(mode) {
+  const selected = getSelectedTaxonomyProposals();
+  if (!selected.length) return;
+  const status = $("#taxonomy-status");
+  if (status) status.textContent = "Running preview…";
+  try {
+    const data = await api("/api/taxonomy-rules/preview", {
+      method: "POST",
+      body: JSON.stringify({ proposals: selected, reconcile: false }),
+    });
+    taxonomyPreviewData = data;
+    openTaxonomyApplyModal(buildTaxonomyPreviewHtml(data), mode);
+    if (status) status.textContent = "";
+  } catch (err) {
+    if (status) status.textContent = err.message;
+  }
+}
+
+async function loadTaxonomyPanel({ analyzeOnly = true } = {}) {
+  const status = $("#taxonomy-status");
+  if (status) status.textContent = analyzeOnly ? "Analyzing…" : "";
+  try {
+    await ensureTaxonomyOptions();
+    const data = analyzeOnly
+      ? await api("/api/taxonomy-rules/analyze")
+      : await api("/api/taxonomy-rules/suggest", { method: "POST", body: "{}" });
+    renderTaxonomySummary(data.summary);
+    renderTaxonomyProposals(data.proposals);
+    if (status) {
+      status.textContent = analyzeOnly
+        ? `Found ${(data.proposals || []).length} heuristic proposal(s).`
+        : `AI review: ${(data.proposals || []).length} proposal(s) (${data.llm_proposal_count ?? 0} from AI).`;
+    }
+  } catch (err) {
+    if (status) status.textContent = err.message;
+  }
+}
+
+$("#btn-taxonomy-analyze")?.addEventListener("click", () => {
+  loadTaxonomyPanel({ analyzeOnly: true }).catch(() => {});
+});
+
+$("#btn-taxonomy-suggest")?.addEventListener("click", async () => {
+  const btn = $("#btn-taxonomy-suggest");
+  const analyzeBtn = $("#btn-taxonomy-analyze");
+  const status = $("#taxonomy-status");
+  if (btn) btn.disabled = true;
+  if (analyzeBtn) analyzeBtn.disabled = true;
+  if (status) status.textContent = "AI is reviewing your labels (may take a minute)…";
+  try {
+    await loadTaxonomyPanel({ analyzeOnly: false });
+  } finally {
+    if (btn) btn.disabled = false;
+    if (analyzeBtn) analyzeBtn.disabled = false;
+  }
+});
+
+$("#taxonomy-select-all")?.addEventListener("change", (e) => {
+  const checked = e.target.checked;
+  taxonomySelected.clear();
+  document.querySelectorAll(".taxonomy-proposal-check").forEach((cb) => {
+    cb.checked = checked;
+    const card = cb.closest(".taxonomy-proposal");
+    if (checked) {
+      taxonomySelected.add(cb.dataset.id);
+      card?.classList.add("selected");
+    } else {
+      card?.classList.remove("selected");
+    }
+  });
+  updateTaxonomyActionButtons();
+});
+
+$("#btn-taxonomy-preview")?.addEventListener("click", () => {
+  runTaxonomyPreview("preview").catch(() => {});
+});
+
+$("#btn-taxonomy-apply")?.addEventListener("click", () => {
+  runTaxonomyPreview("apply").catch(() => {});
+});
+
+$("#btn-taxonomy-apply-close")?.addEventListener("click", closeTaxonomyApplyModal);
+$("#btn-taxonomy-apply-cancel")?.addEventListener("click", closeTaxonomyApplyModal);
+
+$("#btn-taxonomy-apply-confirm")?.addEventListener("click", async () => {
+  const selected = getSelectedTaxonomyProposals();
+  const confirmBtn = $("#btn-taxonomy-apply-confirm");
+  const errEl = $("#taxonomy-apply-error");
+  if (!selected.length) return;
+  if (confirmBtn) confirmBtn.disabled = true;
+  if (errEl) {
+    errEl.textContent = "";
+    errEl.classList.add("hidden");
+  }
+  try {
+    const res = await api("/api/taxonomy-rules/apply", {
+      method: "POST",
+      body: JSON.stringify({
+        proposals: selected,
+        reconcile: false,
+        confirm: "APPLY",
+      }),
+    });
+    closeTaxonomyApplyModal();
+    taxonomySelected.clear();
+    const status = $("#taxonomy-status");
+    if (status) {
+      const s = res.stats || {};
+      status.textContent = `Applied ${res.proposal_count} rule(s) — ${s.category_merges || 0} category, ${s.sub_category_merges || 0} sub-category, ${s.merchant_alias_transactions || 0} merchant row(s) updated.`;
+    }
+    await loadTaxonomyPanel({ analyzeOnly: true });
+    loadStatus();
+    reviewOptionsCache = null;
+    editOptionsCache = null;
+    taxonomyOptionsCache = null;
+  } catch (err) {
+    if (errEl) {
+      errEl.textContent = err.message;
+      errEl.classList.remove("hidden");
+    }
+    if (confirmBtn) confirmBtn.disabled = false;
+  }
+});
+
+$("#taxonomy-apply-overlay")?.addEventListener("click", (e) => {
+  if (e.target.id === "taxonomy-apply-overlay") closeTaxonomyApplyModal();
+});
+
+$("#taxonomy-apply-body")?.addEventListener("click", (e) => {
+  const btn = e.target.closest(".taxonomy-preview-page-btn");
+  if (!btn || btn.disabled) return;
+  const groupKey = btn.dataset.groupKey;
+  const dir = btn.dataset.dir;
+  if (!groupKey || !dir) return;
+  const page = taxonomyGroupPages.get(groupKey) || 0;
+  if (dir === "prev" && page > 0) {
+    taxonomyGroupPages.set(groupKey, page - 1);
+    refreshTaxonomyPreviewBody();
+  } else if (dir === "next") {
+    taxonomyGroupPages.set(groupKey, page + 1);
+    refreshTaxonomyPreviewBody();
+  }
 });
 
 loadChatHistory();

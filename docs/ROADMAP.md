@@ -54,6 +54,8 @@ Single index for planned and completed work. Use this file to pick **what to do 
 |--------|------|--------|
 | [x] | Edit Transactions tab — search, bulk label, scopes | |
 | [x] | **Edit insights (post-apply)** — AI pattern + suggested CustomRule | EDIT_INSIGHTS |
+| [x] | **AI Rules tab** — taxonomy merge proposals (heuristic + LLM), user confirm apply | [AI_TAXONOMY_RULES.md](./AI_TAXONOMY_RULES.md) |
+| [ ] | Auto-apply taxonomy rules at confidence threshold | Future — `automation_ready` on proposals |
 | [ ] | Pipeline reads SQLite `merchant_labels` before LLM on re-import | → [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md) |
 | [~] | Sync web edits → `transaction-lookups.xlsx` (optional export) | Confirm Categories writes **MerchantCategories**; bulk Settings export → [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) |
 
@@ -128,13 +130,13 @@ Single index for planned and completed work. Use this file to pick **what to do 
 
 | Status | Item | Notes |
 |--------|------|-------|
-| [x] | File picker → copy to `input/` → scan | `POST /api/ingest/upload-and-scan` |
+| [x] | File picker → copy to `input/` → run processing | `POST /api/ingest/upload`, `/api/process/stream` |
 | [x] | Scan existing inbox (manual drop) | |
 | [x] | Run processing → SQLite (web) | Import & Categorize → Run processing |
 | [x] | Pipeline per-phase timing | `webapp/pipeline/run.py`, `webapp/processing/timer.py` |
 | [ ] | Same file picker pattern for **Run processing** | → [IMPORT_PROCESS_UPLOAD.md](./IMPORT_PROCESS_UPLOAD.md) |
 
-**Monthly workflow (web):** Upload CSV(s) in **Import & Categorize**, then **Run processing** — populates `finance.db` directly.
+**Monthly workflow (web):** Upload CSV(s) in **Import & Categorize** — files copy to `input/` and processing runs automatically. Use **Run processing** to re-run files already in the inbox.
 
 **Models (from A/B on May 2026):** seed `PIPELINE_MODEL=qwen2.5-coder:32b`; routine months `qwen2.5:7b-instruct` after lookups exist; chat `CHAT_MODEL=qwen2.5:14b`.
 
@@ -188,6 +190,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [EXPENSE_CADENCE_PHASE_D.md](./EXPENSE_CADENCE_PHASE_D.md) | AI cadence propose + confirm (Slice D1) |
 | [REPORT_LAYERS.md](./REPORT_LAYERS.md) | Phase D2–E — report layers, bake, cache |
 | [EDIT_INSIGHTS.md](./EDIT_INSIGHTS.md) | Post-edit AI insight + custom rule suggestion |
+| [AI_TAXONOMY_RULES.md](./AI_TAXONOMY_RULES.md) | AI Rules tab — taxonomy merge proposals |
 | [CHAT_RICH_UI.md](./CHAT_RICH_UI.md) | Chat UI tiers 1–3, `display` API |
 | [CHAT_ROUTING.md](./CHAT_ROUTING.md) | Fix top-categories vs list-transactions shortcut |
 | [CHAT_TIER3_SAVE_REPORT.md](./CHAT_TIER3_SAVE_REPORT.md) | Save-as-report button + API |

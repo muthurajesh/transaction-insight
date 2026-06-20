@@ -9,13 +9,14 @@ from webapp.agent.db_query import execute_readonly_sql
 from webapp.services import custom_reports as saved_reports
 from webapp.services.cadence_insights import propose_cadence
 
-# Chat tools are read-only against finance data. No INSERT/UPDATE/DELETE via chat.
-CHAT_READ_ONLY_TOOLS = frozenset(
+# Full registry (non-chat callers may still use analytics helpers).
+ALL_TOOL_NAMES = frozenset(
     {
         "query_sql",
         "month_total",
         "flow_totals_by_month",
         "top_categories",
+        "compare_categories_by_months",
         "month_vs_avg",
         "list_outliers",
         "available_months",
@@ -26,9 +27,20 @@ CHAT_READ_ONLY_TOOLS = frozenset(
     }
 )
 
+# Chat: query_sql-first. Helpers only for workflows SQL cannot replace.
+CHAT_READ_ONLY_TOOLS = frozenset(
+    {
+        "query_sql",
+        "list_custom_reports",
+        "run_custom_report",
+        "propose_cadence_rule",
+    }
+)
+
 month_total = analytics.month_total
 flow_totals_by_month = analytics.flow_totals_by_month
 top_categories = analytics.top_categories
+compare_categories_by_months = analytics.compare_categories_by_months
 month_vs_avg = analytics.month_vs_avg
 list_outliers = analytics.list_outliers
 available_months = analytics.available_months
@@ -39,10 +51,11 @@ TOOL_DEFINITIONS = [
     {
         "name": "query_sql",
         "description": (
-            "Run a read-only SELECT against SQLite. **Use this first** for spending questions: "
-            "averages, category/merchant filters, comparisons, last N months. "
-            "Main table: transactions (budget_month for monthly rollups; "
-            "expenses: flow_type='Expense' AND amount<0, use SUM(-amount))."
+            "**Primary tool.** Run read-only SELECT on SQLite `transactions` (and related tables). "
+            "Use for spending, categories, merchants, comparisons, averages, trends, lists. "
+            "Expenses: flow_type='Expense' AND amount<0; totals use SUM(-amount). "
+            "Monthly rollups: budget_month (YYYY-MM). "
+            "Compare months side-by-side: GROUP BY ai_category, budget_month OR pivot with CASE WHEN budget_month=..."
         ),
         "parameters": {
             "sql": "SELECT … (required, read-only)",
@@ -50,71 +63,13 @@ TOOL_DEFINITIONS = [
         },
     },
     {
-        "name": "month_total",
-        "description": (
-            "Total spend or income for ONE budget month (YYYY-MM). Omit month to use latest full month. "
-            "For expenses, expense_view: cash (bank), core (run-rate only), normalized (spread annual/lump)."
-        ),
-        "parameters": {
-            "month": "optional YYYY-MM",
-            "flow": "Expense or Income",
-            "expense_view": "optional cash|core|normalized (Expense only, default cash)",
-        },
-    },
-    {
-        "name": "flow_totals_by_month",
-        "description": (
-            "Totals for ALL full months in one call. Use only when the user wants every month "
-            "with no category/merchant filter (e.g. 'show my spending each month'). "
-            "For averages, categories, or last N months, use query_sql instead."
-        ),
-        "parameters": {
-            "flow": "Income or Expense",
-            "full_months_only": "optional bool default true",
-            "expense_view": "optional cash|core|normalized (Expense only)",
-        },
-    },
-    {
-        "name": "top_categories",
-        "description": (
-            "Top spending categories for a month (outflows only). "
-            "Use expense_view=normalized when user asks for monthly budget / spread annual charges."
-        ),
-        "parameters": {
-            "month": "YYYY-MM",
-            "limit": "optional int",
-            "expense_view": "optional cash|core|normalized (default cash)",
-        },
-    },
-    {
-        "name": "month_vs_avg",
-        "description": "Compare month total expenses to average across all months.",
-        "parameters": {"month": "YYYY-MM"},
-    },
-    {
-        "name": "list_outliers",
-        "description": "Categories with unusual spend vs their historical monthly average.",
-        "parameters": {"month": "YYYY-MM", "threshold_pct": "optional float default 50"},
-    },
-    {
-        "name": "available_months",
-        "description": (
-            "List budget months in the database with transaction counts. "
-            "Use full_months for complete monthly exports; partial months may be payroll spillover only."
-        ),
-        "parameters": {},
-    },
-    {
         "name": "list_custom_reports",
-        "description": "List all saved custom reports (names, parameters, descriptions).",
+        "description": "List saved custom reports (names, parameters). Not for ad-hoc analysis — use query_sql.",
         "parameters": {},
     },
     {
         "name": "run_custom_report",
-        "description": (
-            "Run a saved report by report_id or name. "
-            "Pass params e.g. month='2026-04' or months=['2026-03','2026-04'], limit=10."
-        ),
+        "description": "Re-run a saved custom report by name/id with parameters.",
         "parameters": {
             "report": "report_id or name (required)",
             "params": "optional dict of parameter values",
@@ -122,29 +77,15 @@ TOOL_DEFINITIONS = [
         },
     },
     {
-        "name": "list_transactions",
-        "description": (
-            "List individual transactions for one budget month, optionally filtered by ai_category. "
-            "Use when the user asks to see/show/list transactions for a category and month."
-        ),
-        "parameters": {
-            "month": "YYYY-MM (required)",
-            "category": "optional ai_category e.g. Insurance, Groceries",
-            "flow": "optional Expense (default), Income, Transfer, Adjustment",
-            "limit": "optional int default 100 max 500",
-        },
-    },
-    {
         "name": "propose_cadence_rule",
         "description": (
-            "Propose expense cadence for a merchant (annual insurance, monthly sub, bi-weekly, etc.). "
-            "Use when the user explains how a charge should be treated for monthly/run-rate reporting. "
-            "Returns a proposal the UI can confirm — does not save until user approves."
+            "Propose expense cadence for a merchant (annual, monthly, bi-weekly). "
+            "UI workflow only — does not save until user confirms."
         ),
         "parameters": {
-            "merchant_key": "optional exact Generated Description / merchant_key",
-            "transaction_id": "optional transaction id for amount preview",
-            "hint": "optional user words about cadence (e.g. yearly insurance)",
+            "merchant_key": "optional exact merchant_key",
+            "transaction_id": "optional transaction id",
+            "hint": "optional user words about cadence",
         },
     },
 ]
@@ -152,10 +93,18 @@ TOOL_DEFINITIONS = [
 CHAT_TOOL_DEFINITIONS = [t for t in TOOL_DEFINITIONS if t["name"] in CHAT_READ_ONLY_TOOLS]
 
 
-def run_tool(conn: sqlite3.Connection, name: str, args: dict[str, Any]) -> Any:
-    if name not in CHAT_READ_ONLY_TOOLS:
+def run_tool(
+    conn: sqlite3.Connection,
+    name: str,
+    args: dict[str, Any],
+    *,
+    chat_mode: bool = False,
+) -> Any:
+    if name not in ALL_TOOL_NAMES:
+        raise ValueError(f"Unknown tool: {name}")
+    if chat_mode and name not in CHAT_READ_ONLY_TOOLS:
         raise ValueError(
-            f"Tool {name!r} is not available in chat (read-only access only)."
+            f"Tool {name!r} is not available in chat — use query_sql for data questions."
         )
     if name == "query_sql":
         return execute_readonly_sql(
@@ -183,6 +132,12 @@ def run_tool(conn: sqlite3.Connection, name: str, args: dict[str, Any]) -> Any:
             args["month"],
             limit=int(args.get("limit", 10)),
             expense_view=str(args.get("expense_view", "cash")),
+        )
+    if name == "compare_categories_by_months":
+        return compare_categories_by_months(
+            conn,
+            args["months"],
+            limit=int(args.get("limit", 100)),
         )
     if name == "month_vs_avg":
         return month_vs_avg(conn, args["month"])

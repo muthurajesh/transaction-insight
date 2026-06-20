@@ -58,6 +58,21 @@ def get_review_options(conn: sqlite3.Connection) -> dict:
         ORDER BY 1
         """
     ).fetchall()
+    pair_rows = conn.execute(
+        """
+        SELECT ai_category, ai_sub_category FROM (
+            SELECT ai_category, ai_sub_category FROM transactions
+            WHERE ai_category IS NOT NULL AND TRIM(ai_category) != ''
+              AND ai_sub_category IS NOT NULL AND TRIM(ai_sub_category) != ''
+            UNION
+            SELECT ai_category, ai_sub_category FROM merchant_labels
+            WHERE ai_category IS NOT NULL AND TRIM(ai_category) != ''
+              AND ai_sub_category IS NOT NULL AND TRIM(ai_sub_category) != ''
+        )
+        GROUP BY ai_category, ai_sub_category
+        ORDER BY ai_category, ai_sub_category
+        """
+    ).fetchall()
     class_rows = conn.execute(
         """
         SELECT DISTINCT classification FROM transactions
@@ -68,6 +83,15 @@ def get_review_options(conn: sqlite3.Connection) -> dict:
 
     categories = sorted({*DEFAULT_CATEGORIES, *(r[0] for r in cat_rows)})
     sub_categories = sorted({r[0] for r in sub_rows if r[0]})
+    sub_categories_by_category: dict[str, list[str]] = {}
+    for cat, sub in pair_rows:
+        category = str(cat or "").strip()
+        sub_category = str(sub or "").strip()
+        if not category or not sub_category:
+            continue
+        sub_categories_by_category.setdefault(category, []).append(sub_category)
+    for category in sub_categories_by_category:
+        sub_categories_by_category[category] = sorted(set(sub_categories_by_category[category]))
     classifications = sorted({r[0] for r in class_rows if r[0]})
 
     period_rows = conn.execute(
@@ -111,10 +135,29 @@ def get_review_options(conn: sqlite3.Connection) -> dict:
         {"value": value, "label": label} for value, label in RUN_RATE_FILTER_OPTIONS
     ]
 
+    merchant_rows = conn.execute(
+        """
+        SELECT merchant_key,
+               ai_category,
+               ai_sub_category,
+               expense_type,
+               classification,
+               COALESCE(flow_type, '') AS flow_type
+        FROM merchant_labels
+        WHERE merchant_key IS NOT NULL AND TRIM(merchant_key) != ''
+        ORDER BY merchant_key COLLATE NOCASE
+        """
+    ).fetchall()
+    merchants = [dict(r) for r in merchant_rows]
+    merchant_keys = [str(m["merchant_key"]) for m in merchants]
+
     return {
         "categories": categories,
         "sub_categories": sub_categories,
+        "sub_categories_by_category": sub_categories_by_category,
         "classifications": classifications,
+        "merchant_keys": merchant_keys,
+        "merchants": merchants,
         "cadence_kinds": cadence_kinds,
         "cadence_periods": cadence_periods,
         "run_rate_filters": run_rate_filters,
