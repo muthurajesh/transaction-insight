@@ -22,7 +22,7 @@ This project automates that enrichment:
 | Fix uncertain merchants | **Confirm Categories** |
 | Clean duplicate labels | **AI Rules** — merge synonyms (user confirms before apply) |
 | Edit rows, cadence, custom rules | **Edit Transactions**, **Cadence**, Settings |
-| Ask questions | **Chat** (“How much did I spend in 2026-04?”) |
+| Ask questions | **Chat** — type or use **Mic** (Chrome/Edge); voice stops after 3s silence or 30s max and sends automatically |
 
 **Processing core:** [`webapp/pipeline/`](webapp/pipeline/) orchestrates [`webapp/processing/`](webapp/processing/) (LLM, rules, cadence). Lookups default to **SQLite** (`LOOKUP_SOURCE=db`); Excel is optional backup (`EXPORT_LOOKUPS=1`).
 
@@ -150,7 +150,7 @@ Detail: [docs/AI_TAXONOMY_RULES.md](docs/AI_TAXONOMY_RULES.md).
 3. **AI Rules** — periodically merge duplicate categories/subs/merchant names.  
 4. **Cadence** — set run-rate rules for irregular merchants (insurance, annual fees).  
 5. **Edit Transactions** — fix one-offs; save **Custom Rules** when the same pattern will repeat.  
-6. **Chat** — explore spend; use cadence keywords + merchant name to open cadence proposals.
+6. **Chat** — explore spend; use cadence keywords + merchant name to open cadence proposals. **Mic** transcribes in the input (3s silence or 30s cap) and auto-sends when listening ends; click **Listening…** to stop without sending.
 
 ### Further reading
 
@@ -161,6 +161,7 @@ Detail: [docs/AI_TAXONOMY_RULES.md](docs/AI_TAXONOMY_RULES.md).
 | [docs/EDIT_INSIGHTS.md](docs/EDIT_INSIGHTS.md) | Post-edit insights and Custom Rule suggestions |
 | [docs/EXPENSE_CADENCE_PHASE_D.md](docs/EXPENSE_CADENCE_PHASE_D.md) | AI cadence propose + confirm |
 | [docs/CONFIRM_CATEGORIES.md](docs/CONFIRM_CATEGORIES.md) | Review queue and confirm scopes |
+| [docs/CHAT_RICH_UI.md](docs/CHAT_RICH_UI.md) | Chat tables, Help panel, voice input |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What’s shipped vs planned (e.g. auto-apply taxonomy at confidence threshold) |
 
 ## Where files live
