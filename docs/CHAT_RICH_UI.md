@@ -32,13 +32,13 @@ User → Chat UI (app.js) → POST /api/chat → chat.py (agent + tools) → SQL
 | Markdown rendering | [marked](https://marked.js.org/) + [DOMPurify](https://github.com/cure53/DOMPurify) | Tables, bold, lists in assistant messages |
 | Interactive tables | [Tabulator](https://tabulator.info/) | Sort, filter, scroll when `display.type === "table"` |
 | Wider layout | CSS | Chat panel matches review width (~1280px) |
-| Voice input | Web Speech API | Mic button on chat input (Chrome / Edge) |
+| Voice input | Web Speech API | Mic — continuous listen; 3s silence or 30s cap; auto-send when done (Chrome / Edge) |
 | Tool trace | Collapsible `<details>` | Show which tools ran without clutter |
 | Loading state | UI only | “Thinking…” while waiting for Ollama |
 
 **Backend:** `display` payload attached when the last tool returns tabular data (`list_transactions`, `query_sql`, `run_custom_report`).
 
-**Also shipped (post–Tier 1):** **Help panel** — side panel with abbreviated commands, expand-for-description, and **+** insert into chat (`CHAT_HELP_COMMANDS` in `app.js`). Covers the Tier 3 “suggested prompts” idea in a richer form; inline chips are **not planned**.
+**Also shipped (post–Tier 1):** **Help panel** — side panel with abbreviated commands, expand-for-description, and **+** insert into chat (`CHAT_HELP_COMMANDS` in `app.js`). Covers the Tier 3 “suggested prompts” idea in a richer form; inline chips are **not planned**. **Voice input UX** — mic focuses the composer, streams transcript into the field, stops on 3s silence or 30s max, and auto-submits when listening ends (manual **Listening…** stop leaves text for edit).
 
 ### Tier 2 — Charts & summaries (implemented)
 
@@ -118,6 +118,9 @@ Option A Tier 1–3 is the right default for an integrated local finance app on 
 
 - Uses `SpeechRecognition` / `webkitSpeechRecognition` (Chromium).
 - On unsupported browsers the mic button is disabled with a tooltip.
+- Clicking **Mic** focuses the chat input and starts listening; transcript appears in the field as you speak.
+- Stops automatically after **3 seconds** of silence or **30 seconds** of continuous listening (whichever comes first). Click **Listening…** to stop early without sending.
+- When listening ends on its own and there is transcribed text, the message is sent automatically (same as **Send**).
 - Audio may be processed by the browser vendor’s speech service when using Web Speech API.
 
 ## Verification

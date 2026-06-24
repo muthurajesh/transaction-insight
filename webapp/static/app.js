@@ -657,45 +657,151 @@ $("#chat-form").addEventListener("submit", async (e) => {
     return;
   }
 
+  const SILENCE_MS = 3000;
+  const MAX_LISTEN_MS = 30000;
+
   const recognition = new SpeechRecognition();
-  recognition.continuous = false;
+  recognition.continuous = true;
   recognition.interimResults = true;
   recognition.lang = "en-US";
+
   let listening = false;
+  let intentionalStop = false;
+  let pendingAutoSend = false;
+  let finalTranscript = "";
+  let silenceTimer = null;
+  let maxTimer = null;
+  let listenStartedAt = 0;
+
+  function focusInputAtEnd() {
+    input.focus();
+    const len = input.value.length;
+    input.setSelectionRange(len, len);
+  }
+
+  function clearTimers() {
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
+    if (maxTimer) {
+      clearTimeout(maxTimer);
+      maxTimer = null;
+    }
+  }
+
+  function updateTranscript(interim = "") {
+    input.value = (finalTranscript + interim).trim();
+    focusInputAtEnd();
+  }
+
+  function armSilenceTimer() {
+    if (silenceTimer) clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(() => stopListening(true, true), SILENCE_MS);
+  }
+
+  function armMaxTimer() {
+    if (maxTimer) clearTimeout(maxTimer);
+    const remaining = MAX_LISTEN_MS - (Date.now() - listenStartedAt);
+    if (remaining <= 0) {
+      stopListening(true, true);
+      return;
+    }
+    maxTimer = setTimeout(() => stopListening(true, true), remaining);
+  }
+
+  function finishListening() {
+    listening = false;
+    intentionalStop = false;
+    clearTimers();
+    micBtn.classList.remove("listening");
+    micBtn.textContent = "Mic";
+    micBtn.setAttribute("aria-label", "Voice input");
+    micBtn.title = "Voice input (Chrome / Edge)";
+    focusInputAtEnd();
+    const shouldSend = pendingAutoSend && input.value.trim() && !chatBusy;
+    pendingAutoSend = false;
+    if (shouldSend) {
+      $("#chat-form")?.requestSubmit();
+    }
+  }
+
+  function stopListening(intentional = false, autoSend = false) {
+    if (!listening) return;
+    intentionalStop = intentional;
+    pendingAutoSend = autoSend;
+    try {
+      recognition.stop();
+    } catch (_) {
+      finishListening();
+    }
+  }
 
   recognition.onresult = (event) => {
-    let transcript = "";
+    let interim = "";
     for (let i = event.resultIndex; i < event.results.length; i += 1) {
-      transcript += event.results[i][0].transcript;
+      const result = event.results[i];
+      const piece = result[0].transcript;
+      if (result.isFinal) {
+        finalTranscript += piece;
+      } else {
+        interim += piece;
+      }
     }
-    input.value = transcript.trim();
+    updateTranscript(interim);
+    armSilenceTimer();
+  };
+
+  recognition.onspeechstart = () => {
+    armSilenceTimer();
+  };
+
+  recognition.onspeechend = () => {
+    armSilenceTimer();
   };
 
   recognition.onend = () => {
-    listening = false;
-    micBtn.classList.remove("listening");
-    micBtn.textContent = "Mic";
+    if (listening && !intentionalStop) {
+      const elapsed = Date.now() - listenStartedAt;
+      if (elapsed < MAX_LISTEN_MS) {
+        try {
+          recognition.start();
+          armMaxTimer();
+          return;
+        } catch (_) {
+          /* restart failed */
+        }
+      }
+    }
+    finishListening();
   };
 
-  recognition.onerror = () => {
-    listening = false;
-    micBtn.classList.remove("listening");
-    micBtn.textContent = "Mic";
+  recognition.onerror = (event) => {
+    if (event.error === "no-speech" || event.error === "aborted") return;
+    stopListening(true);
   };
 
   micBtn.addEventListener("click", () => {
     if (chatBusy) return;
+    focusInputAtEnd();
     if (listening) {
-      recognition.stop();
+      stopListening(true, false);
       return;
     }
+    finalTranscript = input.value.trim() ? `${input.value.trim()} ` : "";
+    intentionalStop = false;
+    listening = true;
+    listenStartedAt = Date.now();
+    micBtn.classList.add("listening");
+    micBtn.textContent = "Listening…";
+    micBtn.setAttribute("aria-label", "Stop voice input");
+    micBtn.title = "Listening — click to stop";
+    armSilenceTimer();
+    armMaxTimer();
     try {
       recognition.start();
-      listening = true;
-      micBtn.classList.add("listening");
-      micBtn.textContent = "Stop";
     } catch (_) {
-      /* already started */
+      finishListening();
     }
   });
 })();

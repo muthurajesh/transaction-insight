@@ -1,31 +1,44 @@
 ---
-description: "On significant changes or commits, summarize the diff and keep README.md accurate — update only sections that are stale or missing."
+description: >-
+  Pre-commit docs sync — README, ROADMAP, linked docs, commit message draft.
+  Run when the user says "pre commit check", asks to commit, or after significant user-facing changes.
 alwaysApply: true
 ---
 
-# README sync after significant changes
+# Pre-commit docs sync
 
-When you finish work that is **significant** — or when the user asks you to **commit** — do this **before** considering the task done (and include README updates in the same change set when needed).
+## Triggers
+
+Run the **full workflow** below when any of these apply:
+
+1. User says **pre commit check** (case-insensitive)
+2. User asks to **commit** or draft a commit message
+3. You finish work that is **significant** (before marking the task done)
 
 ## What counts as significant
-
-Treat a change as significant if it affects any of:
 
 - User-visible UI (tabs, workflows, Settings, feature flags)
 - `config/.env*` variables or defaults
 - API routes, pipeline phases, or data model behavior users rely on
 - Quick start, LLM setup, lookups, cadence, or custom-rules behavior
 - New or removed top-level `docs/` guides linked from README
+- Shipping or materially changing a **ROADMAP** checkbox item
 
-**Skip** README work for: typo/format-only edits, refactors with no behavior change, test-only changes, or narrow internal fixes with no user-facing impact.
+**Skip** for: typo/format-only, refactors with no behavior change, test-only, or narrow internal fixes with no user-facing impact.
 
 ## Required workflow
 
-1. **Summarize** — In your reply (and when drafting a commit message), give a short bullet summary: what changed, why, and what users should know.
-2. **Read `README.md`** — Scan sections that might be affected (workflow table, Quick start, How AI is used, LLM setup, lookups, cadence, custom rules, project files).
-3. **Update surgically** — Fix outdated text, add missing bullets/rows, remove references to removed features. Do **not** rewrite the whole README or duplicate content that belongs in `docs/`.
-4. **Keep env docs aligned** — If you add or rename env vars, update `config/.env.example` and the matching preset(s) (`config/.env.lmstudio`, `config/.env.ollama`) using the project layout: **common settings at top**, **LLM provider block at bottom**. Provider-specific vars only in the relevant preset.
-5. **Do not commit** unless the user asked; when they do, include README (and env example) updates in that commit if the change was significant.
+1. **Inspect the diff** — `git status` and `git diff` (staged + unstaged). List files changed.
+2. **Summarize** — Short bullets: what changed, why, what users should know. Use this in the reply and commit message.
+3. **Cross-check ROADMAP** — Read `docs/ROADMAP.md`. If the change completes, advances, or defers a roadmap item:
+   - Mark `[x]` / `[~]` / `[ ]` on the matching checkbox
+   - Update the linked detail doc (e.g. `CHAT_RICH_UI.md`, `EXPENSE_CADENCE_PHASE_D.md`)
+   - Update `docs/AI_SESSION_CONTEXT.md` if it describes shipped vs pending state for that area
+4. **Read `README.md`** — Scan affected sections (workflow table, Quick start, How AI is used, LLM setup, lookups, cadence, custom rules, project files, Further reading).
+5. **Update surgically** — Fix stale README text; add doc links; do **not** rewrite the whole README or duplicate `docs/` content.
+6. **Keep env docs aligned** — New/renamed env vars → `config/.env.example` and matching presets (common at top, LLM block at bottom).
+7. **Draft commit message** — 1–2 sentences focused on **why**; note user-facing impact. **Do not commit** unless the user asked.
+8. **Reply** — Include summary, roadmap/doc updates (if any), files in the commit, and the draft message.
 
 ## README sections checklist
 
@@ -38,10 +51,10 @@ Treat a change as significant if it affects any of:
 | Pipeline lookups | `LOOKUP_SOURCE`, import/export, or storage change |
 | Expense cadence | Cadence UI, rules, or analytics views change |
 | Custom Rules | Compile/apply flow or Settings behavior change |
-| Project files | New top-level modules or important `docs/` entry points |
+| Project files / Further reading | New modules or important `docs/` entry points |
 
 ## Quality bar
 
-- README stays the **onboarding map**; deep design stays in `docs/`.
+- README = onboarding map; deep design stays in `docs/`.
+- ROADMAP = status index; implementation detail stays in linked MD files.
 - Prefer tables and one-line bullets over long prose.
-- If unsure whether README needs an update, read the diff against the checklist above — when in doubt for a significant feature, update README.

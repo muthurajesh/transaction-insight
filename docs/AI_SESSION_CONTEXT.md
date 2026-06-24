@@ -97,6 +97,7 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 ### Chat UI
 
 - Tiers 1–2 done; routing fix for top categories ([CHAT_RICH_UI.md](./CHAT_RICH_UI.md), [CHAT_ROUTING.md](./CHAT_ROUTING.md))
+- **Mic** — continuous listen, 3s silence / 30s cap, auto-send when listening ends (CHAT_RICH_UI § Voice input)
 - Tier 3: save-as-report, multiline composer — pending
 
 ### Bulk history / migration

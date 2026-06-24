@@ -37,6 +37,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | Status | Item | Detail |
 |--------|------|--------|
 | [x] | Tier 1 — Markdown, Tabulator, mic, tool trace, `display` API | CHAT_RICH_UI § Tier 1 |
+| [x] | **Voice input UX** — focus input, continuous listen, 3s silence / 30s cap, auto-send | CHAT_RICH_UI § Voice input |
 | [x] | Help panel — commands, descriptions, **+** insert | CHAT_RICH_UI § Tier 1 |
 | [x] | Tier 2 — Chart.js, CSV export, chat history restore | CHAT_RICH_UI § Tier 2 |
 | [ ] | Tier 3 — **Save as report** from table replies | → [CHAT_TIER3_SAVE_REPORT.md](./CHAT_TIER3_SAVE_REPORT.md) |
