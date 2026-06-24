@@ -23,6 +23,8 @@ from webapp.config import (
     LOOKUP_FILE,
     PIPELINE_MODEL,
     STATIC_DIR,
+    UI_SHOW_CADENCE,
+    UI_SHOW_EXCEL_LOOKUP_IMPORT,
 )
 from webapp.db.schema import get_connection, init_db
 from webapp.services.categorize import (
@@ -268,6 +270,8 @@ def api_status() -> dict[str, Any]:
             "review_merchant_count": review_count,
             "months": [r["budget_month"] for r in months],
             "table_counts": counts,
+            "ui_show_cadence": UI_SHOW_CADENCE,
+            "ui_show_excel_lookup_import": UI_SHOW_EXCEL_LOOKUP_IMPORT,
         }
     finally:
         conn.close()
@@ -1057,6 +1061,8 @@ def api_settings() -> dict[str, Any]:
             "lookup_file": str(lookup_path),
             "lookup_file_exists": lookup_path.is_file(),
             "table_counts": table_counts(conn),
+            "ui_show_cadence": UI_SHOW_CADENCE,
+            "ui_show_excel_lookup_import": UI_SHOW_EXCEL_LOOKUP_IMPORT,
         }
     finally:
         conn.close()

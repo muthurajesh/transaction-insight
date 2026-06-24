@@ -1,5 +1,24 @@
 const $ = (sel) => document.querySelector(sel);
 
+let uiShowCadence = true;
+let uiShowExcelLookupImport = true;
+
+function applyUiFeatureFlags() {
+  const cadenceTab = $("#tab-cadence");
+  const cadencePanel = $("#panel-cadence");
+  if (cadenceTab) cadenceTab.classList.toggle("hidden", !uiShowCadence);
+  if (cadencePanel) {
+    cadencePanel.classList.toggle("hidden", !uiShowCadence);
+    if (!uiShowCadence && cadencePanel.classList.contains("active")) {
+      setTab("chat", { skipCadenceGuard: true });
+    }
+  }
+  const excelCard = $("#settings-excel-import-card");
+  if (excelCard) excelCard.classList.toggle("hidden", !uiShowExcelLookupImport);
+  const cadenceRulesCard = $("#settings-cadence-rules-card");
+  if (cadenceRulesCard) cadenceRulesCard.classList.toggle("hidden", !uiShowCadence);
+}
+
 async function api(path, options = {}) {
   const res = await fetch(path, {
     headers: { "Content-Type": "application/json", ...options.headers },
@@ -10,8 +29,9 @@ async function api(path, options = {}) {
   return data;
 }
 
-function setTab(name) {
+function setTab(name, options = {}) {
   if (customRulesBusy) return;
+  if (name === "cadence" && !uiShowCadence && !options.skipCadenceGuard) return;
   document.querySelectorAll(".tab").forEach((t) => {
     t.classList.toggle("active", t.dataset.tab === name);
   });
@@ -22,11 +42,11 @@ function setTab(name) {
   if (name === "settings") {
     loadSettings();
     loadCustomRules();
-    loadCadenceRulesList();
+    if (uiShowCadence) loadCadenceRulesList();
   }
   if (name === "chat") loadChatHistory();
   if (name === "edit") loadTransactionEditor();
-  if (name === "cadence") loadCadencePanel();
+  if (name === "cadence" && uiShowCadence) loadCadencePanel();
   if (name === "taxonomy") loadTaxonomyPanel();
 }
 
@@ -52,6 +72,9 @@ document.querySelectorAll(".tab").forEach((btn) => {
 
 async function loadStatus() {
   const s = await api("/api/status");
+  uiShowCadence = s.ui_show_cadence !== false;
+  uiShowExcelLookupImport = s.ui_show_excel_lookup_import !== false;
+  applyUiFeatureFlags();
   const provider = s.llm_provider ? `${s.llm_provider} · ` : "";
   let modelLabel = s.chat_model || s.llm_model || "";
   if (s.pipeline_model && s.chat_model && s.pipeline_model !== s.chat_model) {
@@ -214,7 +237,7 @@ function appendToolTrace(parent, toolTrace) {
 }
 
 function appendCadenceProposalAction(parent, proposal) {
-  if (!proposal || !proposal.insight) return;
+  if (!uiShowCadence || !proposal || !proposal.insight) return;
   const wrap = document.createElement("div");
   wrap.className = "chat-cadence-proposal";
   const btn = document.createElement("button");
@@ -1181,7 +1204,7 @@ function renderCadencePreviewLine(amounts) {
 }
 
 function openCadenceForMerchant(merchantKey) {
-  if (!merchantKey) return;
+  if (!uiShowCadence || !merchantKey) return;
   closeEditPanel();
   pendingCadenceMerchant = merchantKey;
   setTab("cadence");
@@ -1554,6 +1577,9 @@ function renderEditResults(transactions) {
       const classification = tx.classification || "—";
       const merchant = tx.merchant_key || "";
       const simpleDesc = (tx.simple_description || "").trim();
+      const cadenceBtn = uiShowCadence
+        ? `<button type="button" class="btn-link btn-edit-cadence-link" data-merchant-key="${escapeAttr(merchant)}" title="Open Cadence tab for this merchant">Cadence</button>`
+        : "";
       return `
         <tr>
           <td>${escapeHtml(tx.date || "")}</td>
@@ -1566,7 +1592,7 @@ function renderEditResults(transactions) {
           <td>${escapeHtml(classification)}</td>
           <td class="edit-row-actions">
             <button type="button" class="btn-edit-row" data-tx-id="${escapeAttr(tx.transaction_id)}">Edit</button>
-            <button type="button" class="btn-link btn-edit-cadence-link" data-merchant-key="${escapeAttr(merchant)}" title="Open Cadence tab for this merchant">Cadence</button>
+            ${cadenceBtn}
           </td>
         </tr>
       `;

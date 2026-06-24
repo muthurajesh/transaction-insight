@@ -32,6 +32,20 @@ EXPORT_LOOKUPS_TO_EXCEL = os.getenv("EXPORT_LOOKUPS", "").strip().lower() in (
 )
 
 
+def env_bool(name: str, *, default: bool = True) -> bool:
+    """Parse UI/feature flags: 1/true/yes/on → True; 0/false/no/off → False."""
+    raw = os.getenv(name, "").strip().lower()
+    if not raw:
+        return default
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return raw in ("1", "true", "yes", "on")
+
+
+UI_SHOW_CADENCE = env_bool("UI_SHOW_CADENCE", default=True)
+UI_SHOW_EXCEL_LOOKUP_IMPORT = env_bool("UI_SHOW_EXCEL_LOOKUP_IMPORT", default=True)
+
+
 def default_lookup_path() -> Path:
     return LOOKUP_FILE
 

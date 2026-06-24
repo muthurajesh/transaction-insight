@@ -1,0 +1,47 @@
+---
+description: "On significant changes or commits, summarize the diff and keep README.md accurate — update only sections that are stale or missing."
+alwaysApply: true
+---
+
+# README sync after significant changes
+
+When you finish work that is **significant** — or when the user asks you to **commit** — do this **before** considering the task done (and include README updates in the same change set when needed).
+
+## What counts as significant
+
+Treat a change as significant if it affects any of:
+
+- User-visible UI (tabs, workflows, Settings, feature flags)
+- `config/.env*` variables or defaults
+- API routes, pipeline phases, or data model behavior users rely on
+- Quick start, LLM setup, lookups, cadence, or custom-rules behavior
+- New or removed top-level `docs/` guides linked from README
+
+**Skip** README work for: typo/format-only edits, refactors with no behavior change, test-only changes, or narrow internal fixes with no user-facing impact.
+
+## Required workflow
+
+1. **Summarize** — In your reply (and when drafting a commit message), give a short bullet summary: what changed, why, and what users should know.
+2. **Read `README.md`** — Scan sections that might be affected (workflow table, Quick start, How AI is used, LLM setup, lookups, cadence, custom rules, project files).
+3. **Update surgically** — Fix outdated text, add missing bullets/rows, remove references to removed features. Do **not** rewrite the whole README or duplicate content that belongs in `docs/`.
+4. **Keep env docs aligned** — If you add or rename env vars, update `config/.env.example` and the matching preset(s) (`config/.env.lmstudio`, `config/.env.ollama`) using the project layout: **common settings at top**, **LLM provider block at bottom**. Provider-specific vars only in the relevant preset.
+5. **Do not commit** unless the user asked; when they do, include README (and env example) updates in that commit if the change was significant.
+
+## README sections checklist
+
+| Section | Update when… |
+|---------|----------------|
+| Web app workflow table | Tabs, steps, or primary user flows change |
+| Quick start / `config/.env` | Install, paths, or first-run steps change |
+| How AI is used | LLM touchpoints or confirm-before-save behavior change |
+| LLM setup | Provider, models, or env var names change |
+| Pipeline lookups | `LOOKUP_SOURCE`, import/export, or storage change |
+| Expense cadence | Cadence UI, rules, or analytics views change |
+| Custom Rules | Compile/apply flow or Settings behavior change |
+| Project files | New top-level modules or important `docs/` entry points |
+
+## Quality bar
+
+- README stays the **onboarding map**; deep design stays in `docs/`.
+- Prefer tables and one-line bullets over long prose.
+- If unsure whether README needs an update, read the diff against the checklist above — when in doubt for a significant feature, update README.

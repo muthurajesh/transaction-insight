@@ -26,7 +26,7 @@ This project automates that enrichment:
 
 **Processing core:** [`webapp/pipeline/`](webapp/pipeline/) orchestrates [`webapp/processing/`](webapp/processing/) (LLM, rules, cadence). Lookups default to **SQLite** (`LOOKUP_SOURCE=db`); Excel is optional backup (`EXPORT_LOOKUPS=1`).
 
-Configure Ollama or LM Studio via `config/.env` (`LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_MODEL`). Optional: `FINANCE_DB_PATH`, `FINANCE_INBOX_DIR` (defaults to `input/`).
+Configure Ollama or LM Studio via `config/.env` — copy from `config/.env.example` or a preset (`config/.env.lmstudio`, `config/.env.ollama`). Common settings (paths, UI flags, lookups) sit at the **top** of each file; **LLM provider** settings at the **bottom**. See [Configuration](#configuration).
 
 See [How AI is used](#how-ai-is-used) for every LLM touchpoint and how to extend behavior with rules.
 
@@ -38,8 +38,10 @@ See [How AI is used](#how-ai-is-used) for every LLM touchpoint and how to extend
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp config/.env.example config/.env   # then edit LLM settings if needed
+cp config/.env.example config/.env   # or: cp config/.env.ollama config/.env
 ```
+
+Then edit LLM settings (and optional UI flags) in `config/.env`. Restart the server after env changes.
 
 **Every session** — activate the venv and start the server:
 
@@ -51,6 +53,23 @@ uvicorn webapp.main:app --reload --host 127.0.0.1 --port 8000
 Or use `./start.sh` if present. Open http://127.0.0.1:8000.
 
 See [docs/CONFIRM_CATEGORIES.md](docs/CONFIRM_CATEGORIES.md) for the label queue. Chat dollar amounts use the same spend rules as the pipeline (negative outflows only).
+
+## Configuration
+
+`config/.env` (and the tracked presets / `.env.example`) use one layout:
+
+1. **Common** — web paths, UI flags, pipeline lookups, batch tuning (same regardless of LLM backend).
+2. **LLM** — `LLM_PROVIDER` plus provider-specific vars and optional `PIPELINE_MODEL` / `CHAT_MODEL` split.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `UI_SHOW_CADENCE` | `1` (show) | Cadence tab, Edit Transactions cadence links, Settings → Cadence rules, chat cadence actions. Set `0` to hide. |
+| `UI_SHOW_EXCEL_LOOKUP_IMPORT` | `1` (show) | Settings → **Import from Excel lookups**. Set `0` to hide (API/import still works). |
+| `LOOKUP_SOURCE` | `db` | Pipeline reads/writes SQLite lookups; `excel` is legacy. |
+| `EXPORT_LOOKUPS` | off | Set `1` to refresh `transaction-lookups.xlsx` on each run. |
+| `FINANCE_DB_PATH`, `FINANCE_INBOX_DIR`, `FINANCE_PROCESSED_DIR` | see `.env.example` | Override data paths. |
+
+Restart `./start.sh` (or uvicorn) after changing `.env`.
 
 ## How AI is used
 
@@ -245,7 +264,7 @@ Default (**`LOOKUP_SOURCE=db`** in `config/.env`):
 
 Legacy mode: `LOOKUP_SOURCE=excel` reads/writes the workbook only (not recommended).
 
-Settings can **import** sheets from Excel into SQLite. **Confirm Categories** still upserts **MerchantCategories** in the workbook when you confirm a merchant (for Excel backup users).
+Settings can **import** sheets from Excel into SQLite when **Import from Excel lookups** is visible (`UI_SHOW_EXCEL_LOOKUP_IMPORT=1`, default). **Confirm Categories** still upserts **MerchantCategories** in the workbook when you confirm a merchant (for Excel backup users).
 
 Lookup data (same concepts as the old workbook sheets):
 
@@ -271,7 +290,7 @@ After categories are correct, separate **normal monthly run-rate** from **irregu
 | **In Monthly Run-Rate?** | `Y` = core monthly budget; `N` = cash spend excluded from run-rate |
 | **Cadence Source** | `Lookup`, `Detected`, or `Default` |
 
-Manage cadence in the **Cadence** tab and `cadence_rules` in SQLite. Import **ExpenseCadenceRules** from Excel via Settings. Chat and analytics support **cash**, **core**, and **normalized** views — see [docs/EXPENSE_CADENCE.md](docs/EXPENSE_CADENCE.md).
+Manage cadence in the **Cadence** tab (`UI_SHOW_CADENCE=1`, default) and `cadence_rules` in SQLite. Import **ExpenseCadenceRules** from Excel via Settings when the import card is shown. Chat and analytics support **cash**, **core**, and **normalized** views — see [docs/EXPENSE_CADENCE.md](docs/EXPENSE_CADENCE.md).
 
 ## Custom Rules (freeform → AI compile → apply)
 
@@ -299,7 +318,8 @@ Example: split duplicate monthly charges by amount, or tag Apple $9.99 as Busine
 | `input/` | Bank CSV inbox |
 | `processed/` | Archived CSVs after successful processing |
 | `data/finance.db` | SQLite database (gitignored) |
-| `config/` | `.env` and presets |
+| `config/` | `.env` and presets (`.env.example`, `.env.lmstudio`, `.env.ollama`) |
+| `.cursor/rules/` | Cursor agent rules (e.g. README sync on significant changes) |
 | `docs/ROADMAP.md` | Master plan — phases and detail doc links |
 | `docs/AI_TAXONOMY_RULES.md` | AI Rules tab — taxonomy merge proposals |
 | `docs/AI_SESSION_CONTEXT.md` | Bootstrap context for new AI chats |
