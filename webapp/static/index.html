@@ -17,7 +17,7 @@
     <button type="button" class="tab active" data-tab="chat">Chat</button>
     <button type="button" class="tab" data-tab="review">Confirm Categories</button>
     <button type="button" class="tab" data-tab="edit">Edit Transactions</button>
-    <button type="button" class="tab" data-tab="cadence">Cadence</button>
+    <button type="button" class="tab" id="tab-cadence" data-tab="cadence">Cadence</button>
     <button type="button" class="tab" data-tab="taxonomy">AI Rules</button>
     <button type="button" class="tab" data-tab="actions">Import &amp; Categorize</button>
     <button type="button" class="tab" data-tab="settings">Settings</button>
@@ -382,7 +382,7 @@
         <button type="button" id="btn-clear-data" class="btn-danger">Clear data store</button>
         <pre id="clear-result"></pre>
       </div>
-      <div class="card">
+      <div class="card" id="settings-excel-import-card">
         <h2>Import from Excel lookups</h2>
         <p>Load labels and rules from the CLI lookup workbook into the web database.</p>
         <p class="hint">File: <code id="settings-lookup-path"></code> <span id="settings-lookup-status"></span></p>
@@ -411,7 +411,7 @@
         </div>
         <pre id="custom-rules-result" class="custom-rules-result" aria-live="polite"></pre>
       </div>
-      <div class="card settings-rules-card">
+      <div class="card settings-rules-card" id="settings-cadence-rules-card">
         <h2>Cadence rules</h2>
         <p class="hint">Saved merchant cadence patterns. Create via Cadence → Review &amp; save, or Excel → import.</p>
         <div id="cadence-rules-list-wrap" class="custom-rules-list-wrap">
