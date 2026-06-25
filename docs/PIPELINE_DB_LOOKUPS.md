@@ -12,7 +12,7 @@ With **`LOOKUP_SOURCE=db`** (default in `config/.env`):
 |------|----------|
 | **Load** | `webapp/adapters/lookup_store.py` builds in-memory lookup dicts from `finance.db` |
 | **First run** | Optional: `LOOKUP_SEED_FROM_EXCEL=1` imports from `scripts/transaction-lookups.xlsx` when DB tables are empty (off by default) |
-| **Process** | `webapp/pipeline/run.py` — validated description cache, then LLM; User/Simple fields are LLM context only (not copied verbatim); implausible cached labels rejected |
+| **Process** | `webapp/pipeline/run.py` — validated description cache, then LLM (bank text only — no category/amount in description payload); User/Simple are context, not copied verbatim; implausible cached labels rejected |
 | **Save** | SQLite upsert only (`save_lookup_workbook_to_db`); optional Excel refresh when `EXPORT_LOOKUPS=1` |
 
 Legacy mode: `LOOKUP_SOURCE=excel` reads/writes the workbook only (not recommended).

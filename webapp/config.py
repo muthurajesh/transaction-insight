@@ -50,6 +50,8 @@ def env_bool(name: str, *, default: bool = True) -> bool:
 UI_SHOW_CADENCE = env_bool("UI_SHOW_CADENCE", default=True)
 UI_SHOW_EXCEL_LOOKUP_IMPORT = env_bool("UI_SHOW_EXCEL_LOOKUP_IMPORT", default=True)
 
+CLASSIFICATION_AUDIT_ENABLED = env_bool("CLASSIFICATION_AUDIT_ENABLED", default=True)
+
 
 def default_lookup_path() -> Path:
     return LOOKUP_FILE
@@ -90,6 +92,12 @@ _, _, CHAT_MODEL = resolve_provider_config(
     base_url_arg=None,
     model_arg=None,
     role="chat",
+)
+_, _, CLASSIFICATION_AUDIT_MODEL = resolve_provider_config(
+    "auto",
+    base_url_arg=None,
+    model_arg=os.getenv("CLASSIFICATION_AUDIT_MODEL", "").strip() or None,
+    role="classification_audit",
 )
 LLM_MODEL = CHAT_MODEL
 LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", os.getenv("REQUEST_TIMEOUT", "120")))

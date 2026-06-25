@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from typing import Any, Callable
 
 import pandas as pd
 from openai import OpenAI
 
+from webapp.services.classification_vocabulary import (
+    format_vocabulary_prompt_block,
+    load_classification_vocabulary,
+    normalize_classify_labels,
+    vocabulary_hint_enabled,
+)
 from webapp.llm.client import BATCH_SIZE, PIPELINE_LLM_TEMPERATURE, json_for_prompt
 from webapp.llm.prompts import BUSINESS_RULE_PROMPT, CLASSIFICATION_PROMPT
 from webapp.processing.parse import (
@@ -69,19 +76,26 @@ def classify_review_mask(df: pd.DataFrame) -> pd.Series:
     review_tier = df["Budget Tier"].fillna("").astype(str).str.strip() == "Review"
     return spend & (missing_sub | legacy_sub | review_tier)
 
-def build_transaction_summary(row: pd.Series, index: int) -> dict[str, Any]:
+def build_classification_payload(row: pd.Series, index: int) -> dict[str, Any]:
+    """Minimal fields for classify_review_rows (merchant + bank category + amount + account)."""
+    amount = row.get("Amount_Numeric", parse_amount(row.get("Amount", 0)))
+    try:
+        amount_value = float(amount)
+    except (TypeError, ValueError):
+        amount_value = parse_amount(row.get("Amount", 0))
     return {
         "index": index,
         "date": row.get("Date", ""),
-        "amount": row.get("Amount", ""),
-        "amount_numeric": row.get("Amount_Numeric", parse_amount(row.get("Amount", 0))),
-        "original_category": row.get("Category", ""),
-        "user_description": str(row.get("User Description", "") or "")[:200],
-        "simple_description": str(row.get("Simple Description", "") or "")[:200],
-        "original_description": str(row.get("Original Description", "") or "")[:300],
+        "amount": amount_value,
+        "original_category": str(row.get("Category", "") or ""),
         "generated_description": str(row.get("Generated Description", "") or "")[:120],
-        "account": row.get("Account Name", ""),
+        "account": str(row.get("Account Name", "") or ""),
     }
+
+
+def build_transaction_summary(row: pd.Series, index: int) -> dict[str, Any]:
+    """Alias for build_classification_payload (legacy name)."""
+    return build_classification_payload(row, index)
 
 def extract_json_payload(text: str) -> dict[str, Any] | list[Any]:
     """Parse JSON from model output, including ```json fenced blocks."""
@@ -101,19 +115,21 @@ def classify_batch(
     model: str,
     *,
     use_json_mode: bool,
+    vocabulary: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
+    vocab_block = format_vocabulary_prompt_block(vocabulary)
     user_content = json_for_prompt(transactions)
+    user_message = (
+        "Classify these transactions. Respond with a single JSON object "
+        '{"results": [ ... ]} where each item has index, category, '
+        "sub_category, type, budget_tier. No markdown, no commentary.\n\n"
+    )
+    if vocab_block:
+        user_message += f"{vocab_block}\n\n"
+    user_message += f"Transactions:\n{user_content}"
     messages = [
         {"role": "system", "content": CLASSIFICATION_PROMPT},
-        {
-            "role": "user",
-            "content": (
-                "Classify these transactions. Respond with a single JSON object "
-                '{"results": [ ... ]} where each item has index, section, '
-                "category, sub_category, type, sub_type, budget_tier. No markdown, no commentary.\n\n"
-                f"Transactions:\n{user_content}"
-            ),
-        },
+        {"role": "user", "content": user_message},
     ]
     kwargs: dict[str, Any] = {
         "model": model,
@@ -168,7 +184,7 @@ def classify_all(
                 or (summary_by_index.get(idx) or {}).get("original_category", ""),
                 "AI Sub-Category": item.get("sub_category", ""),
                 "Type": item.get("type", "Variable"),
-                "Sub-Type": item.get("sub_type", "") or "",
+                "Sub-Type": "",
                 "Budget Tier": item.get("budget_tier", "Review"),
             }
 
@@ -178,7 +194,7 @@ def classify_all(
         if i in all_results:
             rows.append(all_results[i])
         else:
-            amt = summaries[i]["amount_numeric"]
+            amt = summaries[i]["amount"]
             rows.append(
                 {
                     "Section": "Income" if amt > 0 else "Expense",
@@ -201,12 +217,17 @@ def classify_review_rows(
     batch_size: int,
     use_json_mode: bool,
     on_batch_progress: Callable[[int, int, str], None] | None = None,
+    conn: sqlite3.Connection | None = None,
+    vocabulary: dict[str, Any] | None = None,
 ) -> pd.DataFrame:
     """Refine AI category and semantic sub-category for spend rows that need it."""
     df = ensure_merchant_key_column(df)
     mask = classify_review_mask(df)
     if not mask.any():
         return df
+
+    if vocabulary is None and conn is not None and vocabulary_hint_enabled():
+        vocabulary = load_classification_vocabulary(conn)
 
     review_indices = df[mask].index.tolist()
     print(f"  LLM review rows: {len(review_indices)}", flush=True)
@@ -231,7 +252,11 @@ def classify_review_rows(
             )
         try:
             batch_results = classify_batch(
-                client, batch, model, use_json_mode=use_json_mode
+                client,
+                batch,
+                model,
+                use_json_mode=use_json_mode,
+                vocabulary=vocabulary,
             )
         except Exception as exc:
             print(f"  LLM failed; using defaults for remaining batches: {exc}", flush=True)
@@ -246,8 +271,10 @@ def classify_review_rows(
             mk = _row_merchant_key(df.loc[idx])
             if sub.lower() == mk.lower():
                 sub = ""
+            cat = str(item.get("category", df.loc[idx].get("Category", "")) or "").strip()
+            cat, sub = normalize_classify_labels(cat, sub, vocabulary)
             all_results[idx] = {
-                "AI Category": item.get("category", df.loc[idx].get("Category", "")),
+                "AI Category": cat,
                 "AI Sub-Category": sub,
                 "Type": item.get("type", df.loc[idx].get("Type", "Variable")),
                 "Sub-Type": item.get("sub_type", "") or "",

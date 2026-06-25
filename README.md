@@ -19,6 +19,7 @@ This project automates that enrichment:
 | Step | Where |
 |------|--------|
 | Upload & process CSV | **Import & Categorize** → choose CSV (upload + run processing); progress bar shows elapsed time and ETA |
+| Classification quality alerts | **Import & Categorize** → alerts panel → **View in Edit Transactions** (merchant pre-searched; stale alerts auto-clear) |
 | First visit | Guided **quick tour** (once per browser; skipped when data already exists) |
 | Fix uncertain merchants | **Confirm Categories** |
 | Clean duplicate labels | **AI Rules** — merge synonyms (user confirms before apply) |
@@ -96,6 +97,7 @@ Models are configured in `config/.env`. You can split **pipeline** vs **chat** m
 | When | Where in app | What the LLM does | Persists without you? |
 |------|----------------|-------------------|------------------------|
 | **Run processing** | Import & Categorize | **Descriptions** — bank text → merchant label. **Classification** — category, sub-category, fixed/variable for unknown merchants. **Business rules** — personal vs business nuance. **Custom Rules** — compiles Pending rules to JSON, then applies. | Yes — pipeline writes to `finance.db` and lookup tables. Re-run improves as cache grows. |
+| **Classification audit** | Import & Categorize (alerts) | Sampled re-check: heuristics + stronger audit model vs pipeline labels; shows audit-time vs live DB labels. | No — **View in Edit Transactions** or dismiss; stale alerts auto-clear when labels match. |
 | **Review queue** | Confirm Categories → ✨ Suggest labels | Proposes labels for merchants still `needs_review` (lookup-first, then LLM). | No — you confirm in the modal. |
 | **After an edit** | Edit Transactions → Apply → AI insight modal | Explains the pattern; may suggest a **Custom Rule** (plain English). | No — save rule is optional. |
 | **Cadence** | Cadence tab → ✨ Suggest cadence (AI); Chat | Proposes recurring vs lump vs one-time from merchant history + your hint. | No — Review & save in modal or cadence queue. |
@@ -167,6 +169,8 @@ Detail: [docs/AI_TAXONOMY_RULES.md](docs/AI_TAXONOMY_RULES.md).
 | [docs/CONFIRM_CATEGORIES.md](docs/CONFIRM_CATEGORIES.md) | Review queue and confirm scopes |
 | [docs/CHAT_RICH_UI.md](docs/CHAT_RICH_UI.md) | Chat tables, Help panel, voice input |
 | [docs/CHAT_CUSTOM_REPORTS.md](docs/CHAT_CUSTOM_REPORTS.md) | Build, save, and rerun custom reports in Chat |
+| [docs/CLASSIFICATION_TAXONOMY.md](docs/CLASSIFICATION_TAXONOMY.md) | Classify LLM payload and category vocabulary goals |
+| [docs/CLASSIFICATION_AUDIT.md](docs/CLASSIFICATION_AUDIT.md) | Sampled classification quality audit (14b vs audit model) |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What’s shipped vs planned (e.g. auto-apply taxonomy at confidence threshold) |
 
 ## Where files live

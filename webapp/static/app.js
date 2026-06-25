@@ -48,6 +48,7 @@ function setTab(name, options = {}) {
   if (name === "edit") loadTransactionEditor();
   if (name === "cadence" && uiShowCadence) loadCadencePanel();
   if (name === "taxonomy") loadTaxonomyPanel();
+  if (name === "actions") loadClassificationAudit();
 }
 
 document.querySelectorAll(".tab-jump").forEach((btn) => {
@@ -313,6 +314,134 @@ document.querySelectorAll(".tab").forEach((btn) => {
   btn.addEventListener("click", () => setTab(btn.dataset.tab));
 });
 
+function formatAuditLabels(prodCat, prodSub, suggCat, suggSub, curCat, curSub) {
+  const prod = [prodCat, prodSub].filter(Boolean).join(" / ") || "—";
+  const sugg = [suggCat, suggSub].filter(Boolean).join(" / ") || "— (review needed)";
+  const current = [curCat, curSub].filter(Boolean).join(" / ") || "—";
+  return { prod, sugg, current };
+}
+
+function renderClassificationAuditFindings(findings) {
+  const list = $("#classification-audit-list");
+  if (!list) return;
+  list.innerHTML = "";
+  if (!findings.length) {
+    list.innerHTML = "<li class=\"hint\">No open alerts.</li>";
+    return;
+  }
+  findings.forEach((f) => {
+    const { prod, sugg, current } = formatAuditLabels(
+      f.production_category,
+      f.production_sub,
+      f.suggested_category,
+      f.suggested_sub,
+      f.current_category,
+      f.current_sub
+    );
+    const conf = Math.round((f.confidence || 0) * 100);
+    const li = document.createElement("li");
+    li.className = "classification-audit-item";
+    li.innerHTML = `
+      <div class="classification-audit-merchant">${escapeHtml(f.merchant_key || "")}</div>
+      <div class="classification-audit-labels">
+        At audit: <strong>${escapeHtml(prod)}</strong>
+        → Suggested: <strong>${escapeHtml(sugg)}</strong>
+        <span class="taxonomy-badge taxonomy-badge-conf-high">${conf}%</span>
+        <span class="taxonomy-badge">${escapeHtml(f.source === "heuristic" ? "Rule" : "Audit model")}</span>
+      </div>
+      <div class="classification-audit-labels classification-audit-current">
+        Current in DB: <strong>${escapeHtml(current)}</strong>
+      </div>
+      <div class="classification-audit-rationale">${escapeHtml(f.rationale || "")}</div>
+      <div class="classification-audit-actions">
+        <button type="button" class="btn-secondary btn-sm btn-audit-review" data-finding-id="${f.id}">View in Edit Transactions</button>
+        <button type="button" class="btn-link btn-sm btn-audit-dismiss" data-finding-id="${f.id}">Dismiss</button>
+      </div>
+    `;
+    list.appendChild(li);
+  });
+  list.querySelectorAll(".btn-audit-dismiss").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.findingId;
+      if (!id) return;
+      try {
+        await api(`/api/classification-audit/findings/${id}/dismiss`, { method: "POST" });
+        await loadClassificationAudit();
+      } catch (err) {
+        alert(err.message || String(err));
+      }
+    });
+  });
+  list.querySelectorAll(".btn-audit-review").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.findingId;
+      if (!id) return;
+      try {
+        const payload = await api(`/api/classification-audit/findings/${id}/open-merchant`);
+        const query = payload.search_query || payload.merchant_key;
+        if (query) {
+          sessionStorage.setItem("editFocusSearch", query);
+        }
+        setTab(payload.target_tab || "edit");
+      } catch (err) {
+        alert(err.message || String(err));
+      }
+    });
+  });
+}
+
+async function loadClassificationAudit() {
+  const badge = $("#tab-actions-badge");
+  const panel = $("#classification-audit-panel");
+  const countEl = $("#classification-audit-count");
+  try {
+    const summary = await api("/api/classification-audit/summary");
+    const openCount = summary.open_count || 0;
+    if (badge) {
+      badge.textContent = openCount > 0 ? String(openCount) : "";
+      badge.classList.toggle("hidden", openCount <= 0);
+    }
+    if (!panel) return;
+    if (!summary.enabled || openCount <= 0) {
+      panel.classList.add("hidden");
+      return;
+    }
+    panel.classList.remove("hidden");
+    if (countEl) countEl.textContent = `${openCount} open`;
+    const findings = await api("/api/classification-audit/findings?status=open");
+    renderClassificationAuditFindings(findings);
+  } catch {
+    if (badge) badge.classList.add("hidden");
+    panel?.classList.add("hidden");
+  }
+}
+
+function focusEditSearchIfRequested() {
+  const q = sessionStorage.getItem("editFocusSearch");
+  if (!q) return;
+  sessionStorage.removeItem("editFocusSearch");
+  const input = $("#edit-search-q");
+  if (input) {
+    input.value = q;
+    renderEditActiveFilters();
+  }
+}
+
+function focusReviewMerchantIfRequested() {
+  const focus = sessionStorage.getItem("reviewFocusMerchant");
+  if (!focus) return;
+  sessionStorage.removeItem("reviewFocusMerchant");
+  const cards = document.querySelectorAll("#review-list .review-item");
+  for (const card of cards) {
+    if (card.dataset.merchantKey === focus) {
+      card.scrollIntoView({ behavior: "smooth", block: "start" });
+      card.classList.add("review-item-focus");
+      setTimeout(() => card.classList.remove("review-item-focus"), 2500);
+      break;
+    }
+  }
+}
+
 async function loadStatus() {
   const s = await api("/api/status");
   uiShowCadence = s.ui_show_cadence !== false;
@@ -332,6 +461,7 @@ async function loadStatus() {
   }
   updateActionsStepper(s);
   maybeStartOnboarding(s);
+  loadClassificationAudit().catch(() => {});
 }
 
 function escapeHtml(s) {
@@ -3108,6 +3238,7 @@ async function loadTransactionEditor() {
       });
       if (current) monthSel.value = current;
     }
+    focusEditSearchIfRequested();
     await runEditSearch();
   } catch (err) {
     const host = $("#edit-results");
@@ -3935,6 +4066,7 @@ async function loadReview() {
       });
       list.appendChild(el);
     });
+    focusReviewMerchantIfRequested();
   } catch (err) {
     list.innerHTML = `<p>Error: ${escapeHtml(err.message)}</p>`;
   }
@@ -4171,7 +4303,7 @@ async function runCategorizeStream() {
       setCategorizeProgress(data.percent, data.message, meta);
     } else if (data.type === "batch_error") {
       appendCategorizeLog(data.message);
-    } else if (data.type === "file_start" || data.type === "file_done") {
+    } else if (data.type === "file_start" || data.type === "file_done" || data.type === "pipeline_complete") {
       if (typeof data.percent === "number") {
         setCategorizeProgress(data.percent, data.message, meta);
       } else if (data.message) {
@@ -4181,6 +4313,14 @@ async function runCategorizeStream() {
       }
       if (data.message) appendCategorizeLog(data.message);
     } else if (data.type === "done") {
+      // Batch complete from /api/process/stream (all inbox files). Per-file pipeline
+      // completion uses pipeline_complete — do not close the stream early.
+      if (!data.file_count && !Array.isArray(data.results) && !data.result?.file) {
+        const pct = typeof data.percent === "number" ? data.percent : categorizeProgressPercent;
+        setCategorizeProgress(pct, data.message || "Pipeline complete", meta);
+        if (data.message) appendCategorizeLog(data.message);
+        return;
+      }
       const fileCount = data.file_count ?? (data.results?.length || (data.result ? 1 : 0));
       const doneMsg =
         data.message ||
@@ -4223,6 +4363,8 @@ async function runCategorizeStream() {
       loadStatus();
       reviewOptionsCache = null;
       onboardingAfterProcessingDone();
+      setTimeout(() => loadClassificationAudit().catch(() => {}), 10000);
+      setTimeout(() => loadClassificationAudit().catch(() => {}), 45000);
     } else if (data.type === "error") {
       setCategorizeProgress(0, data.message);
       result.textContent = data.message;
@@ -4243,6 +4385,19 @@ async function runCategorizeStream() {
 
 $("#btn-categorize")?.addEventListener("click", () => {
   runCategorizeStream().catch(() => {});
+});
+
+$("#btn-classification-audit-run")?.addEventListener("click", async () => {
+  const btn = $("#btn-classification-audit-run");
+  if (btn) btn.disabled = true;
+  try {
+    await api("/api/classification-audit/run", { method: "POST", body: JSON.stringify({}) });
+    await loadClassificationAudit();
+  } catch (err) {
+    alert(err.message || String(err));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 });
 
 async function loadSettings() {

@@ -19,7 +19,7 @@
     <button type="button" class="tab" data-tab="edit">Edit Transactions</button>
     <button type="button" class="tab" id="tab-cadence" data-tab="cadence">Cadence</button>
     <button type="button" class="tab" data-tab="taxonomy">AI Rules</button>
-    <button type="button" class="tab" data-tab="actions">Import &amp; Categorize</button>
+    <button type="button" class="tab" data-tab="actions">Import &amp; Categorize<span id="tab-actions-badge" class="tab-badge hidden" aria-label="Classification alerts"></span></button>
     <button type="button" class="tab" data-tab="settings">Settings</button>
   </nav>
 
@@ -355,6 +355,15 @@
       </ol>
       <div class="card">
         <h2>Import &amp; process</h2>
+        <div id="classification-audit-panel" class="classification-audit-panel hidden" aria-live="polite">
+          <div class="classification-audit-header">
+            <h3>Classification alerts</h3>
+            <span id="classification-audit-count" class="classification-audit-count"></span>
+            <button type="button" id="btn-classification-audit-run" class="btn-secondary btn-sm">Run deep audit</button>
+          </div>
+          <p class="hint">Sampled quality check at audit time. <strong>At audit</strong> is the label on one transaction when the audit ran; <strong>Current in DB</strong> is live. Use Edit Transactions to verify or fix.</p>
+          <ul id="classification-audit-list" class="classification-audit-list"></ul>
+        </div>
         <p class="hint">CSV files land in <code id="inbox-path"></code>; after processing they move to <code id="processed-path">processed/</code>.</p>
         <div class="inbox-upload-row">
           <input type="file" id="inbox-file-input" accept=".csv,text/csv" multiple hidden />

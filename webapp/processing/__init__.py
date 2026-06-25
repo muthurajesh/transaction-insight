@@ -41,6 +41,7 @@ from webapp.llm.client import (
 )
 from webapp.llm.descriptions import (
     build_description_lookup_map,
+    build_description_payload,
     description_source_key,
     fill_generated_descriptions,
     generate_descriptions_batch,
@@ -139,6 +140,7 @@ __all__ = [
     "build_baseline_sheets",
     "build_cadence_review_df",
     "build_description_lookup_map",
+    "build_description_payload",
     "build_merchant_category_map",
     "build_month_category_breakdown",
     "build_monthly_expense_overview",

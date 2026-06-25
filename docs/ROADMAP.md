@@ -56,6 +56,8 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | Edit Transactions tab — search, bulk label, scopes | |
 | [x] | **Edit insights (post-apply)** — AI pattern + suggested CustomRule | EDIT_INSIGHTS |
 | [x] | **AI Rules tab** — taxonomy merge proposals (heuristic + LLM), user confirm apply | [AI_TAXONOMY_RULES.md](./AI_TAXONOMY_RULES.md) |
+| [ ] | **Minimal category vocabulary** — broad AI Category + few sub-categories; reduce Salary vs Paychecks/Salary drift | → [CLASSIFICATION_TAXONOMY.md](./CLASSIFICATION_TAXONOMY.md) (vocab hint + normalize shipped; auto-merge future) |
+| [x] | **Classification audit** — post-import + scheduled sampled re-check (14b vs audit model); in-app alerts | [CLASSIFICATION_AUDIT.md](./CLASSIFICATION_AUDIT.md) |
 | [ ] | Auto-apply taxonomy rules at confidence threshold | Future — `automation_ready` on proposals |
 | [ ] | Pipeline reads SQLite `merchant_labels` before LLM on re-import | → [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md) |
 | [~] | Sync web edits → `transaction-lookups.xlsx` (optional export) | Confirm Categories writes **MerchantCategories**; bulk Settings export → [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) |
@@ -197,11 +199,13 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [CHAT_RICH_UI.md](./CHAT_RICH_UI.md) | Chat UI tiers 1–3, `display` API |
 | [CHAT_ROUTING.md](./CHAT_ROUTING.md) | Fix top-categories vs list-transactions shortcut |
 | [CHAT_TIER3_SAVE_REPORT.md](./CHAT_TIER3_SAVE_REPORT.md) | Save-as-report button + API |
+| [CHAT_CUSTOM_REPORTS.md](./CHAT_CUSTOM_REPORTS.md) | Chat conversational custom reports (save, tweak, version) |
 | [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md) | SQLite labels on re-import |
 | [CONFIRM_CATEGORIES.md](./CONFIRM_CATEGORIES.md) | Confirm merchant → Excel MerchantCategories + DB |
 | [PIPELINE_DB_LOOKUPS.md](./PIPELINE_DB_LOOKUPS.md) | **Deferred** — SQLite as pipeline lookup source (replace Excel dependency) |
 | [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) | Bulk export web labels → Excel (Settings; partial; interim until §7) |
-| [CHAT_CUSTOM_REPORTS.md](./CHAT_CUSTOM_REPORTS.md) | Chat conversational custom reports (save, tweak, version) |
+| [CLASSIFICATION_TAXONOMY.md](./CLASSIFICATION_TAXONOMY.md) | Classify payload, broad category / minimal sub-category goals |
+| [CLASSIFICATION_AUDIT.md](./CLASSIFICATION_AUDIT.md) | Sampled classification quality audit |
 | [CUSTOM_REPORTS_UI.md](./CUSTOM_REPORTS_UI.md) | Settings UI for saved reports |
 | [IMPORT_PROCESS_UPLOAD.md](./IMPORT_PROCESS_UPLOAD.md) | File picker for Run processing |
 

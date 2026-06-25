@@ -10,6 +10,7 @@ from webapp.processing import (
     MERCHANT_CATEGORIES_SHEET,
     apply_merchant_category_lookup,
     build_description_lookup_map,
+    build_description_payload,
     description_source_key,
     fill_generated_descriptions,
     generated_description_plausible,
@@ -28,6 +29,27 @@ def _amazon_synchrony_row() -> pd.Series:
             "Category": "Online Services",
         }
     )
+
+
+def test_build_description_payload_excludes_category_and_amount():
+    row = pd.Series(
+        {
+            "Original Description": " SHELL OIL xxxxxxx3001 RANCHO SANTA CA",
+            "User Description": " ",
+            "Simple Description": " Shell",
+            "Category": "Gasoline/Fuel",
+            "Amount": "-55.08",
+        }
+    )
+    payload = build_description_payload(row, 0)
+    assert payload == {
+        "index": 0,
+        "original_description": " SHELL OIL xxxxxxx3001 RANCHO SANTA CA",
+        "user_description": " ",
+        "simple_description": " Shell",
+    }
+    assert "category" not in payload
+    assert "amount" not in payload
 
 
 def test_generated_description_plausible_rejects_mcdonalds_for_amazon():
