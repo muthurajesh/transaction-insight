@@ -69,10 +69,13 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "run_custom_report",
-        "description": "Re-run a saved custom report by name/id with parameters.",
+        "description": (
+            "Re-run a saved custom report by name/id with parameters. "
+            "Use for reruns and as baseline when user tweaks a saved report."
+        ),
         "parameters": {
             "report": "report_id or name (required)",
-            "params": "optional dict of parameter values",
+            "params": "optional dict, e.g. {\"month\": \"2026-05\"} or {\"months\": [\"2026-03\",\"2026-04\"]}",
             "max_rows": "optional int default 500",
         },
     },

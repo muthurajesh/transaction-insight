@@ -69,23 +69,25 @@ def _write_merchant_lookup(path: Path, merchant_key: str, category: str) -> None
 class ReviewSuggestTests(unittest.TestCase):
     def test_lookup_hit_skips_llm(self):
         conn = _conn()
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "lookups.xlsx"
-            _write_merchant_lookup(path, "Netflix", "Subscriptions")
-            with patch(
-                "webapp.services.review_suggest.lookup_workbook_path",
-                return_value=path,
-            ):
-                with patch("webapp.services.review_suggest.chat_completion") as mock_llm:
-                    item = {
-                        "merchant_key": "Netflix",
-                        "review_mode": "merchant",
-                        "ai_category": "Other",
-                        "expense_type": "Variable",
-                        "flow_type": "Expense",
-                        "classification": "Personal",
-                    }
-                    result = suggest_labels_for_item(conn, item)
+        conn.execute(
+            """
+            INSERT INTO merchant_labels (
+                merchant_key, ai_category, ai_sub_category, expense_type,
+                confidence, label_status, rationale, sample_count, updated_at
+            ) VALUES ('Netflix', 'Subscriptions', 'Streaming', 'Fixed', 1.0, 'confirmed', 'test', 1, 'now')
+            """
+        )
+        conn.commit()
+        with patch("webapp.services.review_suggest.chat_completion") as mock_llm:
+            item = {
+                "merchant_key": "Netflix",
+                "review_mode": "merchant",
+                "ai_category": "Other",
+                "expense_type": "Variable",
+                "flow_type": "Expense",
+                "classification": "Personal",
+            }
+            result = suggest_labels_for_item(conn, item)
         mock_llm.assert_not_called()
         self.assertEqual(result["labels"]["ai_category"], "Subscriptions")
         self.assertEqual(result["source"], MERCHANT_CATEGORIES_SHEET)
@@ -93,7 +95,7 @@ class ReviewSuggestTests(unittest.TestCase):
 
     def test_sqlite_confirmed_merchant_lookup(self):
         conn = _conn()
-        with patch("webapp.services.review_suggest._merchant_row_from_excel", return_value=None):
+        with patch("webapp.services.review_suggest._merchant_row_from_db", return_value=None):
             with patch("webapp.services.review_suggest.chat_completion") as mock_llm:
                 item = {
                     "merchant_key": "Hulu",
@@ -155,23 +157,25 @@ class ReviewSuggestTests(unittest.TestCase):
 
     def test_business_expenses_lookup_sets_business_classification(self):
         conn = _conn()
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "lookups.xlsx"
-            _write_merchant_lookup(path, "Netflix", "Business Expenses")
-            with patch(
-                "webapp.services.review_suggest.lookup_workbook_path",
-                return_value=path,
-            ):
-                with patch("webapp.services.review_suggest.chat_completion") as mock_llm:
-                    item = {
-                        "merchant_key": "Netflix",
-                        "review_mode": "merchant",
-                        "ai_category": "Subscriptions",
-                        "expense_type": "Variable",
-                        "flow_type": "Expense",
-                        "classification": "Personal",
-                    }
-                    result = suggest_labels_for_item(conn, item)
+        conn.execute(
+            """
+            INSERT INTO merchant_labels (
+                merchant_key, ai_category, ai_sub_category, expense_type,
+                confidence, label_status, rationale, sample_count, updated_at
+            ) VALUES ('Netflix', 'Business Expenses', '', 'Variable', 1.0, 'confirmed', 'test', 1, 'now')
+            """
+        )
+        conn.commit()
+        with patch("webapp.services.review_suggest.chat_completion") as mock_llm:
+            item = {
+                "merchant_key": "Netflix",
+                "review_mode": "merchant",
+                "ai_category": "Subscriptions",
+                "expense_type": "Variable",
+                "flow_type": "Expense",
+                "classification": "Personal",
+            }
+            result = suggest_labels_for_item(conn, item)
         mock_llm.assert_not_called()
         self.assertEqual(result["labels"]["ai_category"], "Business Expenses")
         self.assertEqual(result["labels"]["classification"], "Business")

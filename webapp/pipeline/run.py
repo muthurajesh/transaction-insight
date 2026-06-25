@@ -87,13 +87,9 @@ def run_pipeline(
     timer: core.PhaseTimer | None = None,
 ) -> PipelineResult:
     """
-    Shared categorization pipeline (descriptions → enrich → lookups → LLM review
-    → business → custom rules → cadence). Does not write Excel; callers persist output.
+    Shared categorization pipeline (descriptions -> enrich -> lookups -> LLM review
+    -> business -> custom rules -> cadence). Persists lookups to SQLite when conn is set.
     """
-    lookup_path = config.resolved_lookup_path()
-    use_db_lookups = (
-        conn is not None and config.use_db_lookups() and not config.skip_lookup_update
-    )
 
     client, model, provider, use_json_mode, description_batch_size, classification_batch_size = (
         resolve_llm(config)
@@ -106,17 +102,10 @@ def run_pipeline(
 
     with core.PhaseTimer.track(timer, "Load lookups"):
         _phase_progress(on_progress, percent=0, message="Loading lookups")
-        if not config.skip_lookup_update:
-            if use_db_lookups:
-                from webapp.adapters.lookup_store import (
-                    ensure_lookups_seeded,
-                    load_lookup_workbook_from_db,
-                )
+        if not config.skip_lookup_update and conn is not None:
+            from webapp.adapters.lookup_store import load_lookup_workbook_from_db
 
-                ensure_lookups_seeded(conn, lookup_path)
-                lookups_workbook = load_lookup_workbook_from_db(conn)
-            else:
-                lookups_workbook = core.load_lookup_workbook(lookup_path)
+            lookups_workbook = load_lookup_workbook_from_db(conn)
             if not config.rebuild_description_lookup:
                 description_lookup_map = core.build_description_lookup_map(lookups_workbook)
                 stats["description_lookup_entries"] = len(description_lookup_map)
@@ -199,17 +188,14 @@ def run_pipeline(
         df["Include in Spend?"] = "N"
         spend_mask = (df["Flow Type"] == "Expense") & (df["Amount_Numeric"] < 0)
         df.loc[spend_mask, "Include in Spend?"] = "Y"
-        df["Budget Tier"] = "N/A"
+        df["Budget Tier"] = "Review"
 
         _phase_progress(on_progress, percent=38, message="Applying lookup rules")
-        if not config.skip_lookup_update:
+        if not config.skip_lookup_update and conn is not None:
             if not lookups_workbook:
-                if use_db_lookups and conn is not None:
-                    from webapp.adapters.lookup_store import load_lookup_workbook_from_db
+                from webapp.adapters.lookup_store import load_lookup_workbook_from_db
 
-                    lookups_workbook = load_lookup_workbook_from_db(conn)
-                else:
-                    lookups_workbook = core.load_lookup_workbook(lookup_path)
+                lookups_workbook = load_lookup_workbook_from_db(conn)
             if lookups_workbook:
                 stats["lookup_rows_touched"] = core.apply_lookup_rules(
                     df, lookups_workbook, spend_mask=spend_mask
@@ -217,13 +203,6 @@ def run_pipeline(
                 stats["merchant_lookup_rows"] = core.apply_merchant_category_lookup(
                     df, lookups_workbook, spend_mask=spend_mask
                 )
-
-            needs_tier = spend_mask & (
-                df["Budget Tier"].isin(["N/A", ""]) | df["Budget Tier"].isna()
-            )
-            df.loc[needs_tier, "Budget Tier"] = df.loc[needs_tier, "AI Category"].apply(
-                core.budget_tier_from_category
-            )
 
     _phase_progress(on_progress, percent=40, message="AI classification (review rows)")
 
@@ -246,24 +225,15 @@ def run_pipeline(
             use_json_mode=use_json_mode,
             on_batch_progress=_classification_batch_progress,
         )
-        needs_tier_post = spend_mask & (
-            df["Budget Tier"].isin(["N/A", "", "Review"]) | df["Budget Tier"].isna()
-        )
-        df.loc[needs_tier_post, "Budget Tier"] = df.loc[needs_tier_post, "AI Category"].apply(
-            core.budget_tier_from_category
-        )
 
     suggested_business = pd.DataFrame()
     with core.PhaseTimer.track(timer, "Business rules"):
         _phase_progress(on_progress, percent=80, message="Business rules")
-        if not config.skip_lookup_update:
+        if not config.skip_lookup_update and conn is not None:
             if not lookups_workbook:
-                if use_db_lookups and conn is not None:
-                    from webapp.adapters.lookup_store import load_lookup_workbook_from_db
+                from webapp.adapters.lookup_store import load_lookup_workbook_from_db
 
-                    lookups_workbook = load_lookup_workbook_from_db(conn)
-                else:
-                    lookups_workbook = core.load_lookup_workbook(lookup_path)
+                lookups_workbook = load_lookup_workbook_from_db(conn)
             existing_business = lookups_workbook.get("BusinessCategoryRules")
             core.apply_business_rules_to_df(
                 df,
@@ -286,12 +256,11 @@ def run_pipeline(
     active_custom_rules: list[dict[str, Any]] = []
     with core.PhaseTimer.track(timer, "Custom rules"):
         _phase_progress(on_progress, percent=84, message="Custom rules")
-        if not lookups_workbook and lookup_path.exists() and not use_db_lookups:
-            lookups_workbook = core.load_lookup_workbook(lookup_path)
-        elif not lookups_workbook and use_db_lookups and conn is not None:
-            from webapp.adapters.lookup_store import load_lookup_workbook_from_db
+        if conn is not None:
+            if not lookups_workbook:
+                from webapp.adapters.lookup_store import load_lookup_workbook_from_db
 
-            lookups_workbook = load_lookup_workbook_from_db(conn)
+                lookups_workbook = load_lookup_workbook_from_db(conn)
         if lookups_workbook:
             custom_rules_sheet = core.normalize_custom_rules_sheet(
                 lookups_workbook.get(core.CUSTOM_RULES_SHEET)
@@ -331,37 +300,22 @@ def run_pipeline(
             stats["custom_rules_applied"] = core.apply_custom_rules(df, active_custom_rules)
 
     with core.PhaseTimer.track(timer, "Save lookups"):
-        if config.update_lookup_workbook and not config.skip_lookup_update:
+        if config.update_lookup_workbook and not config.skip_lookup_update and conn is not None:
             _phase_progress(on_progress, percent=95, message="Saving lookups")
-            if use_db_lookups and conn is not None:
-                from webapp.adapters.lookup_store import save_lookup_workbook_to_db
+            from webapp.adapters.lookup_store import save_lookup_workbook_to_db
 
-                save_lookup_workbook_to_db(
-                    conn,
-                    df,
-                    lookup_path=lookup_path,
-                    client=client,
-                    model=model,
-                    batch_size=classification_batch_size,
-                    use_json_mode=use_json_mode,
-                    suggested_business=suggested_business,
-                    new_description_entries=new_description_entries,
-                    rebuild_description_lookup=config.rebuild_description_lookup,
-                    custom_rules_sheet=custom_rules_sheet,
-                )
-            else:
-                core.update_lookup_workbook(
-                    df,
-                    lookup_path,
-                    client=client,
-                    model=model,
-                    batch_size=classification_batch_size,
-                    use_json_mode=use_json_mode,
-                    suggested_business=suggested_business,
-                    new_description_entries=new_description_entries,
-                    rebuild_description_lookup=config.rebuild_description_lookup,
-                    custom_rules_sheet=custom_rules_sheet,
-                )
+            save_lookup_workbook_to_db(
+                conn,
+                df,
+                suggested_business=suggested_business,
+                new_description_entries=new_description_entries,
+                rebuild_description_lookup=config.rebuild_description_lookup,
+                custom_rules_sheet=custom_rules_sheet,
+                client=client,
+                model=model,
+                batch_size=classification_batch_size,
+                use_json_mode=use_json_mode,
+            )
 
     _emit(
         on_progress,

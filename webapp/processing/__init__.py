@@ -41,10 +41,12 @@ from webapp.llm.client import (
 )
 from webapp.llm.descriptions import (
     build_description_lookup_map,
+    description_source_key,
     fill_generated_descriptions,
     generate_descriptions_batch,
     merge_description_lookup,
 )
+from webapp.llm.validation import generated_description_plausible
 from webapp.llm.prompts import (
     BUSINESS_RULE_PROMPT,
     CLASSIFICATION_PROMPT,
@@ -166,6 +168,7 @@ __all__ = [
     "format_spending_insights_worksheet",
     "format_transaction_worksheet",
     "generate_descriptions_batch",
+    "generated_description_plausible",
     "heuristic_generated_description",
     "init_expense_cadence_columns",
     "is_paycheck_row",

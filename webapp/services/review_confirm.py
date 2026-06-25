@@ -1,28 +1,17 @@
 from __future__ import annotations
 
-import json
 import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
-import pandas as pd
-
+from webapp.adapters.lookup_store import load_lookup_workbook_from_db
 from webapp.processing import (
     CUSTOM_RULES_SHEET,
-    CUSTOM_RULE_STATUS_ACTIVE,
-    LOOKUP_SHEETS,
     MERCHANT_CATEGORIES_SHEET,
-    MERCHANT_CATEGORY_COLUMNS,
-    budget_tier_from_category,
-    default_lookup_path,
     load_active_custom_rules,
-    load_lookup_workbook,
     normalize_custom_rules_sheet,
-    open_excel_workbook,
 )
 from webapp.services.categorize import (
-    CLASSIFICATION_OPTIONS,
     SPLIT_REVIEW_MERCHANT_KEYS,
     _normalize_classification,
     confirm_transaction,
@@ -37,25 +26,6 @@ LABEL_COMPARE_FIELDS = (
     "expense_type",
     "classification",
 )
-
-BUSINESS_AI_CATEGORIES = frozenset({"business expenses", "business"})
-
-BUSINESS_RULE_COLUMNS = [
-    "Generated Description",
-    "Source Category",
-    "AI Category",
-    "AI Sub-Category",
-    "Budget Tier",
-    "Type",
-    "Sub-Type",
-    "Classification",
-    "Flow Type",
-    "Notes",
-]
-
-
-def lookup_workbook_path() -> Path:
-    return default_lookup_path()
 
 
 def _norm(value: Any) -> str:
@@ -75,10 +45,10 @@ def _normalize_flow_type(value: str) -> str:
 
 
 def align_classification_with_category(labels: dict[str, str]) -> dict[str, str]:
-    """Business spend categories always use Classification = Business."""
+    """When the category name indicates business spend, align classification to Business."""
     out = dict(labels)
     category = _norm(out.get("ai_category")).lower()
-    if category not in BUSINESS_AI_CATEGORIES:
+    if "business" not in category:
         return out
     if _normalize_classification(out.get("classification")) != "Business":
         out["classification"] = "Business"
@@ -115,7 +85,7 @@ def _labels_from_proposed(
     )
 
 
-def _labels_from_merchant_row(row: pd.Series) -> dict[str, str]:
+def _labels_from_merchant_row(row: Any) -> dict[str, str]:
     return align_classification_with_category(
         {
             "ai_category": _norm(row.get("AI Category")),
@@ -127,7 +97,7 @@ def _labels_from_merchant_row(row: pd.Series) -> dict[str, str]:
     )
 
 
-def _labels_from_business_row(row: pd.Series) -> dict[str, str]:
+def _labels_from_business_row(row: Any) -> dict[str, str]:
     return align_classification_with_category(
         {
             "ai_category": _norm(row.get("AI Category")),
@@ -163,30 +133,6 @@ def _labels_conflict(existing: dict[str, str], proposed: dict[str, str]) -> bool
     return False
 
 
-def _load_all_sheets(path: Path) -> dict[str, pd.DataFrame]:
-    if not path.is_file():
-        return {}
-    xl = pd.ExcelFile(path)
-    return {name: pd.read_excel(path, sheet_name=name) for name in xl.sheet_names}
-
-
-def _save_workbook_sheets(path: Path, sheets: dict[str, pd.DataFrame]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open_excel_workbook(path) as writer:
-        for name, frame in sheets.items():
-            frame.to_excel(writer, sheet_name=name, index=False)
-
-
-def _ensure_columns(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
-    out = frame.copy() if frame is not None and not frame.empty else pd.DataFrame()
-    for col in columns:
-        if col not in out.columns:
-            out[col] = ""
-    if out.empty:
-        return pd.DataFrame(columns=columns)
-    return out[list(columns)]
-
-
 def _custom_rule_targets_merchant(rule: dict[str, Any], merchant_key: str) -> bool:
     match = rule.get("match") or {}
     gen = match.get("generated_description")
@@ -205,18 +151,14 @@ def _custom_rule_targets_merchant(rule: dict[str, Any], merchant_key: str) -> bo
     return False
 
 
-def find_excel_conflicts(
+def find_lookup_conflicts(
+    conn: sqlite3.Connection,
     merchant_key: str,
     proposed: dict[str, str],
-    *,
-    lookup_path: Path | None = None,
 ) -> list[dict[str, Any]]:
-    path = lookup_path or lookup_workbook_path()
-    if not path.is_file():
-        return []
-
+    """Conflicts with saved merchant labels or active custom rules in SQLite."""
+    lookups = load_lookup_workbook_from_db(conn)
     conflicts: list[dict[str, Any]] = []
-    lookups = load_lookup_workbook(path)
     mk_lower = merchant_key.strip().lower()
 
     merchant_sheet = lookups.get(MERCHANT_CATEGORIES_SHEET)
@@ -297,6 +239,51 @@ def _row_differs_from_proposed(row: sqlite3.Row, proposed: dict[str, str]) -> bo
     return False
 
 
+def sync_merchant_labels_to_db(
+    conn: sqlite3.Connection,
+    merchant_key: str,
+    proposed: dict[str, str],
+    *,
+    tx_count: int | None = None,
+) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    tier = _norm(proposed.get("budget_tier")) or "Review"
+    conn.execute(
+        """
+        INSERT INTO merchant_labels (
+            merchant_key, ai_category, ai_sub_category, expense_type,
+            confidence, label_status, rationale, sample_count, updated_at,
+            budget_tier, classification, flow_type, notes
+        ) VALUES (?, ?, ?, ?, 1.0, 'confirmed', 'user confirmed', ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(merchant_key) DO UPDATE SET
+            ai_category=excluded.ai_category,
+            ai_sub_category=excluded.ai_sub_category,
+            expense_type=excluded.expense_type,
+            confidence=1.0,
+            label_status='confirmed',
+            rationale='user confirmed',
+            sample_count=excluded.sample_count,
+            updated_at=excluded.updated_at,
+            budget_tier=excluded.budget_tier,
+            classification=excluded.classification,
+            flow_type=excluded.flow_type,
+            notes=excluded.notes
+        """,
+        (
+            merchant_key.strip(),
+            proposed["ai_category"],
+            proposed["ai_sub_category"],
+            proposed["expense_type"],
+            int(tx_count or 0),
+            now,
+            tier,
+            proposed["classification"],
+            proposed["flow_type"],
+            f"confirmed via web {now}",
+        ),
+    )
+
+
 def confirm_preview(
     conn: sqlite3.Connection,
     merchant_key: str,
@@ -342,8 +329,7 @@ def confirm_preview(
     distinct_patterns = len(breakdown)
     suggest_custom_rule = distinct_patterns >= 2
 
-    excel_conflicts = find_excel_conflicts(mk, proposed)
-    lookup_path = lookup_workbook_path()
+    lookup_conflicts = find_lookup_conflicts(conn, mk, proposed)
 
     return {
         "merchant_key": mk,
@@ -358,107 +344,15 @@ def confirm_preview(
         "suggest_custom_rule": suggest_custom_rule,
         "custom_rule_hint": (
             "This merchant has multiple category patterns in your data. "
-            "MerchantCategories allows one label per merchant — use a custom rule "
+            "Merchant labels allow one category per merchant — use a custom rule "
             "for amount- or description-based splits."
             if suggest_custom_rule
             else ""
         ),
-        "excel_conflicts": excel_conflicts,
-        "lookup_file": str(lookup_path),
-        "lookup_file_exists": lookup_path.is_file(),
+        "lookup_conflicts": lookup_conflicts,
+        # Legacy keys for older clients.
+        "excel_conflicts": lookup_conflicts,
     }
-
-
-def sync_merchant_labels_to_workbook(
-    merchant_key: str,
-    proposed: dict[str, str],
-    *,
-    lookup_path: Path | None = None,
-    tx_count: int | None = None,
-) -> dict[str, Any]:
-    path = lookup_path or lookup_workbook_path()
-    mk = merchant_key.strip()
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    notes = f"confirmed via web {now}"
-
-    sheets = _load_all_sheets(path) if path.is_file() else {}
-    for sheet_name in LOOKUP_SHEETS:
-        if sheet_name not in sheets:
-            sheets[sheet_name] = pd.DataFrame()
-
-    merchant_df = _ensure_columns(
-        sheets.get(MERCHANT_CATEGORIES_SHEET, pd.DataFrame()),
-        list(MERCHANT_CATEGORY_COLUMNS),
-    )
-    for col in MERCHANT_CATEGORY_COLUMNS:
-        merchant_df[col] = merchant_df[col].fillna("").astype(str).replace("nan", "")
-    mk_lower = mk.lower()
-    tier = budget_tier_from_category(proposed["ai_category"])
-    row_data = {
-        "Merchant Key": mk,
-        "AI Category": proposed["ai_category"],
-        "AI Sub-Category": proposed["ai_sub_category"],
-        "Budget Tier": tier,
-        "Type": proposed["expense_type"],
-        "Flow Type": proposed["flow_type"],
-        "Classification": proposed["classification"],
-        "Transaction Count": str(tx_count) if tx_count is not None else "",
-        "Notes": notes,
-    }
-
-    if "Merchant Key" in merchant_df.columns and not merchant_df.empty:
-        mask = merchant_df["Merchant Key"].fillna("").astype(str).str.strip().str.lower() == mk_lower
-        if mask.any():
-            idx = merchant_df.index[mask][0]
-            for col, val in row_data.items():
-                merchant_df.at[idx, col] = val
-        else:
-            merchant_df = pd.concat([merchant_df, pd.DataFrame([row_data])], ignore_index=True)
-    else:
-        merchant_df = pd.DataFrame([row_data], columns=list(MERCHANT_CATEGORY_COLUMNS))
-
-    sheets[MERCHANT_CATEGORIES_SHEET] = merchant_df
-
-    if proposed["classification"] == "Business":
-        business_df = _ensure_columns(
-            sheets.get("BusinessCategoryRules", pd.DataFrame()),
-            BUSINESS_RULE_COLUMNS,
-        )
-        for col in BUSINESS_RULE_COLUMNS:
-            business_df[col] = business_df[col].fillna("").astype(str).replace("nan", "")
-        biz_row = {
-            "Generated Description": mk,
-            "Source Category": "",
-            "AI Category": proposed["ai_category"],
-            "AI Sub-Category": proposed["ai_sub_category"],
-            "Budget Tier": tier,
-            "Type": proposed["expense_type"],
-            "Sub-Type": "",
-            "Classification": "Business",
-            "Flow Type": proposed["flow_type"],
-            "Notes": notes,
-        }
-        if "Generated Description" in business_df.columns and not business_df.empty:
-            mask = (
-                business_df["Generated Description"]
-                .fillna("")
-                .astype(str)
-                .str.strip()
-                .str.lower()
-                == mk_lower
-            )
-            if mask.any():
-                idx = business_df.index[mask][0]
-                for col, val in biz_row.items():
-                    business_df.at[idx, col] = val
-            else:
-                business_df = pd.concat([business_df, pd.DataFrame([biz_row])], ignore_index=True)
-        else:
-            business_df = pd.DataFrame([biz_row], columns=BUSINESS_RULE_COLUMNS)
-        sheets["BusinessCategoryRules"] = business_df
-
-    _save_workbook_sheets(path, sheets)
-    return {"lookup_file": str(path), "sheets_updated": [MERCHANT_CATEGORIES_SHEET]}
 
 
 def _apply_merchant_to_db(
@@ -511,7 +405,8 @@ def confirm_merchant_group(
     flow_type: str = "Expense",
     classification: str = "Personal",
     scope: str = "pending",
-    replace_excel: bool = False,
+    replace_conflicting_rule: bool = False,
+    replace_excel: bool | None = None,
 ) -> dict[str, Any]:
     mk = merchant_key.strip()
     if mk in SPLIT_REVIEW_MERCHANT_KEYS:
@@ -529,11 +424,12 @@ def confirm_merchant_group(
     if scope not in CONFIRM_SCOPES:
         raise ValueError(f"scope must be one of: {', '.join(sorted(CONFIRM_SCOPES))}")
 
-    conflicts = find_excel_conflicts(mk, proposed)
-    if conflicts and not replace_excel:
+    replace = replace_conflicting_rule if replace_excel is None else replace_excel
+    conflicts = find_lookup_conflicts(conn, mk, proposed)
+    if conflicts and not replace:
         sources = ", ".join(sorted({c["source"] for c in conflicts}))
         raise ValueError(
-            f"Excel conflict in {sources}. Choose Replace existing rule to overwrite, "
+            f"Saved lookup conflict in {sources}. Choose Replace existing rule to overwrite, "
             "or use a custom rule for complex patterns."
         )
 
@@ -547,26 +443,7 @@ def confirm_merchant_group(
         classification=proposed["classification"],
     )
 
-    now = datetime.now(timezone.utc).isoformat()
-    conn.execute(
-        """
-        INSERT INTO merchant_labels (
-            merchant_key, ai_category, ai_sub_category, expense_type,
-            confidence, label_status, rationale, sample_count, updated_at
-        ) VALUES (?, ?, ?, ?, 1.0, 'confirmed', 'user confirmed', 0, ?)
-        ON CONFLICT(merchant_key) DO UPDATE SET
-            ai_category=excluded.ai_category,
-            ai_sub_category=excluded.ai_sub_category,
-            expense_type=excluded.expense_type,
-            confidence=1.0,
-            label_status='confirmed',
-            updated_at=excluded.updated_at
-        """,
-        (mk, proposed["ai_category"], proposed["ai_sub_category"], proposed["expense_type"], now),
-    )
-
-    tx_count = preview["total_count"]
-    excel_result = sync_merchant_labels_to_workbook(mk, proposed, tx_count=tx_count)
+    sync_merchant_labels_to_db(conn, mk, proposed, tx_count=preview["total_count"])
     rows_updated = _apply_merchant_to_db(conn, mk, proposed, scope=scope)
     conn.commit()
 
@@ -574,9 +451,10 @@ def confirm_merchant_group(
         "merchant_key": mk,
         "rows_updated": rows_updated,
         "scope": scope,
+        "lookup_synced": True,
+        "lookup_conflicts_replaced": bool(conflicts),
         "excel_synced": True,
         "excel_conflicts_replaced": bool(conflicts),
-        "lookup_file": excel_result["lookup_file"],
         "suggest_custom_rule": preview["suggest_custom_rule"],
         "custom_rule_hint": preview["custom_rule_hint"],
     }
@@ -593,7 +471,8 @@ def confirm_merchant_or_transaction(
     classification: str = "Personal",
     transaction_id: str | None = None,
     scope: str = "pending",
-    replace_excel: bool = False,
+    replace_conflicting_rule: bool = False,
+    replace_excel: bool | None = None,
 ) -> dict[str, Any]:
     if transaction_id:
         updated = confirm_transaction(
@@ -609,6 +488,7 @@ def confirm_merchant_or_transaction(
             "merchant_key": merchant_key,
             "transaction_id": transaction_id,
             "rows_updated": updated,
+            "lookup_synced": False,
             "excel_synced": False,
         }
     return confirm_merchant_group(
@@ -620,5 +500,6 @@ def confirm_merchant_or_transaction(
         flow_type=flow_type,
         classification=classification,
         scope=scope,
+        replace_conflicting_rule=replace_conflicting_rule,
         replace_excel=replace_excel,
     )

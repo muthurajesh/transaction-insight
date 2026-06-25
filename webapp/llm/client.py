@@ -32,6 +32,8 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "600"))
 
+PIPELINE_LLM_TEMPERATURE = float(os.getenv("PIPELINE_LLM_TEMPERATURE", "0"))
+
 LOCAL_PROVIDERS = frozenset({"lmstudio", "ollama"})
 
 def json_for_prompt(obj: Any) -> str:

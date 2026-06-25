@@ -55,7 +55,7 @@ User → Chat UI (app.js) → POST /api/chat → chat.py (agent + tools) → SQL
 
 | Item | Purpose | Status |
 |------|---------|--------|
-| “Save as report” button | On table messages → `save_custom_report` | **Still needed** |
+| “Save as report” button | On table messages → REST `/api/custom-reports` | **Done** (Chat toolbar) |
 | ~~Suggested prompts~~ | ~~Chips in composer~~ | **Superseded by Help panel** (labels, descriptions, insert) |
 | Multiline composer | Shift+Enter; taller input for long questions | **Still needed** |
 | Stream tokens | SSE from `/api/chat` (optional; needs backend streaming) | **Optional** — nice-to-have, not required for finance Q&A |

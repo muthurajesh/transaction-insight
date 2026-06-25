@@ -28,7 +28,7 @@ from webapp.processing.constants import (
     SCRIPTS_DIR,
 )
 from webapp.processing.custom_rules import normalize_custom_rules_sheet
-from webapp.processing.parse import _is_semantic_sub_category, is_business_row, merchant_key
+from webapp.processing.parse import _is_semantic_sub_category, _row_merchant_key, is_business_row, merchant_key
 
 
 def _workbook_path(filename: str) -> Path:
@@ -88,6 +88,8 @@ def apply_merchant_category_lookup(
     spend_mask: pd.Series | None = None,
 ) -> int:
     """Apply per-merchant categorization from MerchantCategories (or legacy Categories)."""
+    from webapp.llm.validation import generated_description_plausible
+
     by_merchant = build_merchant_category_map(lookups)
     if not by_merchant:
         return 0
@@ -99,8 +101,10 @@ def apply_merchant_category_lookup(
     )
 
     for idx, row in df.iterrows():
-        mk = _row_merchant_key(row).lower()
-        match = by_merchant.get(mk)
+        mk = _row_merchant_key(row)
+        if not generated_description_plausible(mk, row):
+            continue
+        match = by_merchant.get(mk.lower())
         if match is None:
             continue
 

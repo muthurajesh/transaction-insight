@@ -348,6 +348,11 @@
 
     <section id="panel-actions" class="panel">
       <p class="hint panel-subtitle">Upload a bank CSV export and run categorization.</p>
+      <ol id="actions-stepper" class="workflow-stepper" aria-label="Import workflow">
+        <li class="workflow-step active" data-step="1"><span class="workflow-step-num">1</span> Upload CSV</li>
+        <li class="workflow-step" data-step="2"><span class="workflow-step-num">2</span> AI processing</li>
+        <li class="workflow-step" data-step="3"><span class="workflow-step-num">3</span> Confirm labels</li>
+      </ol>
       <div class="card">
         <h2>Import &amp; process</h2>
         <p class="hint">CSV files land in <code id="inbox-path"></code>; after processing they move to <code id="processed-path">processed/</code>.</p>
@@ -363,6 +368,11 @@
             <div id="categorize-progress-fill" class="progress-bar-fill" style="width: 0%"></div>
           </div>
           <p id="categorize-progress-text" class="progress-text">Starting…</p>
+          <div id="categorize-progress-timing" class="progress-timing hidden">
+            <span id="categorize-progress-rows" class="progress-timing-item"></span>
+            <span id="categorize-progress-elapsed" class="progress-timing-item"></span>
+            <span id="categorize-progress-eta" class="progress-timing-item"></span>
+          </div>
           <ul id="categorize-progress-log" class="progress-log"></ul>
         </div>
         <pre id="categorize-result"></pre>
@@ -378,27 +388,13 @@
       </div>
       <div class="card card-danger">
         <h2>Clear all data</h2>
-        <p>Deletes all transactions, merchant labels, chat messages, ingest history, and imported lookup snapshots. Does not modify <code>transaction-lookups.xlsx</code> or CSV files in <code>input/</code>.</p>
+        <p>Deletes all transactions, merchant labels, chat messages, ingest history, and lookup snapshots. Does not modify CSV files in <code>input/</code>.</p>
         <button type="button" id="btn-clear-data" class="btn-danger">Clear data store</button>
         <pre id="clear-result"></pre>
       </div>
-      <div class="card" id="settings-excel-import-card">
-        <h2>Import from Excel lookups</h2>
-        <p>Load labels and rules from the CLI lookup workbook into the web database.</p>
-        <p class="hint">File: <code id="settings-lookup-path"></code> <span id="settings-lookup-status"></span></p>
-        <ul class="hint settings-import-list">
-          <li><strong>BusinessCategoryRules</strong> → merchant labels</li>
-          <li><strong>DescriptionLookup</strong> → merchant names (description cache)</li>
-          <li><strong>Categories</strong> → labels where sub-category matches a merchant</li>
-          <li><strong>CategoryRules</strong> → updates rows by bank category</li>
-          <li><strong>CustomRules</strong> / <strong>ExpenseCadenceRules</strong> → saved for later (snapshot)</li>
-        </ul>
-        <button type="button" id="btn-import-lookups">Import transaction-lookups.xlsx</button>
-        <pre id="import-lookups-result"></pre>
-      </div>
       <div class="card settings-rules-card">
         <h2>Custom rules</h2>
-        <p class="hint custom-rules-hint">Patterns saved to <code>transaction-lookups.xlsx</code> → CustomRules.</p>
+        <p class="hint custom-rules-hint">Patterns saved in the database (<code>pipeline_custom_rules</code>).</p>
         <div id="custom-rules-list-wrap" class="custom-rules-list-wrap">
           <ul id="custom-rules-list" class="custom-rules-list"></ul>
         </div>
@@ -423,6 +419,29 @@
       </div>
     </section>
   </main>
+
+  <div id="onboarding-overlay" class="onboarding-overlay hidden" role="presentation" aria-hidden="true">
+    <div class="onboarding-backdrop" aria-hidden="true"></div>
+    <div
+      id="onboarding-card"
+      class="onboarding-card"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="onboarding-title"
+    >
+      <p id="onboarding-kicker" class="onboarding-kicker">Quick tour</p>
+      <h2 id="onboarding-title">Welcome</h2>
+      <p id="onboarding-body" class="onboarding-body"></p>
+      <div class="onboarding-step-dots" id="onboarding-dots" aria-hidden="true"></div>
+      <div class="onboarding-actions">
+        <button type="button" id="btn-onboarding-skip" class="btn-link">Skip tour</button>
+        <div class="onboarding-nav">
+          <button type="button" id="btn-onboarding-back" class="btn-secondary" disabled>Back</button>
+          <button type="button" id="btn-onboarding-next" class="btn-primary">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div id="app-busy-overlay" class="review-busy-overlay hidden" aria-hidden="true">
     <div class="review-busy-card" role="status">
@@ -551,13 +570,87 @@
       <div id="review-confirm-actions" class="modal-actions">
         <label id="review-confirm-replace-wrap" class="review-confirm-replace hidden">
           <input type="checkbox" id="review-confirm-replace" />
-          Replace conflicting rule in <code>transaction-lookups.xlsx</code>
+          Replace conflicting saved lookup rule
         </label>
         <p id="review-confirm-error" class="review-confirm-error hidden" role="alert"></p>
         <div class="modal-action-row">
           <button type="button" id="btn-review-confirm-cancel" class="btn-secondary">Cancel</button>
           <button type="button" id="btn-review-confirm-pending" class="btn-secondary">Update pending only</button>
           <button type="button" id="btn-review-confirm-all" class="btn-primary">Update all transactions</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="save-report-overlay" class="modal-overlay hidden" role="presentation" aria-hidden="true">
+    <div
+      id="save-report-modal"
+      class="modal-card modal-card-wide"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="save-report-title"
+    >
+      <div class="modal-header">
+        <h3 id="save-report-title">Save custom report</h3>
+        <button type="button" id="btn-save-report-close" class="btn-modal-close" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <p id="save-report-status" class="hint hidden"></p>
+        <label class="field-block">
+          <span>Name</span>
+          <input type="text" id="save-report-name" maxlength="120" placeholder="Consistent monthly expense" />
+        </label>
+        <label class="field-block">
+          <span>Description</span>
+          <input type="text" id="save-report-description" maxlength="240" placeholder="Short summary for the report list" />
+        </label>
+        <label class="field-block">
+          <span>Report prompt</span>
+          <textarea id="save-report-prompt" rows="5" placeholder="Distilled instructions from your chat session…"></textarea>
+        </label>
+        <label class="field-block checkbox-row">
+          <input type="checkbox" id="save-report-chart" />
+          <span>Prefer chart when rerunning (category rollups)</span>
+        </label>
+        <label class="field-block checkbox-row">
+          <input type="checkbox" id="save-report-grand-total" checked />
+          <span>Show grand total in summary</span>
+        </label>
+        <input type="hidden" id="save-report-parent-id" value="" />
+        <details class="save-report-sql-details">
+          <summary>SQL template</summary>
+          <pre id="save-report-sql" class="save-report-sql"></pre>
+        </details>
+      </div>
+      <div class="modal-actions">
+        <p id="save-report-error" class="review-confirm-error hidden" role="alert"></p>
+        <div class="modal-action-row">
+          <button type="button" id="btn-save-report-cancel" class="btn-secondary">Cancel</button>
+          <button type="button" id="btn-save-report-submit" class="btn-primary">Save report</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="manage-report-overlay" class="modal-overlay hidden" role="presentation" aria-hidden="true">
+    <div id="manage-report-modal" class="modal-card" role="dialog" aria-modal="true" aria-labelledby="manage-report-title">
+      <div class="modal-header">
+        <h3 id="manage-report-title">Manage report</h3>
+        <button type="button" id="btn-manage-report-close" class="btn-modal-close" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <label class="field-block">
+          <span>Report name</span>
+          <input type="text" id="manage-report-name" maxlength="120" />
+        </label>
+        <p id="manage-report-meta" class="hint"></p>
+      </div>
+      <div class="modal-actions">
+        <p id="manage-report-error" class="review-confirm-error hidden" role="alert"></p>
+        <div class="modal-action-row">
+          <button type="button" id="btn-manage-report-delete" class="btn-secondary">Delete</button>
+          <button type="button" id="btn-manage-report-fork" class="btn-secondary">Save as new version</button>
+          <button type="button" id="btn-manage-report-rename" class="btn-primary">Rename</button>
         </div>
       </div>
     </div>

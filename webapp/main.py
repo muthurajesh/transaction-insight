@@ -20,11 +20,9 @@ from webapp.config import (
     PROCESSED_DIR,
     LLM_BASE_URL,
     LLM_PROVIDER,
-    LOOKUP_FILE,
     PIPELINE_MODEL,
     STATIC_DIR,
     UI_SHOW_CADENCE,
-    UI_SHOW_EXCEL_LOOKUP_IMPORT,
 )
 from webapp.db.schema import get_connection, init_db
 from webapp.services.categorize import (
@@ -48,7 +46,6 @@ from webapp.services.custom_rules import (
     list_custom_rules,
     save_and_apply_custom_rule,
 )
-from webapp.services.lookups_import import default_lookup_workbook_path, import_lookup_workbook
 from webapp.services.cadence_insights import propose_cadence
 from webapp.services.edit_cadence_suggest import (
     CADENCE_SUGGEST_BATCH_LIMITS,
@@ -77,10 +74,14 @@ from webapp.services.taxonomy_rules import (
     preview_taxonomy_proposals,
     suggest_taxonomy_proposals_with_llm,
 )
+from webapp.services import custom_reports as custom_report_service
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from webapp.llm.request_log import setup_llm_logging
+
+    setup_llm_logging()
     init_db(DB_PATH)
     INBOX_DIR.mkdir(parents=True, exist_ok=True)
     yield
@@ -105,7 +106,8 @@ class ReviewConfirmRequest(BaseModel):
     classification: str = "Personal"
     transaction_id: str | None = None
     scope: str = "pending"
-    replace_excel: bool = False
+    replace_conflicting_rule: bool = False
+    replace_excel: bool | None = None  # legacy alias
 
 
 class ReviewConfirmPreviewRequest(BaseModel):
@@ -252,15 +254,13 @@ def api_status() -> dict[str, Any]:
             "SELECT DISTINCT budget_month FROM transactions ORDER BY budget_month DESC"
         ).fetchall()
         counts = table_counts(conn)
-        lookup_path = default_lookup_workbook_path()
         inbox_csv_files = sorted(p.name for p in INBOX_DIR.glob("*.csv"))
         return {
             "db_path": str(DB_PATH),
             "inbox_dir": str(INBOX_DIR),
             "processed_dir": str(PROCESSED_DIR),
             "inbox_csv_files": inbox_csv_files,
-            "lookup_file": str(LOOKUP_FILE),
-            "lookup_file_exists": lookup_path.is_file(),
+            "lookup_source": "sqlite",
             "llm_provider": LLM_PROVIDER,
             "llm_base_url": LLM_BASE_URL,
             "llm_model": CHAT_MODEL,
@@ -271,7 +271,6 @@ def api_status() -> dict[str, Any]:
             "months": [r["budget_month"] for r in months],
             "table_counts": counts,
             "ui_show_cadence": UI_SHOW_CADENCE,
-            "ui_show_excel_lookup_import": UI_SHOW_EXCEL_LOOKUP_IMPORT,
         }
     finally:
         conn.close()
@@ -363,6 +362,50 @@ class ProcessRequest(BaseModel):
     filename: str | None = None
     skip_lookup_update: bool = False
     update_lookup_workbook: bool = True
+
+
+class CustomReportFinalizeRequest(BaseModel):
+    sql_template: str = Field(min_length=1)
+    conversation_summary: str = ""
+    original_question: str = ""
+    tool_trace: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CustomReportSaveRequest(BaseModel):
+    name: str = Field(min_length=1)
+    sql_template: str = Field(min_length=1)
+    description: str = ""
+    original_question: str = ""
+    report_prompt: str = ""
+    report_config: dict[str, Any] = Field(default_factory=dict)
+    parameters: list[str] | None = None
+    parent_report_id: str | None = None
+    auto_finalize: bool = False
+    conversation_summary: str = ""
+    tool_trace: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CustomReportUpdateRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    sql_template: str | None = None
+    report_prompt: str | None = None
+    report_config: dict[str, Any] | None = None
+    original_question: str | None = None
+    parameters: list[str] | None = None
+
+
+class CustomReportForkRequest(BaseModel):
+    new_name: str = Field(min_length=1)
+    description: str | None = None
+    sql_template: str | None = None
+    report_prompt: str | None = None
+    report_config: dict[str, Any] | None = None
+
+
+class CustomReportRunRequest(BaseModel):
+    params: dict[str, Any] = Field(default_factory=dict)
+    max_rows: int = Field(500, ge=1, le=2000)
 
 
 @app.post("/api/process")
@@ -680,20 +723,26 @@ def api_transaction_cadence(
 
 @app.get("/api/custom-rules")
 def api_custom_rules_list() -> dict[str, Any]:
+    conn = _conn()
     try:
-        return list_custom_rules()
+        return list_custom_rules(conn)
     except Exception as exc:
         raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
 
 
 @app.post("/api/custom-rules")
 def api_custom_rules_add(body: CustomRuleCreateRequest) -> dict[str, Any]:
+    conn = _conn()
     try:
-        return add_custom_rule(body.rule)
+        return add_custom_rule(conn, body.rule)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
 
 
 @app.post("/api/custom-rules/compile-apply")
@@ -710,11 +759,9 @@ def api_custom_rules_compile_apply() -> dict[str, Any]:
         else:
             result["ok"] = True
             result["message"] = f"Updated {rows} transaction(s)."
-        listing = list_custom_rules()
+        listing = list_custom_rules(conn)
         result["rules"] = listing.get("rules") or []
         return result
-    except FileNotFoundError as exc:
-        raise HTTPException(404, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(500, str(exc)) from exc
     finally:
@@ -983,6 +1030,7 @@ def api_review_confirm(merchant_key: str, body: ReviewConfirmRequest) -> dict[st
                 classification=body.classification,
                 transaction_id=body.transaction_id,
                 scope=body.scope,
+                replace_conflicting_rule=body.replace_conflicting_rule,
                 replace_excel=body.replace_excel,
             )
         except ValueError as exc:
@@ -1053,16 +1101,13 @@ def api_taxonomy_apply(body: TaxonomyApplyRequest) -> dict[str, Any]:
 def api_settings() -> dict[str, Any]:
     conn = _conn()
     try:
-        lookup_path = default_lookup_workbook_path()
         return {
             "db_path": str(DB_PATH),
             "inbox_dir": str(INBOX_DIR),
             "processed_dir": str(PROCESSED_DIR),
-            "lookup_file": str(lookup_path),
-            "lookup_file_exists": lookup_path.is_file(),
+            "lookup_source": "sqlite",
             "table_counts": table_counts(conn),
             "ui_show_cadence": UI_SHOW_CADENCE,
-            "ui_show_excel_lookup_import": UI_SHOW_EXCEL_LOOKUP_IMPORT,
         }
     finally:
         conn.close()
@@ -1084,16 +1129,163 @@ def api_settings_clear(body: ClearDataRequest) -> dict[str, Any]:
 
 @app.post("/api/settings/import-lookups")
 def api_settings_import_lookups(body: ImportLookupsRequest | None = None) -> dict[str, Any]:
-    path = Path(body.path) if body and body.path else default_lookup_workbook_path()
-    if not path.is_absolute():
-        from webapp.config import ROOT
+    raise HTTPException(
+        410,
+        "Excel lookup import removed. Lookups are stored in finance.db only.",
+    )
 
-        path = (ROOT / path).resolve()
+
+@app.get("/api/custom-reports")
+def api_list_custom_reports() -> dict[str, Any]:
     conn = _conn()
     try:
-        return import_lookup_workbook(conn, path)
-    except FileNotFoundError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        reports = custom_report_service.list_custom_reports(conn)
+        return {"reports": reports, "count": len(reports)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/custom-reports/{report_id}")
+def api_get_custom_report(report_id: str) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        report = custom_report_service.get_custom_report(conn, report_id)
+        if not report:
+            raise HTTPException(404, f"Custom report not found: {report_id}")
+        return report
+    finally:
+        conn.close()
+
+
+@app.post("/api/custom-reports/finalize")
+def api_finalize_custom_report(body: CustomReportFinalizeRequest) -> dict[str, Any]:
+    try:
+        return custom_report_service.finalize_report_from_conversation(
+            sql_template=body.sql_template,
+            conversation_summary=body.conversation_summary,
+            original_question=body.original_question,
+            tool_trace=body.tool_trace,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+
+@app.post("/api/custom-reports")
+def api_save_custom_report(body: CustomReportSaveRequest) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        report_prompt = body.report_prompt
+        description = body.description
+        report_config = body.report_config
+        sql_template = body.sql_template
+        parameters = body.parameters
+
+        if body.auto_finalize and not report_prompt.strip():
+            finalized = custom_report_service.finalize_report_from_conversation(
+                sql_template=sql_template,
+                conversation_summary=body.conversation_summary,
+                original_question=body.original_question,
+                tool_trace=body.tool_trace,
+            )
+            report_prompt = finalized.get("report_prompt", "")
+            if not description.strip():
+                description = finalized.get("description", "")
+            if not report_config:
+                report_config = finalized.get("report_config") or {}
+            sql_template = finalized.get("sql_template", sql_template)
+            if parameters is None:
+                parameters = finalized.get("parameters")
+
+        saved = custom_report_service.save_custom_report(
+            conn,
+            name=body.name,
+            sql_template=sql_template,
+            description=description,
+            original_question=body.original_question,
+            report_prompt=report_prompt,
+            report_config=report_config,
+            parameters=parameters,
+            parent_report_id=body.parent_report_id,
+        )
+        return {"ok": True, "report": saved}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.patch("/api/custom-reports/{report_id}")
+def api_update_custom_report(report_id: str, body: CustomReportUpdateRequest) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        updated = custom_report_service.update_custom_report(
+            conn,
+            report_id,
+            name=body.name,
+            description=body.description,
+            sql_template=body.sql_template,
+            report_prompt=body.report_prompt,
+            report_config=body.report_config,
+            original_question=body.original_question,
+            parameters=body.parameters,
+        )
+        return {"ok": True, "report": updated}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.post("/api/custom-reports/{report_id}/fork")
+def api_fork_custom_report(report_id: str, body: CustomReportForkRequest) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        forked = custom_report_service.fork_custom_report(
+            conn,
+            report_id,
+            new_name=body.new_name,
+            description=body.description,
+            sql_template=body.sql_template,
+            report_prompt=body.report_prompt,
+            report_config=body.report_config,
+        )
+        return {"ok": True, "report": forked}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.post("/api/custom-reports/{report_id}/run")
+def api_run_custom_report(report_id: str, body: CustomReportRunRequest | None = None) -> dict[str, Any]:
+    body = body or CustomReportRunRequest()
+    conn = _conn()
+    try:
+        result = custom_report_service.run_custom_report(
+            conn,
+            report_id,
+            params=body.params,
+            max_rows=body.max_rows,
+        )
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.delete("/api/custom-reports/{report_id}")
+def api_delete_custom_report(report_id: str) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        deleted = custom_report_service.delete_custom_report(conn, report_id)
+        if not deleted:
+            raise HTTPException(404, f"Custom report not found: {report_id}")
+        return {"ok": True, "deleted": report_id}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     finally:
         conn.close()
 

@@ -589,6 +589,7 @@ def propose_cadence(
                 },
             ],
             temperature=0.3,
+            caller="cadence.propose",
         )
         parsed = extract_json(raw)
         if not isinstance(parsed, dict):

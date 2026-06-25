@@ -7,17 +7,21 @@ from typing import Any, Callable
 import pandas as pd
 from openai import OpenAI
 
-from webapp.llm.client import json_for_prompt
+from webapp.llm.client import PIPELINE_LLM_TEMPERATURE, json_for_prompt
 from webapp.llm.classify import extract_json_payload
 from webapp.llm.prompts import DESCRIPTION_PROMPT
+from webapp.llm.validation import generated_description_plausible
 from webapp.processing.constants import DESCRIPTION_LOOKUP_COLUMNS
 from webapp.processing.parse import (
     _clean_original_for_display,
     _norm_description_part,
-    heuristic_generated_description,
 )
 
 
+def _interim_generated_description(row: pd.Series) -> str:
+    """Placeholder before LLM runs, or when the model call fails (original text only)."""
+    original = _clean_original_for_display(str(row.get("Original Description", "") or ""))
+    return original[:120] if original else "Unknown"
 def description_source_key(row: pd.Series) -> str:
     """Stable hash key from normalized User, Simple, and cleaned Original descriptions."""
     user = _norm_description_part(row.get("User Description", ""))
@@ -39,8 +43,18 @@ def build_description_lookup_map(lookups: dict[str, pd.DataFrame]) -> dict[str, 
     for _, row in sheet.iterrows():
         key = str(row.get("Source Key", "") or "").strip()
         desc = str(row.get("Generated Description", "") or "").strip()
-        if key and desc:
-            result[key] = desc[:120]
+        if not key or not desc:
+            continue
+        pseudo = pd.Series(
+            {
+                "User Description": row.get("User Description", ""),
+                "Simple Description": row.get("Simple Description", ""),
+                "Original Description": row.get("Original Description", ""),
+            }
+        )
+        if not generated_description_plausible(desc, pseudo):
+            continue
+        result[key] = desc[:120]
     return result
 
 def make_description_lookup_row(
@@ -142,13 +156,17 @@ def generate_descriptions_batch(
     ]
     kwargs: dict[str, Any] = {
         "model": model,
-        "temperature": 0.1,
+        "temperature": PIPELINE_LLM_TEMPERATURE,
         "messages": messages,
     }
     if use_json_mode:
         kwargs["response_format"] = {"type": "json_object"}
 
-    response = client.chat.completions.create(**kwargs)
+    from webapp.llm.request_log import logged_chat_completions_create
+
+    response = logged_chat_completions_create(
+        client, caller="pipeline.descriptions", **kwargs
+    )
     raw = response.choices[0].message.content or "{}"
     parsed = extract_json_payload(raw)
     results = parsed.get("results", parsed if isinstance(parsed, list) else [])
@@ -168,51 +186,45 @@ def fill_generated_descriptions(
     on_batch_progress: Callable[[int, int, str], None] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Set Generated Description using shared lookup, User Description, then LLM.
-    When rebuild_lookup is True, cache is ignored and LLM runs for all non-user rows.
-    Returns (dataframe, new lookup rows to merge into transaction-lookups.xlsx).
+    Set Generated Description using validated lookup cache, then LLM.
+    User/Simple bank fields are passed to the model as context only — never copied verbatim.
+    When rebuild_lookup is True, cache is ignored and LLM runs for every row.
+    Returns (dataframe, new lookup rows to merge into description_lookup).
     """
     df = df.copy()
     lookup = {} if rebuild_lookup else dict(description_lookup or {})
     new_entries: list[dict[str, str]] = []
     llm_indices: list[int] = []
     lookup_hits = 0
-    user_hits = 0
+    cache_rejected = 0
 
     for idx, row in df.iterrows():
         key = description_source_key(row)
+
         cached = lookup.get(key, "")
         if cached and not rebuild_lookup:
-            df.at[idx, "Generated Description"] = cached
-            lookup_hits += 1
-            continue
-
-        user = str(row.get("User Description", "") or "").strip()
-        if user:
-            desc = user[:120]
-            df.at[idx, "Generated Description"] = desc
-            new_entries.append(make_description_lookup_row(row, key, desc, "user", model))
-            lookup[key] = desc
-            user_hits += 1
-            continue
+            if generated_description_plausible(cached, row):
+                df.at[idx, "Generated Description"] = cached
+                lookup_hits += 1
+                continue
+            cache_rejected += 1
 
         llm_indices.append(int(idx))
 
     if rebuild_lookup:
         print(
-            f"  Rebuilding description lookup: {user_hits} from User Description, "
-            f"{len(llm_indices)} row(s) need LLM",
+            f"  Rebuilding description lookup: {len(llm_indices)} row(s) need LLM",
             flush=True,
         )
     else:
         print(
-            f"  Description lookup: {lookup_hits} hit(s), {user_hits} from User Description, "
-            f"{len(llm_indices)} row(s) need LLM",
+            f"  Description lookup: {lookup_hits} hit(s), {cache_rejected} cache rejected, "
+            f"{len(llm_indices)} need LLM",
             flush=True,
         )
 
     for idx in llm_indices:
-        df.at[idx, "Generated Description"] = heuristic_generated_description(df.loc[idx])
+        df.at[idx, "Generated Description"] = _interim_generated_description(df.loc[idx])
 
     if llm_indices:
         key_to_indices: dict[str, list[int]] = {}
@@ -259,11 +271,18 @@ def fill_generated_descriptions(
                 if batch_idx < 0 or batch_idx >= len(llm_tasks) or not desc:
                     continue
                 key, rep_idx = llm_tasks[batch_idx]
+                row = df.loc[rep_idx]
+                if not generated_description_plausible(desc, row):
+                    print(
+                        f"  Rejected implausible description {desc!r} for key {key}",
+                        flush=True,
+                    )
+                    continue
                 for idx in key_to_indices[key]:
                     df.at[idx, "Generated Description"] = desc[:120]
                 new_entries.append(
                     make_description_lookup_row(
-                        df.loc[rep_idx], key, desc, "llm", model
+                        row, key, desc, "llm", model
                     )
                 )
                 lookup[key] = desc[:120]

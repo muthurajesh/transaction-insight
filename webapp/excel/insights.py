@@ -21,7 +21,7 @@ def _category_avg_monthly_spend(spend: pd.DataFrame) -> pd.Series:
     """
     Average monthly spend per AI Category (mean of each month's category total).
 
-    Not per transaction — e.g. Restaurants/Dining is ~$2k/mo, not ~$39/check.
+    Not per transaction — e.g. one category may total ~$2k/mo, not ~$39/check.
     """
     if spend.empty or "Budget Month" not in spend.columns:
         return pd.Series(dtype=float)

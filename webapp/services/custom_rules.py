@@ -2,22 +2,19 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from webapp.adapters.lookup_store import load_lookup_workbook_from_db
 from webapp.processing import (
     CUSTOM_RULES_COLUMNS,
     CUSTOM_RULES_SHEET,
     apply_custom_rules,
     compile_custom_rules_sheet,
     create_client,
-    default_lookup_path,
     load_active_custom_rules,
-    load_lookup_workbook,
     normalize_custom_rules_sheet,
-    open_excel_workbook,
     resolve_provider_config,
 )
 
@@ -31,44 +28,38 @@ _PIPELINE_COLS = [
 ]
 
 
-def lookup_workbook_path() -> Path:
-    return default_lookup_path()
-
-
-def _load_all_sheets(path: Path) -> dict[str, pd.DataFrame]:
-    if not path.is_file():
-        return {}
-    xl = pd.ExcelFile(path)
-    return {name: pd.read_excel(path, sheet_name=name) for name in xl.sheet_names}
-
-
-def _save_workbook_sheets(path: Path, sheets: dict[str, pd.DataFrame]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open_excel_workbook(path) as writer:
-        for name, frame in sheets.items():
-            frame.to_excel(writer, sheet_name=name, index=False)
-
-
-def _load_custom_rules_sheet(path: Path) -> pd.DataFrame:
-    if not path.is_file():
-        return normalize_custom_rules_sheet(None)
-    lookups = load_lookup_workbook(path)
+def _load_custom_rules_sheet(conn: sqlite3.Connection) -> pd.DataFrame:
+    lookups = load_lookup_workbook_from_db(conn)
     return normalize_custom_rules_sheet(lookups.get(CUSTOM_RULES_SHEET))
 
 
-def _persist_custom_rules_sheet(path: Path, sheet: pd.DataFrame) -> None:
+def _persist_custom_rules_sheet(conn: sqlite3.Connection, sheet: pd.DataFrame) -> None:
     normalized = normalize_custom_rules_sheet(sheet)
-    if path.is_file():
-        sheets = _load_all_sheets(path)
-    else:
-        sheets = {}
-    sheets[CUSTOM_RULES_SHEET] = normalized
-    _save_workbook_sheets(path, sheets)
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute("DELETE FROM pipeline_custom_rules")
+    for _, row in normalized.iterrows():
+        rule_text = str(row.get("Rule", "") or "").strip()
+        if not rule_text:
+            continue
+        conn.execute(
+            """
+            INSERT INTO pipeline_custom_rules (
+                rule_text, status, compiled_rule, last_error, updated_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                rule_text,
+                str(row.get("Status", "") or "Pending"),
+                str(row.get("Compiled Rule", "") or ""),
+                str(row.get("Last Error", "") or ""),
+                str(row.get("Updated At", "") or now),
+            ),
+        )
+    conn.commit()
 
 
-def list_custom_rules() -> dict[str, Any]:
-    path = lookup_workbook_path()
-    sheet = _load_custom_rules_sheet(path)
+def list_custom_rules(conn: sqlite3.Connection) -> dict[str, Any]:
+    sheet = _load_custom_rules_sheet(conn)
     rules: list[dict[str, Any]] = []
     for idx, row in sheet.iterrows():
         rule_text = str(row.get("Rule", "") or "").strip()
@@ -85,20 +76,15 @@ def list_custom_rules() -> dict[str, Any]:
                 "compiled_preview": compiled[:120] + ("…" if len(compiled) > 120 else ""),
             }
         )
-    return {
-        "lookup_file": str(path),
-        "lookup_file_exists": path.is_file(),
-        "rules": rules,
-    }
+    return {"rules": rules}
 
 
-def add_custom_rule(rule_text: str) -> dict[str, Any]:
+def add_custom_rule(conn: sqlite3.Connection, rule_text: str) -> dict[str, Any]:
     text = (rule_text or "").strip()
     if not text:
         raise ValueError("Rule text is required.")
 
-    path = lookup_workbook_path()
-    sheet = _load_custom_rules_sheet(path)
+    sheet = _load_custom_rules_sheet(conn)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     new_row = {
         "Rule": text,
@@ -108,11 +94,10 @@ def add_custom_rule(rule_text: str) -> dict[str, Any]:
         "Updated At": now,
     }
     sheet = pd.concat([sheet, pd.DataFrame([new_row])], ignore_index=True)
-    _persist_custom_rules_sheet(path, sheet)
+    _persist_custom_rules_sheet(conn, sheet)
     return {
-        "lookup_file": str(path),
         "message": "Rule added with status Pending. Use Compile & apply to compile and run it.",
-        **list_custom_rules(),
+        **list_custom_rules(conn),
     }
 
 
@@ -204,7 +189,7 @@ def _apply_rules_to_db(conn: sqlite3.Connection, rules: list[dict[str, Any]]) ->
 
 def save_and_apply_custom_rule(conn: sqlite3.Connection, rule_text: str) -> dict[str, Any]:
     """Append a rule, compile pending rows, and apply active rules to the database."""
-    add_custom_rule(rule_text)
+    add_custom_rule(conn, rule_text)
     result = compile_and_apply_custom_rules(conn)
     errors = result.get("compile_errors") or []
     rows = int(result.get("rows_updated") or 0)
@@ -217,22 +202,15 @@ def save_and_apply_custom_rule(conn: sqlite3.Connection, rule_text: str) -> dict
         result["ok"] = True
         result["message"] = f"Rule saved. Updated {rows} transaction(s)."
 
-    listing = list_custom_rules()
-    result["rules"] = listing.get("rules") or []
-    result["lookup_file"] = listing.get("lookup_file")
-    result["lookup_file_exists"] = listing.get("lookup_file_exists")
+    result["rules"] = list_custom_rules(conn).get("rules") or []
     return result
 
 
 def compile_and_apply_custom_rules(conn: sqlite3.Connection) -> dict[str, Any]:
-    path = lookup_workbook_path()
-    if not path.is_file():
-        raise FileNotFoundError(f"Lookup workbook not found: {path}")
-
-    sheet = _load_custom_rules_sheet(path)
+    sheet = _load_custom_rules_sheet(conn)
     if sheet.empty or sheet["Rule"].fillna("").astype(str).str.strip().eq("").all():
         return {
-            "message": "No custom rules in workbook.",
+            "message": "No custom rules saved yet.",
             "rows_updated": 0,
             "rules_compiled": 0,
             "rules_active": 0,
@@ -251,7 +229,7 @@ def compile_and_apply_custom_rules(conn: sqlite3.Connection) -> dict[str, Any]:
     compiled_sheet = compile_custom_rules_sheet(
         sheet, client, model, use_json_mode=use_json_mode
     )
-    _persist_custom_rules_sheet(path, compiled_sheet)
+    _persist_custom_rules_sheet(conn, compiled_sheet)
 
     compile_errors: list[dict[str, str]] = []
     for idx, row in compiled_sheet.iterrows():
@@ -267,7 +245,6 @@ def compile_and_apply_custom_rules(conn: sqlite3.Connection) -> dict[str, Any]:
     rows_updated = _apply_rules_to_db(conn, active)
 
     return {
-        "lookup_file": str(path),
         "message": (
             f"Compiled {pending_before} pending rule(s); "
             f"{len(active)} active; updated {rows_updated} transaction(s)."

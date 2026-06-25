@@ -654,12 +654,12 @@ def suggest_taxonomy_proposals_with_llm(
 Each proposal merges a duplicate or synonym INTO a canonical label. Nothing runs automatically.
 
 Rules:
-- category_merge: synonym top-level categories (Charitable Giving -> Charitable, Fees & Adjustments -> Fees).
-- label_unify: ONE proposal per cluster of sub-category spelling variants — pick ONE canonical sub-category string (Title Case preferred, e.g. "Streaming Services" NOT three variants). Set target_category to the category with the most transactions when variants span multiple categories (Subscriptions vs Entertainment).
+- category_merge: synonym top-level categories that clearly mean the same thing in this dataset.
+- label_unify: ONE proposal per cluster of sub-category spelling variants — pick ONE canonical sub-category string (Title Case preferred). Set target_category to the category with the most transactions when variants span multiple top-level categories.
 - sub_category_merge: legacy single-category merge — prefer label_unify for variant clusters instead.
 - merchant_alias: same real payee, different spelling — NOT different check numbers or transfer directions.
 
-CRITICAL: Never propose multiple rules that target different spellings for the same concept (e.g. do NOT create separate merges to "Streaming Service", "Streaming Services", and "Streaming service"). Emit one label_unify with from_sub_categories listing all variants and one to_label.
+CRITICAL: Never propose multiple rules that target different spellings for the same concept. Emit one label_unify with from_sub_categories listing all variants and one to_label.
 
 Confidence 0.0-1.0:
 - 1.0 only for case/punctuation variants.
@@ -675,7 +675,7 @@ Respond ONLY with JSON:
       "to_label": "...",
       "target_category": "Category with most tx (required for label_unify)",
       "from_sub_categories": ["variant1", "variant2"],
-      "source_categories": ["Entertainment", "Subscriptions"],
+      "source_categories": ["Category A", "Category B"],
       "scope_category": null or "Category for sub_category_merge only",
       "confidence": 0.92,
       "rationale": "One sentence why this merge is safe."
@@ -694,6 +694,7 @@ Prefer fewer high-confidence proposals. One label_unify per variant cluster."""
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.15,
         model=model,
+        caller="taxonomy.suggest",
     )
     parsed = extract_json(raw)
     llm_items = parsed.get("proposals", parsed) if isinstance(parsed, dict) else parsed

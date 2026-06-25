@@ -16,9 +16,9 @@ The user just edited one or more transactions in their ledger. Your job is to:
 3. If appropriate, suggest ONE plain-English CustomRule for their Excel CustomRules sheet.
 
 CustomRule examples (plain English — another step compiles these to JSON):
-- "When Generated Description is Netflix set ai_category Entertainment, ai_sub_category Streaming, type Fixed"
-- "When Generated Description is *Starbucks* and amount is 5.75 set ai_category Food, ai_sub_category Coffee"
-- "When Generated Description is Ahs Ahs.Com monthly split: highest amount Utilities / Appliance Insurance, others Rental / Appliance Insurance"
+- "When Generated Description is Merchant A set ai_category Category X, ai_sub_category Sub Y, type Fixed"
+- "When Generated Description is *Vendor* and amount is 5.75 set ai_category Category Z, ai_sub_category Sub W"
+- "When Generated Description is Merchant B monthly split: highest amount Category A / Sub 1, others Category C / Sub 2"
 
 Rules use Generated Description (same as merchant_key in the app). Use *wildcards* for contains.
 Set fields: ai_category, ai_sub_category, type (Fixed|Variable), classification (Personal|Business), category.
@@ -257,6 +257,7 @@ def analyze_edit(
                 },
             ],
             temperature=0.3,
+            caller="edit.insight",
         )
         parsed = extract_json(raw)
         if isinstance(parsed, dict) and "rule" in parsed and "insight" not in parsed:

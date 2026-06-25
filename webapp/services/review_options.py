@@ -9,30 +9,6 @@ from webapp.services.expense_cadence import (
     expense_cadence_period_label,
 )
 
-DEFAULT_CATEGORIES = [
-    "Housing",
-    "Utilities",
-    "Groceries",
-    "Dining",
-    "Restaurants",
-    "Transportation",
-    "Healthcare",
-    "Insurance",
-    "Entertainment",
-    "Income",
-    "Transfers",
-    "Savings",
-    "Subscriptions",
-    "Pets",
-    "Shopping",
-    "Personal Care",
-    "Education",
-    "Charitable",
-    "Fees",
-    "Business Expenses",
-    "Other",
-]
-
 FLOW_TYPES = ["Expense", "Income", "Transfer", "Adjustment"]
 EXPENSE_TYPES = ["Fixed", "Variable"]
 
@@ -81,7 +57,7 @@ def get_review_options(conn: sqlite3.Connection) -> dict:
         """
     ).fetchall()
 
-    categories = sorted({*DEFAULT_CATEGORIES, *(r[0] for r in cat_rows)})
+    categories = sorted({r[0] for r in cat_rows if r[0]})
     sub_categories = sorted({r[0] for r in sub_rows if r[0]})
     sub_categories_by_category: dict[str, list[str]] = {}
     for cat, sub in pair_rows:
@@ -165,12 +141,12 @@ def get_review_options(conn: sqlite3.Connection) -> dict:
         "expense_types": EXPENSE_TYPES,
         "tooltips": {
             "category": (
-                "Top-level budget group (e.g. Groceries, Utilities). "
-                "Pick from the list or type your own. Applies to every transaction for this merchant."
+                "Top-level budget group from your data or a new label you type. "
+                "Applies to every transaction for this merchant."
             ),
             "sub_category": (
-                "More specific label under the category (e.g. Electric bill, Fast food). "
-                "Pick from the list or type your own."
+                "More specific label under the category. "
+                "Pick from existing values or type your own."
             ),
             "flow_type": (
                 "How this bank row is counted in summaries. "
@@ -179,8 +155,8 @@ def get_review_options(conn: sqlite3.Connection) -> dict:
                 "Adjustment = refunds, credits, or reimbursements."
             ),
             "expense_type": (
-                "Fixed = recurring monthly obligation (rent, utilities, subscriptions). "
-                "Variable = discretionary or fluctuating spend (groceries, dining, shopping)."
+                "Fixed = recurring monthly obligation. "
+                "Variable = discretionary or fluctuating spend."
             ),
             "classification": (
                 "Personal = household spending. Business = work-related expenses "

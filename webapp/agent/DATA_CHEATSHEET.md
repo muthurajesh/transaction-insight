@@ -42,7 +42,7 @@ Optional seed/backup: **`scripts/transaction-lookups.xlsx`** — imported when D
 | `flow_type` | `Income`, `Expense`, `Transfer`, `Adjustment` | Filter income/expense |
 | `source_category` | Bank export category | Raw from CSV |
 | `merchant_key` | Merchant identifier (≈ generated description) | Grouping key |
-| `ai_category` | Normalized top-level category | e.g. Groceries, Automotive Expenses |
+| `ai_category` | Normalized top-level category | LLM- or user-assigned label |
 | `ai_sub_category` | Bill/spend type (not merchant name) | e.g. Towing, Fuel |
 | `expense_type` | `Fixed` or `Variable` | |
 | `classification` | `Personal` or `Business` | |
@@ -79,7 +79,7 @@ Chat uses **`query_sql`** for almost all analysis. The LLM writes read-only SELE
 | Tool | Use when |
 |------|----------|
 | **`query_sql`** | Spending, categories, merchants, comparisons, averages, trends, lists |
-| `list_custom_reports` / `run_custom_report` | Saved reports from Settings |
+| `list_custom_reports` / `run_custom_report` | Saved custom reports — build in Chat, rerun/tweak by name |
 | `propose_cadence_rule` | User explains annual/recurring charge treatment (UI confirm) |
 
 Legacy helper tools (`month_total`, `top_categories`, …) exist for non-chat code paths — **not exposed in Chat**.
@@ -129,41 +129,28 @@ These remain available to the app (not Chat):
 Use on `month_total`, `top_categories`, `flow_totals_by_month` when `flow=Expense`.
 Raw `query_sql` cannot apply per-row cadence — use helper tools instead.
 
-## `custom_reports` table (AI may write here)
+## `custom_reports` table
 
 | Column | Meaning |
 |--------|---------|
 | `report_id` | Stable id |
-| `name` | Display name (unique enough to find by name) |
-| `sql_template` | Read-only `SELECT` with `:month`, `:months`, `:limit`, `:category` (SQL sums are **cash** only; `:expense_view` is stored for metadata — use helper tools for normalized/core) |
+| `name` | Display name |
+| `report_prompt` | Distilled instructions from chat (source of truth for tweak) |
+| `sql_template` | Read-only `SELECT` with `:month`, `:months`, `:limit`, `:category`, `:expense_view` |
+| `report_config_json` | `expense_view`, `display.show_grand_total`, `chart.enabled`, exclusions metadata |
 | `parameters_json` | e.g. `["month", "limit"]` |
-| `original_question` | What the user asked when saving |
+| `parent_report_id` / `version` | Version lineage |
+| `original_question` | User message when saved |
 
-Example template — **top N expenses for one month**:
-
-```sql
-SELECT date, merchant_key, amount, ai_category, ai_sub_category
-FROM transactions
-WHERE budget_month = :month
-  AND flow_type = 'Expense' AND amount < 0
-ORDER BY amount ASC
-LIMIT :limit
-```
-
-Multi-month: `WHERE budget_month IN (SELECT value FROM json_each(:months))` with `months` = `["2026-03","2026-04"]`.
+Chat tools: `list_custom_reports`, `run_custom_report`. Build/save via Chat **Save as report** or REST `/api/custom-reports`.
 
 ## Workflow (user-facing)
 
-1. Drop CSV in `input/`
-2. **Run processing** (not scan alone) — full AI pipeline + DB save
-3. CSV moves to `processed/` after success
-4. Chat queries the DB via tools
-
-**Scan inbox** = legacy raw import only (no AI). Use **Import & Categorize** → choose CSV, which uploads and runs processing.
+1. Drop CSV in `input/` → **Import & Categorize** runs processing
+2. Chat explores data with `query_sql`; **Save as report** stores prompt + SQL
+3. Re-run saved reports for other months via chat or REST
 
 ## Answer style
 
-- Use tools first; format results as markdown tables for multi-month data
-- State which months are included (full exports vs partial)
+- Use tools first; state which months are included
 - If data is missing, say “run processing on the CSV for that month” — do not guess
-- Large one-off income (transfers, bonuses) may appear in totals; flag if unusually high vs ~$6.6k payroll pattern
