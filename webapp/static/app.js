@@ -66,6 +66,249 @@ function setWorkflowStepper(stepperEl, step) {
   });
 }
 
+/* --- First-time onboarding tour --- */
+const ONBOARDING_STORAGE_KEY = "ti_onboarding_done";
+let onboardingStepIndex = 0;
+let onboardingSpotlightEl = null;
+let categorizeProgressPercent = 0;
+
+const ONBOARDING_STEPS = [
+  {
+    title: "Welcome to Transaction Insight",
+    body:
+      "This quick tour walks you through importing a bank CSV, running AI categorization, and confirming labels. It only appears once for new users.",
+    target: null,
+    kicker: "Quick tour",
+  },
+  {
+    title: "Import & Categorize",
+    body:
+      "This is where you load data. Open this tab whenever you have a new bank export to process.",
+    target: '.tab[data-tab="actions"]',
+    tab: "actions",
+    kicker: "Step 1 of 5",
+  },
+  {
+    title: "Upload your CSV",
+    body:
+      'Click <strong>Choose CSV files</strong> and select your bank export. The file lands in <code>input/</code> and processing starts automatically.',
+    target: "#btn-choose-upload",
+    tab: "actions",
+    kicker: "Step 2 of 5",
+  },
+  {
+    title: "AI processing",
+    body:
+      "Watch the progress bar for percent complete, elapsed time, and a rough ETA. Local LLMs vary — often ~1–2 minutes per 50 transactions on a desktop GPU; a full year may take longer.",
+    target: "#categorize-progress",
+    tab: "actions",
+    kicker: "Step 3 of 5",
+    demoProgress: true,
+  },
+  {
+    title: "Confirm Categories",
+    body:
+      "After processing, review AI-suggested labels per merchant here. Confirming saves rules so the next import is faster.",
+    target: '.tab[data-tab="review"]',
+    tab: "review",
+    kicker: "Step 4 of 5",
+  },
+  {
+    title: "Ask questions in Chat",
+    body:
+      'Once data is loaded, use Chat to ask things like "How much did I spend last month?" or "Compare dining vs groceries."',
+    target: '.tab[data-tab="chat"]',
+    tab: "chat",
+    kicker: "Step 5 of 5",
+  },
+  {
+    title: "You're ready",
+    body: "Upload a CSV on Import & Categorize to get started. You can revisit Settings and Custom rules anytime.",
+    target: null,
+    kicker: "Done",
+    finish: true,
+  },
+];
+
+function isOnboardingActive() {
+  const overlay = $("#onboarding-overlay");
+  return overlay && !overlay.classList.contains("hidden");
+}
+
+function clearOnboardingSpotlight() {
+  if (onboardingSpotlightEl) {
+    onboardingSpotlightEl.classList.remove("onboarding-spotlight");
+    onboardingSpotlightEl = null;
+  }
+}
+
+function hideOnboardingProgressDemo() {
+  const panel = $("#categorize-progress");
+  if (panel?.dataset.onboardingDemo === "1") {
+    panel.classList.add("hidden");
+    delete panel.dataset.onboardingDemo;
+  }
+}
+
+function showOnboardingProgressDemo() {
+  const panel = $("#categorize-progress");
+  if (!panel) return;
+  panel.classList.remove("hidden");
+  panel.dataset.onboardingDemo = "1";
+  setCategorizeProgress(35, "Example: generating descriptions…", {
+    row_count: 87,
+    elapsed_s: 42,
+    eta_s: 78,
+    estimate_total_s: 120,
+  });
+}
+
+function positionOnboardingCard(targetEl) {
+  const card = $("#onboarding-card");
+  if (!card) return;
+  card.style.top = "";
+  card.style.left = "";
+  card.style.transform = "";
+  if (!targetEl) {
+    card.style.top = "50%";
+    card.style.left = "50%";
+    card.style.transform = "translate(-50%, -50%)";
+    return;
+  }
+  const rect = targetEl.getBoundingClientRect();
+  const margin = 12;
+  let top = rect.bottom + margin;
+  let left = rect.left;
+  if (top + card.offsetHeight > window.innerHeight - margin) {
+    top = Math.max(margin, rect.top - card.offsetHeight - margin);
+  }
+  left = Math.min(
+    Math.max(margin, left),
+    window.innerWidth - card.offsetWidth - margin
+  );
+  card.style.top = `${top}px`;
+  card.style.left = `${left}px`;
+}
+
+function renderOnboardingDots() {
+  const dots = $("#onboarding-dots");
+  if (!dots) return;
+  dots.innerHTML = ONBOARDING_STEPS.map((_, i) => {
+    const cls = i === onboardingStepIndex ? "onboarding-dot active" : "onboarding-dot";
+    return `<span class="${cls}"></span>`;
+  }).join("");
+}
+
+function renderOnboardingStep(index) {
+  const step = ONBOARDING_STEPS[index];
+  if (!step) return;
+  onboardingStepIndex = index;
+  const title = $("#onboarding-title");
+  const body = $("#onboarding-body");
+  const kicker = $("#onboarding-kicker");
+  const back = $("#btn-onboarding-back");
+  const next = $("#btn-onboarding-next");
+  if (title) title.textContent = step.title;
+  if (body) body.innerHTML = step.body;
+  if (kicker) kicker.textContent = step.kicker || "Quick tour";
+  if (back) back.disabled = index === 0;
+  if (next) next.textContent = step.finish ? "Get started" : "Next";
+  renderOnboardingDots();
+
+  if (step.tab) setTab(step.tab, { skipCadenceGuard: true });
+
+  clearOnboardingSpotlight();
+  hideOnboardingProgressDemo();
+
+  if (step.demoProgress) showOnboardingProgressDemo();
+  else if (step.target) {
+    const el = document.querySelector(step.target);
+    if (el) {
+      el.classList.add("onboarding-spotlight");
+      onboardingSpotlightEl = el;
+      requestAnimationFrame(() => positionOnboardingCard(el));
+    } else {
+      positionOnboardingCard(null);
+    }
+  } else {
+    positionOnboardingCard(null);
+  }
+}
+
+function finishOnboarding() {
+  localStorage.setItem(ONBOARDING_STORAGE_KEY, "1");
+  $("#onboarding-overlay")?.classList.add("hidden");
+  clearOnboardingSpotlight();
+  hideOnboardingProgressDemo();
+}
+
+function maybeStartOnboarding(status) {
+  if ((status.transaction_count || 0) > 0) {
+    localStorage.setItem(ONBOARDING_STORAGE_KEY, "1");
+    return;
+  }
+  if (localStorage.getItem(ONBOARDING_STORAGE_KEY)) return;
+  onboardingStepIndex = 0;
+  const overlay = $("#onboarding-overlay");
+  if (!overlay) return;
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+  renderOnboardingStep(0);
+}
+
+function onboardingAfterUploadStarted() {
+  if (!isOnboardingActive() || onboardingStepIndex !== 2) return;
+  onboardingStepIndex = 3;
+  renderOnboardingStep(3);
+  hideOnboardingProgressDemo();
+}
+
+function onboardingAfterProcessingDone() {
+  if (!isOnboardingActive() || onboardingStepIndex !== 3) return;
+  onboardingStepIndex = 4;
+  renderOnboardingStep(4);
+}
+
+function updateActionsStepper(status) {
+  const stepper = $("#actions-stepper");
+  if (!stepper) return;
+  const tx = status.transaction_count || 0;
+  const inbox = (status.inbox_csv_files || []).length;
+  const review = status.review_merchant_count || 0;
+  let step = 1;
+  if (tx > 0) step = review > 0 ? 2 : 3;
+  else if (inbox > 0) step = 2;
+  setWorkflowStepper(stepper, step);
+}
+
+$("#btn-onboarding-skip")?.addEventListener("click", () => finishOnboarding());
+$("#btn-onboarding-back")?.addEventListener("click", () => {
+  if (onboardingStepIndex > 0) renderOnboardingStep(onboardingStepIndex - 1);
+});
+$("#btn-onboarding-next")?.addEventListener("click", () => {
+  const step = ONBOARDING_STEPS[onboardingStepIndex];
+  if (step?.finish) {
+    finishOnboarding();
+    setTab("actions");
+    return;
+  }
+  if (onboardingStepIndex < ONBOARDING_STEPS.length - 1) {
+    renderOnboardingStep(onboardingStepIndex + 1);
+  } else {
+    finishOnboarding();
+  }
+});
+
+window.addEventListener(
+  "resize",
+  () => {
+    if (isOnboardingActive() && onboardingSpotlightEl) {
+      positionOnboardingCard(onboardingSpotlightEl);
+    }
+  },
+  { passive: true }
+);
+
 document.querySelectorAll(".tab").forEach((btn) => {
   btn.addEventListener("click", () => setTab(btn.dataset.tab));
 });
@@ -87,6 +330,8 @@ async function loadStatus() {
   if (processedEl && s.processed_dir) {
     processedEl.textContent = s.processed_dir;
   }
+  updateActionsStepper(s);
+  maybeStartOnboarding(s);
 }
 
 function escapeHtml(s) {
@@ -106,6 +351,13 @@ function renderMarkdown(text) {
 
 function mountTableDisplay(container, display) {
   if (!display || display.type !== "table" || typeof Tabulator === "undefined") return;
+
+  if (display.summary) {
+    const sumEl = document.createElement("p");
+    sumEl.className = "chat-display-summary";
+    sumEl.textContent = display.summary;
+    container.appendChild(sumEl);
+  }
 
   const toolbar = document.createElement("div");
   toolbar.className = "chat-display-toolbar";
@@ -136,9 +388,6 @@ function mountTableDisplay(container, display) {
     data: display.rows || [],
     columns,
     layout: wideTable ? "fitData" : "fitColumns",
-    height: Math.min(420, 42 + (display.rows || []).length * 32),
-    pagination: (display.rows || []).length > 25 ? "local" : false,
-    paginationSize: 25,
     placeholder: "No rows",
   });
   wrap._tabulator = table;
@@ -149,6 +398,14 @@ function mountTableDisplay(container, display) {
 
 function mountChartDisplay(container, display) {
   if (!display || display.type !== "chart" || typeof Chart === "undefined") return;
+
+  if (display.summary) {
+    const sumEl = document.createElement("p");
+    sumEl.className = "chat-display-summary";
+    sumEl.textContent = display.summary;
+    container.appendChild(sumEl);
+  }
+
   const wrap = document.createElement("div");
   wrap.className = "chat-chart-wrap";
   const canvas = document.createElement("canvas");
@@ -210,6 +467,328 @@ function mountDisplay(container, display) {
   else if (display.type === "chart") mountChartDisplay(container, display);
 }
 
+function extractSqlFromToolTrace(toolTrace) {
+  if (!toolTrace?.length) return null;
+  for (let i = toolTrace.length - 1; i >= 0; i -= 1) {
+    const entry = toolTrace[i];
+    if (
+      entry.tool === "query_sql" &&
+      entry.args?.sql &&
+      !entry.result?.error &&
+      !entry.result?.validation_rejected
+    ) {
+      return entry.args.sql;
+    }
+    if (entry.tool === "run_custom_report" && entry.result?.sql) {
+      return entry.result.sql;
+    }
+  }
+  return null;
+}
+
+function findReportFromToolTrace(toolTrace) {
+  if (!toolTrace?.length) return null;
+  for (let i = toolTrace.length - 1; i >= 0; i -= 1) {
+    const entry = toolTrace[i];
+    if (entry.tool === "run_custom_report" && entry.result?.report_id) {
+      return {
+        report_id: entry.result.report_id,
+        name: entry.result.name || "",
+        report_prompt: entry.result.report_prompt || "",
+      };
+    }
+  }
+  return null;
+}
+
+function findLastUserMessageBefore(msgNode) {
+  const log = $("#chat-log");
+  if (!log || !msgNode) return "";
+  const msgs = [...log.querySelectorAll(".msg")];
+  const idx = msgs.indexOf(msgNode);
+  for (let i = idx - 1; i >= 0; i -= 1) {
+    if (msgs[i].classList.contains("user")) {
+      return msgs[i].querySelector(".msg-body")?.textContent?.trim() || "";
+    }
+  }
+  return "";
+}
+
+function appendReportActions(parent, toolTrace, msgNode) {
+  const sql = extractSqlFromToolTrace(toolTrace);
+  const saved = findReportFromToolTrace(toolTrace);
+  if (!sql && !saved) return;
+
+  const wrap = document.createElement("div");
+  wrap.className = "chat-report-actions";
+
+  if (sql) {
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "btn-chat-report";
+    saveBtn.textContent = "Save as report";
+    saveBtn.addEventListener("click", () => {
+      openSaveReportModal({
+        toolTrace,
+        originalQuestion: findLastUserMessageBefore(msgNode),
+        parentReportId: saved?.report_id || "",
+      });
+    });
+    wrap.appendChild(saveBtn);
+  }
+
+  if (saved?.name) {
+    const tweakBtn = document.createElement("button");
+    tweakBtn.type = "button";
+    tweakBtn.className = "btn-chat-report";
+    tweakBtn.textContent = "Tweak in chat";
+    tweakBtn.addEventListener("click", () => {
+      insertChatCommand(
+        `Load and tweak custom report "${saved.name}": `
+      );
+    });
+    wrap.appendChild(tweakBtn);
+
+    const manageBtn = document.createElement("button");
+    manageBtn.type = "button";
+    manageBtn.className = "btn-chat-report";
+    manageBtn.textContent = "Manage";
+    manageBtn.addEventListener("click", () => {
+      openManageReportModal(saved);
+    });
+    wrap.appendChild(manageBtn);
+  }
+
+  if (wrap.children.length) parent.appendChild(wrap);
+}
+
+let saveReportDraft = null;
+
+function setSaveReportModalOpen(open) {
+  const overlay = $("#save-report-overlay");
+  if (!overlay) return;
+  overlay.classList.toggle("hidden", !open);
+  overlay.setAttribute("aria-hidden", open ? "false" : "true");
+}
+
+function setManageReportModalOpen(open) {
+  const overlay = $("#manage-report-overlay");
+  if (!overlay) return;
+  overlay.classList.toggle("hidden", !open);
+  overlay.setAttribute("aria-hidden", open ? "false" : "true");
+}
+
+async function openSaveReportModal({ toolTrace, originalQuestion, parentReportId = "" }) {
+  const sql = extractSqlFromToolTrace(toolTrace);
+  if (!sql) return;
+
+  saveReportDraft = { toolTrace, originalQuestion, sql, parentReportId };
+  const errEl = $("#save-report-error");
+  const statusEl = $("#save-report-status");
+  if (errEl) {
+    errEl.classList.add("hidden");
+    errEl.textContent = "";
+  }
+  $("#save-report-name").value = "";
+  $("#save-report-description").value = "";
+  $("#save-report-prompt").value = "";
+  $("#save-report-parent-id").value = parentReportId || "";
+  $("#save-report-sql").textContent = sql;
+  $("#save-report-chart").checked = false;
+  $("#save-report-grand-total").checked = true;
+
+  setSaveReportModalOpen(true);
+  if (statusEl) {
+    statusEl.classList.remove("hidden");
+    statusEl.textContent = "Generating report prompt from chat context…";
+  }
+  $("#btn-save-report-submit").disabled = true;
+
+  try {
+    const finalized = await api("/api/custom-reports/finalize", {
+      method: "POST",
+      body: JSON.stringify({
+        sql_template: sql,
+        conversation_summary: originalQuestion,
+        original_question: originalQuestion,
+        tool_trace: toolTrace,
+      }),
+    });
+    if (!$("#save-report-name").value.trim()) {
+      $("#save-report-name").value = (finalized.description || "Custom report").slice(0, 120);
+    }
+    $("#save-report-description").value = finalized.description || "";
+    $("#save-report-prompt").value = finalized.report_prompt || "";
+    if (finalized.report_config?.chart?.enabled) {
+      $("#save-report-chart").checked = true;
+    }
+    saveReportDraft.finalized = finalized;
+    if (statusEl) statusEl.textContent = "Review the prompt, then save.";
+  } catch (err) {
+    if (statusEl) {
+      statusEl.textContent = "Could not auto-generate prompt — edit fields and save.";
+    }
+    $("#save-report-prompt").value = originalQuestion || "";
+  } finally {
+    $("#btn-save-report-submit").disabled = false;
+  }
+}
+
+async function submitSaveReportModal() {
+  const errEl = $("#save-report-error");
+  const name = $("#save-report-name")?.value?.trim();
+  if (!name) {
+    if (errEl) {
+      errEl.textContent = "Name is required.";
+      errEl.classList.remove("hidden");
+    }
+    return;
+  }
+  if (!saveReportDraft?.sql) return;
+
+  const reportConfig = {
+    expense_view: "cash",
+    display: { show_grand_total: $("#save-report-grand-total")?.checked !== false },
+    chart: {
+      enabled: $("#save-report-chart")?.checked === true,
+      type: "bar",
+    },
+  };
+
+  try {
+    $("#btn-save-report-submit").disabled = true;
+    const res = await api("/api/custom-reports", {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        sql_template: saveReportDraft.sql,
+        description: $("#save-report-description")?.value?.trim() || "",
+        original_question: saveReportDraft.originalQuestion || "",
+        report_prompt: $("#save-report-prompt")?.value?.trim() || "",
+        report_config: reportConfig,
+        parent_report_id: $("#save-report-parent-id")?.value?.trim() || null,
+      }),
+    });
+    setSaveReportModalOpen(false);
+    saveReportDraft = null;
+    appendChat(
+      "assistant",
+      `Saved custom report **${res.report?.name || name}**. ` +
+        "Ask to run it for another month, or use **Tweak in chat** on a report result."
+    );
+  } catch (err) {
+    if (errEl) {
+      errEl.textContent = err.message;
+      errEl.classList.remove("hidden");
+    }
+  } finally {
+    $("#btn-save-report-submit").disabled = false;
+  }
+}
+
+let manageReportTarget = null;
+
+function openManageReportModal(report) {
+  manageReportTarget = report;
+  $("#manage-report-name").value = report.name || "";
+  $("#manage-report-meta").textContent = `ID: ${report.report_id}`;
+  const errEl = $("#manage-report-error");
+  if (errEl) {
+    errEl.classList.add("hidden");
+    errEl.textContent = "";
+  }
+  setManageReportModalOpen(true);
+}
+
+async function renameManagedReport() {
+  if (!manageReportTarget?.report_id) return;
+  const newName = $("#manage-report-name")?.value?.trim();
+  if (!newName) return;
+  try {
+    await api(`/api/custom-reports/${encodeURIComponent(manageReportTarget.report_id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: newName }),
+    });
+    setManageReportModalOpen(false);
+    appendChat("assistant", `Renamed report to **${newName}**.`);
+  } catch (err) {
+    const errEl = $("#manage-report-error");
+    if (errEl) {
+      errEl.textContent = err.message;
+      errEl.classList.remove("hidden");
+    }
+  }
+}
+
+async function deleteManagedReport() {
+  if (!manageReportTarget?.report_id) return;
+  if (!window.confirm(`Delete custom report "${manageReportTarget.name}"?`)) return;
+  try {
+    await api(`/api/custom-reports/${encodeURIComponent(manageReportTarget.report_id)}`, {
+      method: "DELETE",
+    });
+    setManageReportModalOpen(false);
+    appendChat("assistant", `Deleted custom report **${manageReportTarget.name}**.`);
+    manageReportTarget = null;
+  } catch (err) {
+    const errEl = $("#manage-report-error");
+    if (errEl) {
+      errEl.textContent = err.message;
+      errEl.classList.remove("hidden");
+    }
+  }
+}
+
+async function forkManagedReport() {
+  if (!manageReportTarget?.report_id) return;
+  const base = manageReportTarget.name || "Report";
+  const newName = window.prompt("New version name:", `${base} v2`);
+  if (!newName?.trim()) return;
+  try {
+    const res = await api(
+      `/api/custom-reports/${encodeURIComponent(manageReportTarget.report_id)}/fork`,
+      {
+        method: "POST",
+        body: JSON.stringify({ new_name: newName.trim() }),
+      }
+    );
+    setManageReportModalOpen(false);
+    appendChat(
+      "assistant",
+      `Saved new version **${res.report?.name || newName}** (v${res.report?.version || "?"}).`
+    );
+  } catch (err) {
+    const errEl = $("#manage-report-error");
+    if (errEl) {
+      errEl.textContent = err.message;
+      errEl.classList.remove("hidden");
+    }
+  }
+}
+
+(function initCustomReportModals() {
+  $("#btn-save-report-close")?.addEventListener("click", () => setSaveReportModalOpen(false));
+  $("#btn-save-report-cancel")?.addEventListener("click", () => setSaveReportModalOpen(false));
+  $("#btn-save-report-submit")?.addEventListener("click", () => {
+    submitSaveReportModal().catch(() => {});
+  });
+  $("#btn-manage-report-close")?.addEventListener("click", () => setManageReportModalOpen(false));
+  $("#btn-manage-report-rename")?.addEventListener("click", () => {
+    renameManagedReport().catch(() => {});
+  });
+  $("#btn-manage-report-delete")?.addEventListener("click", () => {
+    deleteManagedReport().catch(() => {});
+  });
+  $("#btn-manage-report-fork")?.addEventListener("click", () => {
+    forkManagedReport().catch(() => {});
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    setSaveReportModalOpen(false);
+    setManageReportModalOpen(false);
+  });
+})();
+
 function appendToolTrace(parent, toolTrace) {
   if (!toolTrace || !toolTrace.length) return;
   const details = document.createElement("details");
@@ -267,6 +846,7 @@ function appendChat(role, text, toolTrace, display, cadenceProposal) {
     body.innerHTML = renderMarkdown(text);
     if (display) mountDisplay(body, display);
     if (cadenceProposal) appendCadenceProposalAction(body, cadenceProposal);
+    appendReportActions(body, toolTrace, div);
     appendToolTrace(body, toolTrace);
   } else {
     body.textContent = text;
@@ -523,7 +1103,39 @@ const CHAT_HELP_COMMANDS = [
   {
     label: "Saved reports",
     text: "Show my custom reports",
-    description: "Lists SQL reports you saved. Ask to run one by name after inserting.",
+    description: "Lists saved reports (name, parameters, prompt summary). Run or tweak by name afterward.",
+  },
+  {
+    label: "Build custom report",
+    text: "Help me build a custom report for consistent monthly expenses. Start with last month by category.",
+    description:
+      "Multi-turn workflow: explore categories, add exclusions (business, one-offs), then Save as report on a table.",
+  },
+  {
+    label: "Run saved report",
+    text: 'Run my custom report "Consistent monthly expense" for 2026-05',
+    description: "Re-runs a saved report for one month. Change the report name and YYYY-MM month.",
+  },
+  {
+    label: "Tweak saved report",
+    text: 'Load and tweak custom report "Consistent monthly expense": ',
+    description:
+      "Loads the saved prompt context, runs the report, then apply one-off filters in follow-up messages.",
+  },
+  {
+    label: "Last 3 months",
+    text: "Compare my spending by category for the last 3 full months",
+    description: "Side-by-side or long-format category comparison — good before saving a multi-month report.",
+  },
+  {
+    label: "Unusual categories",
+    text: "Were any categories unusually high in the last 3 months?",
+    description: "Flags categories that spiked vs their own history (outlier-style analysis).",
+  },
+  {
+    label: "New patterns",
+    text: "What new merchants or categories appeared in the last 3 months compared to before?",
+    description: "Surfaces new spending patterns — useful when refining report exclusions.",
   },
 ];
 
@@ -1246,9 +1858,7 @@ async function loadCustomRules() {
     const rules = data.rules || [];
     renderCustomRulesList(rules);
     if (resultEl && !resultEl.dataset.sticky) {
-      resultEl.textContent = data.lookup_file_exists
-        ? `${rules.length} rule(s) in workbook`
-        : "Lookup workbook will be created on first add.";
+      resultEl.textContent = `${rules.length} rule(s) saved`;
     }
   } catch (err) {
     if (resultEl) resultEl.textContent = err.message;
@@ -3060,20 +3670,21 @@ function renderReviewConfirmBody(preview, merchantKey) {
     parts.push(`<div class="review-confirm-warn">${escapeHtml(preview.custom_rule_hint)}</div>`);
   }
 
-  if (preview.excel_conflicts?.length) {
-    const conflictLines = preview.excel_conflicts
+  const conflicts = preview.lookup_conflicts || preview.excel_conflicts || [];
+  if (conflicts.length) {
+    const conflictLines = conflicts
       .map((c) => {
         const ex = c.existing || {};
         return `<li><strong>${escapeHtml(c.source)}</strong>: ${escapeHtml(ex.ai_category || "—")}${ex.ai_sub_category ? ` / ${escapeHtml(ex.ai_sub_category)}` : ""}</li>`;
       })
       .join("");
     parts.push(
-      `<p>Conflicting rule in lookup workbook:</p><ul class="review-confirm-breakdown">${conflictLines}</ul>`
+      `<p>Conflicting saved lookup rule:</p><ul class="review-confirm-breakdown">${conflictLines}</ul>`
     );
   }
 
   parts.push(
-    "<p class=\"hint\">Saving updates <code>transaction-lookups.xlsx</code> (MerchantCategories) and matching rows in the database.</p>"
+    "<p class=\"hint\">Saving updates merchant labels in the database and matching transaction rows.</p>"
   );
   return parts.join("");
 }
@@ -3088,7 +3699,8 @@ function openReviewConfirmModal(preview, item, payload, cardEl) {
   if (title) title.textContent = `Confirm — ${item.merchant_key}`;
   if (body) body.innerHTML = renderReviewConfirmBody(preview, item.merchant_key);
   if (replaceWrap) {
-    replaceWrap.classList.toggle("hidden", !(preview.excel_conflicts?.length));
+    const conflicts = preview.lookup_conflicts || preview.excel_conflicts || [];
+    replaceWrap.classList.toggle("hidden", !conflicts.length);
   }
   if (replaceCb) replaceCb.checked = false;
   if (overlay) {
@@ -3100,7 +3712,7 @@ function openReviewConfirmModal(preview, item, payload, cardEl) {
 async function submitReviewConfirm(scope) {
   if (!reviewConfirmState) return;
   const { item, payload, cardEl } = reviewConfirmState;
-  const replaceExcel = $("#review-confirm-replace")?.checked ?? false;
+  const replaceRule = $("#review-confirm-replace")?.checked ?? false;
   const errEl = $("#review-confirm-error");
   const pendingBtn = $("#btn-review-confirm-pending");
   const allBtn = $("#btn-review-confirm-all");
@@ -3117,7 +3729,8 @@ async function submitReviewConfirm(scope) {
       body: JSON.stringify({
         ...payload,
         scope,
-        replace_excel: replaceExcel,
+        replace_conflicting_rule: replaceRule,
+        replace_excel: replaceRule,
       }),
     });
     if (cardEl) cardEl.remove();
@@ -3384,6 +3997,7 @@ async function uploadCsvFiles(files, { runAfterUpload = true } = {}) {
     }
     loadStatus();
     if (okCount === 0) return false;
+    onboardingAfterUploadStarted();
     if (runAfterUpload) {
       startedProcess = true;
       await runCategorizeStream();
@@ -3412,11 +4026,65 @@ $("#inbox-file-input")?.addEventListener("change", (e) => {
   uploadCsvFiles(files).catch(() => {});
 });
 
-function setCategorizeProgress(percent, message) {
+function formatDurationSeconds(seconds) {
+  if (seconds == null || !Number.isFinite(seconds)) return "";
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  if (m < 60) return rem ? `${m}m ${rem}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  const mr = m % 60;
+  return mr ? `${h}h ${mr}m` : `${h}h`;
+}
+
+function setCategorizeProgressTiming(meta = {}, percent = categorizeProgressPercent) {
+  const timing = $("#categorize-progress-timing");
+  const elapsedEl = $("#categorize-progress-elapsed");
+  const etaEl = $("#categorize-progress-eta");
+  const rowsEl = $("#categorize-progress-rows");
+  const showTiming =
+    meta.elapsed_s != null ||
+    meta.eta_s != null ||
+    meta.estimate_total_s != null ||
+    meta.row_count != null;
+  timing?.classList.toggle("hidden", !showTiming);
+  if (rowsEl) {
+    rowsEl.textContent = meta.row_count ? `${meta.row_count} transactions` : "";
+  }
+  if (elapsedEl) {
+    elapsedEl.textContent =
+      meta.elapsed_s != null ? `Elapsed: ${formatDurationSeconds(meta.elapsed_s)}` : "";
+  }
+  if (etaEl) {
+    if (percent >= 100) {
+      etaEl.textContent = "";
+    } else if (meta.eta_s != null) {
+      etaEl.textContent = `~${formatDurationSeconds(meta.eta_s)} remaining`;
+    } else if (meta.estimate_total_s != null) {
+      etaEl.textContent = `~${formatDurationSeconds(meta.estimate_total_s)} estimated`;
+    } else {
+      etaEl.textContent = "";
+    }
+  }
+}
+
+function progressMetaFromEvent(data) {
+  return {
+    elapsed_s: data.elapsed_s,
+    eta_s: data.eta_s,
+    row_count: data.row_count,
+    estimate_total_s: data.estimate_total_s,
+  };
+}
+
+function setCategorizeProgress(percent, message, meta = {}) {
+  categorizeProgressPercent = Math.min(100, Math.max(0, percent));
   const fill = $("#categorize-progress-fill");
   const text = $("#categorize-progress-text");
-  if (fill) fill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+  if (fill) fill.style.width = `${categorizeProgressPercent}%`;
   if (text) text.textContent = message;
+  setCategorizeProgressTiming(meta, categorizeProgressPercent);
 }
 
 function appendCategorizeLog(message) {
@@ -3474,39 +4142,42 @@ async function runCategorizeStream() {
     } catch {
       return;
     }
+    const meta = progressMetaFromEvent(data);
 
     if (data.type === "phase" && data.message) {
       if (typeof data.percent === "number") {
-        setCategorizeProgress(data.percent, data.message);
+        setCategorizeProgress(data.percent, data.message, meta);
       } else {
         const text = $("#categorize-progress-text");
         if (text) text.textContent = data.message;
+        setCategorizeProgressTiming(meta);
       }
       appendCategorizeLog(data.message);
     } else if (data.type === "progress" && data.message) {
-      setCategorizeProgress(data.percent ?? 0, data.message);
+      setCategorizeProgress(data.percent ?? 0, data.message, meta);
       appendCategorizeLog(data.message);
     } else if (data.type === "start") {
-      setCategorizeProgress(0, data.message);
+      setCategorizeProgress(0, data.message, meta);
       appendCategorizeLog(data.message);
     } else if (data.type === "batch_start") {
       const pct = data.total_merchants
         ? Math.round((data.merchants_done / data.total_merchants) * 100)
         : 0;
-      setCategorizeProgress(pct, data.message);
+      setCategorizeProgress(pct, data.message, meta);
       if (data.preview?.length) {
         appendCategorizeLog(`  → ${data.preview.join(", ")}${data.merchants_in_batch > 4 ? "…" : ""}`);
       }
     } else if (data.type === "batch_done") {
-      setCategorizeProgress(data.percent, data.message);
+      setCategorizeProgress(data.percent, data.message, meta);
     } else if (data.type === "batch_error") {
       appendCategorizeLog(data.message);
     } else if (data.type === "file_start" || data.type === "file_done") {
       if (typeof data.percent === "number") {
-        setCategorizeProgress(data.percent, data.message);
+        setCategorizeProgress(data.percent, data.message, meta);
       } else if (data.message) {
         const text = $("#categorize-progress-text");
         if (text) text.textContent = data.message;
+        setCategorizeProgressTiming(meta);
       }
       if (data.message) appendCategorizeLog(data.message);
     } else if (data.type === "done") {
@@ -3518,7 +4189,7 @@ async function runCategorizeStream() {
           : data.result?.archived_to
             ? `Complete — archived to ${data.result.archived_to}`
             : "Complete");
-      setCategorizeProgress(100, doneMsg);
+      setCategorizeProgress(100, doneMsg, meta);
       if (data.message) appendCategorizeLog(data.message);
       if (Array.isArray(data.results)) {
         for (const item of data.results) {
@@ -3551,6 +4222,7 @@ async function runCategorizeStream() {
       btn.disabled = false;
       loadStatus();
       reviewOptionsCache = null;
+      onboardingAfterProcessingDone();
     } else if (data.type === "error") {
       setCategorizeProgress(0, data.message);
       result.textContent = data.message;
@@ -3577,12 +4249,6 @@ async function loadSettings() {
   try {
     const s = await api("/api/settings");
     $("#settings-db-path").textContent = s.db_path;
-    $("#settings-lookup-path").textContent = s.lookup_file;
-    const status = $("#settings-lookup-status");
-    if (status) {
-      status.textContent = s.lookup_file_exists ? "(found)" : "(not found)";
-      status.className = s.lookup_file_exists ? "" : "lookup-missing";
-    }
     const lines = Object.entries(s.table_counts || {}).map(
       ([k, v]) => `${k}: ${v}`
     );
@@ -3606,27 +4272,12 @@ $("#btn-clear-data").addEventListener("click", async () => {
       body: JSON.stringify({ confirm: "CLEAR" }),
     });
     $("#clear-result").textContent = res.message || JSON.stringify(res, null, 2);
+    localStorage.removeItem(ONBOARDING_STORAGE_KEY);
     loadStatus();
     loadSettings();
     reviewOptionsCache = null;
   } catch (err) {
     $("#clear-result").textContent = err.message;
-  }
-});
-
-$("#btn-import-lookups").addEventListener("click", async () => {
-  $("#import-lookups-result").textContent = "Importing…";
-  try {
-    const res = await api("/api/settings/import-lookups", {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
-    $("#import-lookups-result").textContent = res.message || JSON.stringify(res, null, 2);
-    loadStatus();
-    loadSettings();
-    reviewOptionsCache = null;
-  } catch (err) {
-    $("#import-lookups-result").textContent = err.message;
   }
 });
 

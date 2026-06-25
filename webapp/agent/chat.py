@@ -76,14 +76,29 @@ ORDER BY ai_category, budget_month
 SELECT budget_month, ROUND(SUM(-amount), 2) AS spend
 FROM transactions
 WHERE flow_type='Expense' AND amount<0
-  AND ai_category IN ('Dining', 'Restaurants')
+  AND ai_category = '<category from user question>'
   AND budget_month IN ('2026-05','2026-04','2026-03')
 GROUP BY budget_month
 ```
 
 ## Other tools (special cases only)
 - `propose_cadence_rule` — user explains annual/recurring charge treatment (UI confirm).
-- `list_custom_reports` / `run_custom_report` — saved reports from Settings.
+- `list_custom_reports` / `run_custom_report` — saved reports (prompt + SQL). Use to rerun or as baseline when tweaking.
+
+## Custom reports (conversational workflow)
+Users build reports in chat over multiple turns, then save via the **Save as report** button or by asking to save.
+Each saved report stores:
+- **report_prompt** — distilled instructions (filters, exclusions, view, output shape)
+- **sql_template** — validated SELECT with `:month`, `:months`, `:limit`, `:category`, `:expense_view`
+
+When the user asks to **run**, **load**, or **tweak** a saved report:
+1. Call `list_custom_reports` if you need the exact name.
+2. Call `run_custom_report` with `report` and `params` (e.g. `{{"month": "2026-05"}}` or `{{"months": ["2026-03","2026-04","2026-05"]}}`).
+3. For **tweak** (one-off): run the saved report first, then `query_sql` with the same logic plus the user's change. Do not overwrite the saved report unless they ask to **update** or **save as new version**.
+
+For **rename** or **delete**, tell the user to use the report actions on a saved report message, or manage via Help examples.
+
+When saving is discussed, summarize: goal, filters, parameters exposed, and whether a chart or grand total is desired.
 
 Do **not** guess totals. Call `query_sql` before `{{"answer": "..."}}`.
 
@@ -272,14 +287,25 @@ def _format_query_rows(result: dict[str, Any], *, title: str) -> str:
 
 def _format_custom_reports_list(reports: list[dict[str, Any]]) -> str:
     if not reports:
-        return "You have no saved custom reports yet. Save reports from Settings after running a query you like."
-    lines = ["**Saved custom reports**\n", "| Name | Parameters | Description |", "| --- | --- | --- |"]
+        return (
+            "You have no saved custom reports yet. Explore data in chat, then use "
+            "**Save as report** on a table result, or ask me to help build one."
+        )
+    lines = [
+        "**Saved custom reports**\n",
+        "| Name | Ver | Parameters | Description |",
+        "| --- | --- | --- | --- |",
+    ]
     for r in reports:
         params = ", ".join(r.get("parameters") or []) or "—"
-        desc = (r.get("description") or r.get("original_question") or "—")[:80]
-        lines.append(f"| {r.get('name', '')} | {params} | {desc} |")
+        desc = (r.get("description") or r.get("report_prompt") or r.get("original_question") or "—")[:80]
+        ver = r.get("version") or 1
+        lines.append(f"| {r.get('name', '')} | v{ver} | {params} | {desc} |")
     lines.append(
-        "\nRe-run with: `run_custom_report` and the report name (e.g. pass `month` or `months`)."
+        "\n**Run:** ask to run a report by name with a month, e.g. "
+        "`run_custom_report` with `params: {{\"month\": \"2026-05\"}}`."
+        "\n**Tweak:** load the report, then ask for one-off changes without saving."
+        "\n**New version:** ask to save as a new version after tweaking."
     )
     return "\n".join(lines)
 
@@ -396,6 +422,59 @@ def _maybe_list_custom_reports_answer(
     return _chat_payload(_format_custom_reports_list(result), trace)
 
 
+def _report_context_for_message(
+    conn: sqlite3.Connection, user_message: str
+) -> str | None:
+    """Inject saved report prompt when user references a report by name."""
+    from webapp.services import custom_reports as saved_reports
+
+    msg = user_message.lower()
+    if not any(
+        k in msg
+        for k in (
+            "custom report",
+            "saved report",
+            "run report",
+            "load report",
+            "tweak report",
+            "open report",
+        )
+    ):
+        return None
+
+    reports = saved_reports.list_custom_reports(conn)
+    if not reports:
+        return None
+
+    matched: dict[str, Any] | None = None
+    for r in reports:
+        name = str(r.get("name") or "").strip()
+        if name and name.lower() in msg:
+            matched = r
+            break
+    if not matched and len(reports) == 1:
+        matched = reports[0]
+
+    if not matched:
+        return None
+
+    prompt = (matched.get("report_prompt") or "").strip()
+    params = ", ".join(matched.get("parameters") or []) or "(none)"
+    lines = [
+        f"Saved report context — **{matched.get('name')}** (v{matched.get('version', 1)}):",
+        f"Parameters: {params}",
+    ]
+    if prompt:
+        lines.append(f"Report prompt:\n{prompt}")
+    if matched.get("description"):
+        lines.append(f"Description: {matched['description']}")
+    lines.append(
+        "When tweaking: run_custom_report first, then query_sql for one-off changes. "
+        "Do not overwrite unless user asks to update or save a new version."
+    )
+    return "\n".join(lines)
+
+
 def _maybe_direct_answer(conn: sqlite3.Connection, user_message: str) -> dict[str, Any] | None:
     """Bypass the LLM only for UI workflow actions (cadence modal, report list)."""
     cadence = _maybe_cadence_propose_answer(conn, user_message)
@@ -477,7 +556,8 @@ def _synthesize_answer_from_trace(
                     'Respond with ONLY {"answer": "..."} — no more tool calls.'
                 ),
             }
-        ]
+        ],
+        caller="chat.synthesize_answer",
     )
     parsed = _parse_action(summary)
     if "answer" in parsed:
@@ -548,9 +628,11 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
         data_cheatsheet=_load_data_cheatsheet(),
         tools=tools_desc,
     )
-    context = "\n".join(
-        [_inbox_csv_context(), _db_month_context(conn), _db_category_context(conn)]
-    )
+    context_parts = [_inbox_csv_context(), _db_month_context(conn), _db_category_context(conn)]
+    report_ctx = _report_context_for_message(conn, user_message)
+    if report_ctx:
+        context_parts.append(report_ctx)
+    context = "\n".join(context_parts)
 
     _save_message(conn, "user", user_message)
     trace: list[dict[str, Any]] = []
@@ -560,7 +642,7 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
     ]
 
     for _ in range(max_tool_rounds + 1):
-        raw = chat_completion(messages)
+        raw = chat_completion(messages, caller="chat.turn")
         action = _parse_action(raw)
 
         if "answer" in action and not action.get("tool"):

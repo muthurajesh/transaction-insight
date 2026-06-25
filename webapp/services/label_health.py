@@ -10,21 +10,10 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
-# Conservative defaults — extend via mapping JSON before apply.
-SUGGESTED_CATEGORY_MERGES: dict[str, str] = {
-    "Restaurants/Dining": "Dining",
-    "Food & Dining": "Dining",
-    "Restaurants": "Dining",
-    "Healthcare/Medical": "Healthcare",
-    "Healthcare": "Healthcare",
-}
+# User-supplied mapping JSON only — no baked-in category synonyms.
+SUGGESTED_CATEGORY_MERGES: dict[str, str] = {}
 
-MULTI_CATEGORY_SKIP_DEFAULTS = frozenset(
-    {
-        "Check Payment",
-        "Amazon Marketplace",
-    }
-)
+MULTI_CATEGORY_SKIP_DEFAULTS = frozenset()
 
 
 def _utc_now() -> str:
@@ -678,16 +667,15 @@ Rules — merchant_aliases:
 - Pick canonical = member with highest tx_count; prefer cleaner full name over truncated.
 
 Rules — category_merges:
-- Merge synonyms only: Restaurants/Dining, Food & Dining -> Dining; Healthcare/Medical -> Healthcare.
+- Merge synonyms only when labels clearly mean the same thing in this dataset.
 - Do NOT merge unrelated categories.
 
 Rules — sub_category_merges:
-- Scoped by category key. Merge spelling variants only (Grocery shopping -> Supermarket under Groceries).
-- Do NOT map Fast food -> Coffee globally.
+- Scoped by category key. Merge spelling variants only.
 - Do NOT move sub-categories across categories.
 
 Always include reconcile block:
-{"enabled": true, "only_confirmed": true, "skip_merchants": ["Check Payment", "Amazon Marketplace"]}
+{"enabled": true, "only_confirmed": true, "skip_merchants": []}
 
 Respond with ONLY valid JSON matching this schema:
 {
@@ -708,6 +696,7 @@ Respond with ONLY valid JSON matching this schema:
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.1,
         model=model,
+        caller="label_health.suggest_mapping",
     )
     mapping = extract_json(raw)
     if not isinstance(mapping, dict):

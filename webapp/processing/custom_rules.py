@@ -7,6 +7,7 @@ import pandas as pd
 from openai import OpenAI
 
 from webapp.llm.classify import extract_json_payload
+from webapp.llm.client import PIPELINE_LLM_TEMPERATURE
 from webapp.llm.prompts import CUSTOM_RULE_COMPILER_PROMPT
 from webapp.processing.constants import (
     CUSTOM_RULE_FIELD_MAP,
@@ -64,13 +65,17 @@ def compile_custom_rule_text(
     ]
     kwargs: dict[str, Any] = {
         "model": model,
-        "temperature": 0.1,
+        "temperature": PIPELINE_LLM_TEMPERATURE,
         "messages": messages,
     }
     if use_json_mode:
         kwargs["response_format"] = {"type": "json_object"}
 
-    response = client.chat.completions.create(**kwargs)
+    from webapp.llm.request_log import logged_chat_completions_create
+
+    response = logged_chat_completions_create(
+        client, caller="pipeline.custom_rule_compile", **kwargs
+    )
     raw = response.choices[0].message.content or "{}"
     try:
         parsed = extract_json_payload(raw)

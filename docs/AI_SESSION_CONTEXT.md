@@ -98,7 +98,14 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 
 - Tiers 1–2 done; routing fix for top categories ([CHAT_RICH_UI.md](./CHAT_RICH_UI.md), [CHAT_ROUTING.md](./CHAT_ROUTING.md))
 - **Mic** — continuous listen, 3s silence / 30s cap, auto-send when listening ends (CHAT_RICH_UI § Voice input)
-- Tier 3: save-as-report, multiline composer — pending
+- Tier 3: **save-as-report** shipped in chat ([CHAT_CUSTOM_REPORTS.md](./CHAT_CUSTOM_REPORTS.md)); multiline composer still pending
+- First-visit onboarding tour + Import progress ETA (`PIPELINE_SECONDS_PER_ROW`)
+
+### Pipeline LLM behavior (recent)
+
+- **Descriptions:** validated `description_lookup` cache, then LLM — no verbatim copy of User/Simple bank fields.
+- **Classification:** review spend rows only (`classify_review_mask`); prompt uses separate bank text fields + `generated_description`; no fixed category list in code.
+- **Logging:** `LLM_LOG_CALLS=1` → console + `data/llm.log` (`webapp/llm/request_log.py`).
 
 ### Bulk history / migration
 

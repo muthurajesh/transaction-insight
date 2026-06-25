@@ -104,6 +104,10 @@ CREATE TABLE IF NOT EXISTS custom_reports (
     sql_template TEXT NOT NULL,
     parameters_json TEXT NOT NULL DEFAULT '[]',
     original_question TEXT,
+    report_prompt TEXT NOT NULL DEFAULT '',
+    report_config_json TEXT NOT NULL DEFAULT '{}',
+    parent_report_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -234,6 +238,16 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_cadence_rules_merchant ON cadence_rules(merchant_key)
         """
     )
+
+    cr_cols = _existing_columns(conn, "custom_reports")
+    for name, col_type in (
+        ("report_prompt", "TEXT NOT NULL DEFAULT ''"),
+        ("report_config_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("parent_report_id", "TEXT"),
+        ("version", "INTEGER NOT NULL DEFAULT 1"),
+    ):
+        if name not in cr_cols:
+            conn.execute(f"ALTER TABLE custom_reports ADD COLUMN {name} {col_type}")
 
 
 def init_db(db_path: Path) -> None:

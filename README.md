@@ -18,7 +18,8 @@ This project automates that enrichment:
 
 | Step | Where |
 |------|--------|
-| Upload & process CSV | **Import & Categorize** → choose CSV (upload + run processing) |
+| Upload & process CSV | **Import & Categorize** → choose CSV (upload + run processing); progress bar shows elapsed time and ETA |
+| First visit | Guided **quick tour** (once per browser; skipped when data already exists) |
 | Fix uncertain merchants | **Confirm Categories** |
 | Clean duplicate labels | **AI Rules** — merge synonyms (user confirms before apply) |
 | Edit rows, cadence, custom rules | **Edit Transactions**, **Cadence**, Settings |
@@ -66,7 +67,10 @@ See [docs/CONFIRM_CATEGORIES.md](docs/CONFIRM_CATEGORIES.md) for the label queue
 | `UI_SHOW_CADENCE` | `1` (show) | Cadence tab, Edit Transactions cadence links, Settings → Cadence rules, chat cadence actions. Set `0` to hide. |
 | `UI_SHOW_EXCEL_LOOKUP_IMPORT` | `1` (show) | Settings → **Import from Excel lookups**. Set `0` to hide (API/import still works). |
 | `LOOKUP_SOURCE` | `db` | Pipeline reads/writes SQLite lookups; `excel` is legacy. |
+| `LOOKUP_SEED_FROM_EXCEL` | off | Set `1` only to one-time import from `transaction-lookups.xlsx` when DB tables are empty. |
 | `EXPORT_LOOKUPS` | off | Set `1` to refresh `transaction-lookups.xlsx` on each run. |
+| `LLM_LOG_CALLS` | `1` | Log pipeline/chat LLM requests to console and `data/llm.log`. Set `0` to disable. |
+| `PIPELINE_SECONDS_PER_ROW` | `1.2` | ETA heuristic for Import & Categorize progress bar. |
 | `FINANCE_DB_PATH`, `FINANCE_INBOX_DIR`, `FINANCE_PROCESSED_DIR` | see `.env.example` | Override data paths. |
 
 Restart `./start.sh` (or uvicorn) after changing `.env`.
@@ -96,7 +100,7 @@ Models are configured in `config/.env`. You can split **pipeline** vs **chat** m
 | **After an edit** | Edit Transactions → Apply → AI insight modal | Explains the pattern; may suggest a **Custom Rule** (plain English). | No — save rule is optional. |
 | **Cadence** | Cadence tab → ✨ Suggest cadence (AI); Chat | Proposes recurring vs lump vs one-time from merchant history + your hint. | No — Review & save in modal or cadence queue. |
 | **Label cleanup** | **AI Rules** tab | **Analyze** (heuristics only) or **Suggest with AI** — duplicate categories, sub-categories, merchant spellings. | No — you select proposals, preview, then Apply. |
-| **Analytics** | Chat | LLM writes read-only **`query_sql`** against your SQLite data; answers are validated (e.g. month comparisons must not merge periods). Cadence keywords open propose flow. | Chat history only; reports save only if you ask. |
+| **Analytics** | Chat | LLM writes read-only **`query_sql`**; save multi-turn explorations as **custom reports** (prompt + SQL, rerun/tweak/version). Help panel includes report workflows. | Saved reports in `custom_reports` table; see [docs/CHAT_CUSTOM_REPORTS.md](docs/CHAT_CUSTOM_REPORTS.md). |
 
 **Not AI:** Import upload, inbox archive, Excel optional export, table counts, most Edit Transactions field updates (direct SQLite), and cadence **math** (`effective_amount`, cash/core/normalized views).
 
@@ -112,7 +116,7 @@ Use the right tool for the scope of the problem:
 |-----------|------------------|-------------------------------|
 | Confirm merchant | **Confirm Categories** | `merchant_labels` in SQLite (+ optional Excel row) |
 | Category rules | Settings → import Excel or DB | `category_rules` |
-| Description cache | Automatic after processing | `description_lookup` — skips description LLM for known text |
+| Description cache | Automatic after processing | `description_lookup` — validated cache hit or LLM (User/Simple are context only, not copied verbatim) |
 | Cadence | **Cadence** tab → save rule | `cadence_rules` |
 
 These are **deterministic at runtime**: the pipeline reads them before calling the LLM.
@@ -131,7 +135,7 @@ Detail: [docs/EDIT_INSIGHTS.md](docs/EDIT_INSIGHTS.md). These are **programmatic
 
 #### 3. AI Rules (taxonomy — global label vocabulary)
 
-**Best for:** “`ATM`, `ATM Withdrawal`, and `ATM withdrawal` should be one sub-category,” “merge `Charitable Giving` into `Charitable`,” “same merchant spelled three ways.”
+**Best for:** duplicate sub-category spellings, synonym top-level categories, same merchant spelled multiple ways.
 
 | Step | Where |
 |------|--------|
@@ -162,6 +166,7 @@ Detail: [docs/AI_TAXONOMY_RULES.md](docs/AI_TAXONOMY_RULES.md).
 | [docs/EXPENSE_CADENCE_PHASE_D.md](docs/EXPENSE_CADENCE_PHASE_D.md) | AI cadence propose + confirm |
 | [docs/CONFIRM_CATEGORIES.md](docs/CONFIRM_CATEGORIES.md) | Review queue and confirm scopes |
 | [docs/CHAT_RICH_UI.md](docs/CHAT_RICH_UI.md) | Chat tables, Help panel, voice input |
+| [docs/CHAT_CUSTOM_REPORTS.md](docs/CHAT_CUSTOM_REPORTS.md) | Build, save, and rerun custom reports in Chat |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What’s shipped vs planned (e.g. auto-apply taxonomy at confidence threshold) |
 
 ## Where files live
@@ -182,8 +187,8 @@ Each CSV is loaded, enriched by the pipeline, and saved to `finance.db`. With **
 | Column           | Description |
 |------------------|-------------|
 | Section          | `Income`, `Expense`, or `Adjustment` |
-| AI Category      | Top-level category (e.g. Groceries, Utilities, Dining) |
-| AI Sub-Category  | Finer label (e.g. Electric bill, Fast food) |
+| AI Category      | Top-level category (LLM- or user-assigned; no fixed list in code) |
+| AI Sub-Category  | Finer label under the category |
 | Type             | `Fixed` or `Variable` |
 | Sub-Type         | Empty for now; reserved for future breakdown |
 | Expense Cadence  | `Monthly`, `Yearly`, `One-time`, etc. (see below) |
@@ -192,12 +197,11 @@ Original CSV columns (Date, Amount, Category, descriptions, account, etc.) are k
 
 ### Fixed vs. variable (how AI is guided)
 
-- **Fixed**: Recurring obligations—mortgage/rent, HOA, utilities, insurance, phone/internet, subscriptions, gym, loan payments.
-- **Variable**: Discretionary or fluctuating spend—groceries, restaurants, fuel, shopping, entertainment.
+The LLM assigns **Fixed** vs **Variable** from transaction context (recurring obligations vs discretionary spend). There is no hardcoded category→type map in Python.
 
 Credit card payments and internal transfers are treated as expenses (money movement), not income.
 
-**Refunds vs income:** Only **Paychecks/Salary** and **Interest** count as **Income** when the amount is positive. A **positive** amount on a normal spending category (e.g. subscription refund) goes to **Adjustments**, not Income.
+**Refunds vs income:** Only **Paychecks/Salary** and **Interest** count as **Income** when the amount is positive. A **positive** amount on a normal spending category goes to **Adjustments**, not Income.
 
 ## LLM setup (Ollama — common default)
 
@@ -259,9 +263,10 @@ Set `LLM_PROVIDER=openai` and `OPENAI_API_KEY` in `config/.env`.
 Default (**`LOOKUP_SOURCE=db`** in `config/.env`):
 
 1. **Load** — `description_lookup`, `category_rules`, `pipeline_custom_rules`, `merchant_labels`, `cadence_rules` from `finance.db`
-2. **First run** — if lookup tables are empty, auto-import from `scripts/transaction-lookups.xlsx` when that file exists
-3. **Save** — merge new description keys, merchant rows, and rules into SQLite after each run
-4. **Optional Excel** — set `EXPORT_LOOKUPS=1` to also refresh `transaction-lookups.xlsx` (off by default)
+2. **First run** — optional one-time import from `scripts/transaction-lookups.xlsx` when `LOOKUP_SEED_FROM_EXCEL=1` and DB tables are empty
+3. **Process** — validated description cache, then LLM (User/Simple bank fields are context only); implausible cached labels rejected
+4. **Save** — merge new description keys, merchant rows, and rules into SQLite after each run
+5. **Optional Excel** — set `EXPORT_LOOKUPS=1` to also refresh `transaction-lookups.xlsx` (off by default)
 
 Legacy mode: `LOOKUP_SOURCE=excel` reads/writes the workbook only (not recommended).
 
@@ -277,7 +282,7 @@ Lookup data (same concepts as the old workbook sheets):
 | **`pipeline_custom_rules`** | Freeform rules → compiled JSON |
 | **`cadence_rules`** | Merchant cadence for run-rate views |
 
-See [docs/PIPELINE_DB_LOOKUPS.md](docs/PIPELINE_DB_LOOKUPS.md) for remaining work (pure in-memory merge without Excel scratch).
+See [docs/PIPELINE_DB_LOOKUPS.md](docs/PIPELINE_DB_LOOKUPS.md) for lookup storage details.
 
 ## Expense cadence
 

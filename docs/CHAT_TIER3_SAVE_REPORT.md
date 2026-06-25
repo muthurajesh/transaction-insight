@@ -1,6 +1,6 @@
 # Chat Tier 3 — Save as report (table replies)
 
-**Status:** Not implemented  
+**Status:** Partially implemented (save/tweak/manage in Chat — see [CHAT_CUSTOM_REPORTS.md](./CHAT_CUSTOM_REPORTS.md))  
 **Detail parent:** [CHAT_RICH_UI.md](./CHAT_RICH_UI.md) § Tier 3
 
 ## User intent (from project chat)

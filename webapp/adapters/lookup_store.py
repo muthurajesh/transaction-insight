@@ -17,8 +17,8 @@ from webapp.processing.constants import (
     MERCHANT_CATEGORIES_SHEET,
     MERCHANT_CATEGORY_COLUMNS,
 )
-from webapp.processing.lookups import load_lookup_workbook, update_lookup_workbook
-from webapp.services.expense_cadence import sync_cadence_rules_from_lookup_records
+from webapp.processing.lookups import _build_category_rules_from_df
+from webapp.processing.parse import _merchant_category_is_semantic, merchant_key
 
 
 def _utc_now() -> str:
@@ -31,168 +31,8 @@ def _table_count(conn: sqlite3.Connection, table: str) -> int:
 
 
 def ensure_lookups_seeded(conn: sqlite3.Connection, excel_path: Path) -> bool:
-    """
-    One-time import from transaction-lookups.xlsx when DB lookup tables are empty.
-    Returns True if seed ran.
-    """
-    if _table_count(conn, "description_lookup") > 0:
-        return False
-    if not excel_path.is_file():
-        return False
-
-    sheets = load_lookup_workbook(excel_path)
-    if not sheets:
-        return False
-
-    now = _utc_now()
-    desc = sheets.get("DescriptionLookup")
-    if desc is not None and not desc.empty:
-        for _, row in desc.iterrows():
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO description_lookup (
-                    source_key, user_description, simple_description,
-                    original_description, generated_description, source, model, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    str(row.get("Source Key", "") or "").strip(),
-                    str(row.get("User Description", "") or ""),
-                    str(row.get("Simple Description", "") or ""),
-                    str(row.get("Original Description", "") or ""),
-                    str(row.get("Generated Description", "") or "").strip(),
-                    str(row.get("Source", "") or ""),
-                    str(row.get("Model", "") or ""),
-                    str(row.get("Updated At", "") or now),
-                ),
-            )
-
-    rules = sheets.get("CategoryRules")
-    if rules is not None and not rules.empty:
-        for _, row in rules.iterrows():
-            src = str(row.get("Source Category", "") or "").strip()
-            if not src:
-                continue
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO category_rules (
-                    source_category, ai_category, budget_tier, type, sub_type, notes, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    src,
-                    str(row.get("AI Category", "") or ""),
-                    str(row.get("Budget Tier", "") or ""),
-                    str(row.get("Type", "") or ""),
-                    str(row.get("Sub-Type", "") or ""),
-                    str(row.get("Notes", "") or ""),
-                    now,
-                ),
-            )
-
-    mc = sheets.get(MERCHANT_CATEGORIES_SHEET)
-    if mc is not None and not mc.empty:
-        for _, row in mc.iterrows():
-            mk = str(row.get("Merchant Key", "") or "").strip()
-            cat = str(row.get("AI Category", "") or "").strip()
-            if not mk or not cat:
-                continue
-            conn.execute(
-                """
-                INSERT INTO merchant_labels (
-                    merchant_key, ai_category, ai_sub_category, expense_type,
-                    confidence, label_status, rationale, sample_count, updated_at,
-                    budget_tier, classification, flow_type, notes
-                ) VALUES (?, ?, ?, ?, 1.0, 'confirmed', 'seed: excel', ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(merchant_key) DO UPDATE SET
-                    ai_category=excluded.ai_category,
-                    ai_sub_category=excluded.ai_sub_category,
-                    expense_type=excluded.expense_type,
-                    budget_tier=COALESCE(excluded.budget_tier, merchant_labels.budget_tier),
-                    classification=COALESCE(excluded.classification, merchant_labels.classification),
-                    flow_type=COALESCE(excluded.flow_type, merchant_labels.flow_type),
-                    notes=COALESCE(excluded.notes, merchant_labels.notes),
-                    sample_count=COALESCE(excluded.sample_count, merchant_labels.sample_count),
-                    updated_at=excluded.updated_at
-                """,
-                (
-                    mk,
-                    cat,
-                    str(row.get("AI Sub-Category", "") or ""),
-                    str(row.get("Type", "") or "Variable"),
-                    int(row.get("Transaction Count", 0) or 0),
-                    now,
-                    str(row.get("Budget Tier", "") or ""),
-                    str(row.get("Classification", "") or ""),
-                    str(row.get("Flow Type", "") or ""),
-                    str(row.get("Notes", "") or ""),
-                ),
-            )
-
-    business = sheets.get("BusinessCategoryRules")
-    if business is not None and not business.empty:
-        for _, row in business.iterrows():
-            mk = str(row.get("Generated Description", "") or "").strip()
-            cat = str(row.get("AI Category", "") or "").strip()
-            if not mk or not cat:
-                continue
-            conn.execute(
-                """
-                INSERT INTO merchant_labels (
-                    merchant_key, ai_category, ai_sub_category, expense_type,
-                    confidence, label_status, rationale, sample_count, updated_at,
-                    budget_tier, classification, flow_type, notes
-                ) VALUES (?, ?, ?, ?, 1.0, 'confirmed', 'seed: BusinessCategoryRules', 0, ?, ?, ?, ?, ?)
-                ON CONFLICT(merchant_key) DO UPDATE SET
-                    ai_category=excluded.ai_category,
-                    ai_sub_category=excluded.ai_sub_category,
-                    expense_type=excluded.expense_type,
-                    budget_tier=COALESCE(excluded.budget_tier, merchant_labels.budget_tier),
-                    classification=COALESCE(excluded.classification, merchant_labels.classification),
-                    updated_at=excluded.updated_at
-                """,
-                (
-                    mk,
-                    cat,
-                    str(row.get("AI Sub-Category", "") or ""),
-                    str(row.get("Type", "") or "Variable"),
-                    now,
-                    str(row.get("Budget Tier", "") or ""),
-                    str(row.get("Classification", "") or "Business"),
-                    "",
-                    str(row.get("Notes", "") or ""),
-                ),
-            )
-
-    custom = sheets.get(CUSTOM_RULES_SHEET)
-    if custom is not None and not custom.empty:
-        conn.execute("DELETE FROM pipeline_custom_rules")
-        for _, row in custom.iterrows():
-            rule_text = str(row.get("Rule", "") or "").strip()
-            if not rule_text:
-                continue
-            conn.execute(
-                """
-                INSERT INTO pipeline_custom_rules (
-                    rule_text, status, compiled_rule, last_error, updated_at
-                ) VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    rule_text,
-                    str(row.get("Status", "") or "Pending"),
-                    str(row.get("Compiled Rule", "") or ""),
-                    str(row.get("Last Error", "") or ""),
-                    str(row.get("Updated At", "") or now),
-                ),
-            )
-
-    cadence = sheets.get(EXPENSE_CADENCE_RULES_SHEET)
-    if cadence is not None and not cadence.empty:
-        payload = cadence.fillna("").astype(str).to_dict(orient="records")
-        sync_cadence_rules_from_lookup_records(conn, payload)
-
-    conn.commit()
-    return True
+    """Legacy Excel seed removed — lookups live in SQLite only."""
+    return False
 
 
 def load_lookup_workbook_from_db(conn: sqlite3.Connection) -> dict[str, pd.DataFrame]:
@@ -250,16 +90,16 @@ def load_lookup_workbook_from_db(conn: sqlite3.Connection) -> dict[str, pd.DataF
         sheets[MERCHANT_CATEGORIES_SHEET] = pd.DataFrame([dict(r) for r in ml_rows])
         business_rows = [
             {
-                "Generated Description": r["Merchant Key"],
-                "AI Category": r["AI Category"],
-                "AI Sub-Category": r["AI Sub-Category"],
-                "Budget Tier": r["Budget Tier"],
-                "Type": r["Type"],
-                "Classification": r["Classification"],
-                "Notes": r["Notes"],
+                "Generated Description": row["Merchant Key"],
+                "AI Category": row["AI Category"],
+                "AI Sub-Category": row["AI Sub-Category"],
+                "Budget Tier": row["Budget Tier"],
+                "Type": row["Type"],
+                "Classification": row["Classification"],
+                "Notes": row["Notes"],
             }
-            for r in (dict(x) for x in ml_rows)
-            if str(dict(x).get("Classification", "")).lower() == "business"
+            for row in (dict(r) for r in ml_rows)
+            if str(row.get("Classification", "")).lower() == "business"
         ]
         if business_rows:
             sheets["BusinessCategoryRules"] = pd.DataFrame(business_rows)
@@ -298,11 +138,44 @@ def load_lookup_workbook_from_db(conn: sqlite3.Connection) -> dict[str, pd.DataF
     return sheets
 
 
+def _merchant_categories_from_pipeline(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate spend rows into merchant label rows (no Excel)."""
+    from webapp.processing.constants import MERCHANT_CATEGORY_COLUMNS
+
+    spend_only = df[df.get("Include in Spend?", "N") == "Y"].copy()
+    if spend_only.empty:
+        return pd.DataFrame(columns=list(MERCHANT_CATEGORY_COLUMNS))
+    if "Merchant Key" not in spend_only.columns:
+        spend_only["Merchant Key"] = spend_only.apply(merchant_key, axis=1)
+
+    merchant_categories = (
+        spend_only.groupby("Merchant Key", dropna=False)
+        .agg(
+            **{
+                "AI Category": ("AI Category", lambda s: s.mode().iat[0] if len(s) else ""),
+                "AI Sub-Category": (
+                    "AI Sub-Category",
+                    lambda s: s.mode().iat[0] if len(s) else "",
+                ),
+                "Budget Tier": ("Budget Tier", lambda s: s.mode().iat[0] if len(s) else ""),
+                "Type": ("Type", lambda s: s.mode().iat[0] if len(s) else ""),
+                "Transaction Count": ("Merchant Key", "size"),
+            }
+        )
+        .reset_index()
+    )
+    merchant_categories["Notes"] = ""
+    merchant_categories["Flow Type"] = ""
+    merchant_categories["Classification"] = ""
+    return merchant_categories[
+        merchant_categories.apply(_merchant_category_is_semantic, axis=1)
+    ].copy()
+
+
 def save_lookup_workbook_to_db(
     conn: sqlite3.Connection,
     df: pd.DataFrame,
     *,
-    lookup_path: Path,
     suggested_business: pd.DataFrame | None = None,
     new_description_entries: pd.DataFrame | None = None,
     rebuild_description_lookup: bool = False,
@@ -312,23 +185,28 @@ def save_lookup_workbook_to_db(
     batch_size: int = 40,
     use_json_mode: bool = False,
 ) -> None:
-    """
-    Reuse Excel merge logic in a temp workbook path, then mirror merged sheets into SQLite.
-    """
-    update_lookup_workbook(
-        df,
-        lookup_path,
-        client=client,
-        model=model,
-        batch_size=batch_size,
-        use_json_mode=use_json_mode,
-        suggested_business=suggested_business,
-        new_description_entries=new_description_entries,
-        rebuild_description_lookup=rebuild_description_lookup,
-        custom_rules_sheet=custom_rules_sheet,
-    )
-    sheets = load_lookup_workbook(lookup_path)
+    """Persist pipeline lookup updates to SQLite."""
+    from webapp.llm.validation import generated_description_plausible
+
     now = _utc_now()
+
+    if new_description_entries is not None and not new_description_entries.empty:
+        valid_rows = []
+        for _, row in new_description_entries.iterrows():
+            desc = str(row.get("Generated Description", "") or "").strip()
+            pseudo = pd.Series(
+                {
+                    "User Description": row.get("User Description", ""),
+                    "Simple Description": row.get("Simple Description", ""),
+                    "Original Description": row.get("Original Description", ""),
+                }
+            )
+            if desc and generated_description_plausible(desc, pseudo):
+                valid_rows.append(row)
+        if valid_rows:
+            new_description_entries = pd.DataFrame(valid_rows)
+        else:
+            new_description_entries = pd.DataFrame()
 
     if new_description_entries is not None and not new_description_entries.empty:
         for _, row in new_description_entries.iterrows():
@@ -360,9 +238,9 @@ def save_lookup_workbook_to_db(
                 ),
             )
 
-    rules = sheets.get("CategoryRules")
-    if rules is not None and not rules.empty:
-        for _, row in rules.iterrows():
+    category_rules = _build_category_rules_from_df(df)
+    if not category_rules.empty:
+        for _, row in category_rules.iterrows():
             src = str(row.get("Source Category", "") or "").strip()
             if not src:
                 continue
@@ -383,8 +261,8 @@ def save_lookup_workbook_to_db(
                 ),
             )
 
-    mc = sheets.get(MERCHANT_CATEGORIES_SHEET)
-    if mc is not None and not mc.empty:
+    mc = _merchant_categories_from_pipeline(df)
+    if not mc.empty:
         for _, row in mc.iterrows():
             mk = str(row.get("Merchant Key", "") or "").strip()
             cat = str(row.get("AI Category", "") or "").strip()
@@ -422,7 +300,7 @@ def save_lookup_workbook_to_db(
                 ),
             )
 
-    custom = sheets.get(CUSTOM_RULES_SHEET)
+    custom = custom_rules_sheet
     if custom is not None:
         conn.execute("DELETE FROM pipeline_custom_rules")
         for _, row in custom.iterrows():
@@ -443,11 +321,5 @@ def save_lookup_workbook_to_db(
                     str(row.get("Updated At", "") or now),
                 ),
             )
-
-    cadence = sheets.get(EXPENSE_CADENCE_RULES_SHEET)
-    if cadence is not None and not cadence.empty:
-        sync_cadence_rules_from_lookup_records(
-            conn, cadence.fillna("").astype(str).to_dict(orient="records")
-        )
 
     conn.commit()

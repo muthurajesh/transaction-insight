@@ -40,7 +40,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | **Voice input UX** — focus input, continuous listen, 3s silence / 30s cap, auto-send | CHAT_RICH_UI § Voice input |
 | [x] | Help panel — commands, descriptions, **+** insert | CHAT_RICH_UI § Tier 1 |
 | [x] | Tier 2 — Chart.js, CSV export, chat history restore | CHAT_RICH_UI § Tier 2 |
-| [ ] | Tier 3 — **Save as report** from table replies | → [CHAT_TIER3_SAVE_REPORT.md](./CHAT_TIER3_SAVE_REPORT.md) |
+| [~] | Tier 3 — **Save as report** from table replies | Shipped in chat — [CHAT_CUSTOM_REPORTS.md](./CHAT_CUSTOM_REPORTS.md); [CHAT_TIER3_SAVE_REPORT.md](./CHAT_TIER3_SAVE_REPORT.md) |
 | [ ] | Tier 3 — **Multiline composer** (Shift+Enter) | CHAT_RICH_UI § Tier 3 |
 | [ ] | Tier 3 — Streaming tokens (optional) | CHAT_RICH_UI § Tier 3; defer unless latency hurts |
 | [x] | **Chat routing fix** — “top N categories” must not hit `list_transactions` shortcut | → [CHAT_ROUTING.md](./CHAT_ROUTING.md) |
@@ -149,7 +149,9 @@ Single index for planned and completed work. Use this file to pick **what to do 
 |--------|------|-------|
 | [x] | `custom_reports` table + chat save/run/list | |
 | [x] | Add `:expense_view` to allowed report parameters | EXPENSE_CADENCE_PHASE_B § Custom reports (metadata; SQL stays cash) |
-| [ ] | UI to manage saved reports (non-chat) | → [CUSTOM_REPORTS_UI.md](./CUSTOM_REPORTS_UI.md) |
+| [x] | Conversational build + save in Chat (prompt + SQL, rename/delete/version) | → [CHAT_CUSTOM_REPORTS.md](./CHAT_CUSTOM_REPORTS.md) |
+| [~] | Chat Tier 3 save-as-report button | Shipped in chat; multiline composer still open |
+| [ ] | UI to manage saved reports (non-chat Settings tab) | → [CUSTOM_REPORTS_UI.md](./CUSTOM_REPORTS_UI.md) |
 
 ---
 
@@ -173,7 +175,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 
 1. **Phase D Slice D1** — tune cadence AI on full merchant history (D1 shipped)
 2. **PIPELINE_MERCHANT_LABELS** — SQLite confirmed labels before LLM on re-import
-3. **Chat Tier 3** — save-as-report, multiline composer
+3. **Chat Tier 3** — multiline composer (save-as-report shipped — [CHAT_CUSTOM_REPORTS.md](./CHAT_CUSTOM_REPORTS.md))
 4. **Phase D2–D3** — report layers + layered reports  
 5. **§7 Pipeline lookups** — pure in-memory merge on save; optional Excel export UI ([PIPELINE_DB_LOOKUPS.md](./PIPELINE_DB_LOOKUPS.md))
 
@@ -199,6 +201,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [CONFIRM_CATEGORIES.md](./CONFIRM_CATEGORIES.md) | Confirm merchant → Excel MerchantCategories + DB |
 | [PIPELINE_DB_LOOKUPS.md](./PIPELINE_DB_LOOKUPS.md) | **Deferred** — SQLite as pipeline lookup source (replace Excel dependency) |
 | [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) | Bulk export web labels → Excel (Settings; partial; interim until §7) |
+| [CHAT_CUSTOM_REPORTS.md](./CHAT_CUSTOM_REPORTS.md) | Chat conversational custom reports (save, tweak, version) |
 | [CUSTOM_REPORTS_UI.md](./CUSTOM_REPORTS_UI.md) | Settings UI for saved reports |
 | [IMPORT_PROCESS_UPLOAD.md](./IMPORT_PROCESS_UPLOAD.md) | File picker for Run processing |
 

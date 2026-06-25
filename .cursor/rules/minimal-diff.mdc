@@ -1,0 +1,47 @@
+---
+description: >-
+  Prefer the smallest correct change — extend existing code, avoid new files,
+  no drive-by refactors or docs unless asked.
+alwaysApply: true
+---
+
+# Minimal change policy
+
+**Default:** Fix or extend what exists. The best change is the smallest one that is correct.
+
+## Before writing code
+
+1. **Search first** — grep/semantic search for an existing function, module, or pattern that already does 80% of the work.
+2. **Name the target file** — if the user did not, pick the single best existing file; do not scatter logic.
+3. **No new files** unless the user explicitly asks, or there is no reasonable hook (state why in one line).
+
+## While implementing
+
+- **Extend** existing functions and modules; do not add parallel helpers, wrappers, or `utils_v2` modules for one-off logic.
+- **Reuse** imports, types, and naming from the surrounding file — match the author’s style.
+- **Inline** when a “helper” would be fewer than ~5 lines used once.
+- **Do not** refactor unrelated code, rename symbols broadly, or “clean up” adjacent files.
+- **Do not** add tests, README, or `docs/` updates unless the user asked or workspace rules require it for a shipped feature.
+
+## Size guardrails
+
+| Situation | Action |
+|-----------|--------|
+| Fix is clearly &lt;15 lines | Stay in one file; no new abstractions |
+| Change would exceed ~50 lines | Briefly say why; still avoid new files if possible |
+| Tempted to add a new module | Stop — put logic in the nearest existing module |
+
+## When expansion is OK
+
+- User explicitly requests a new file, feature area, or test suite.
+- A new file is standard for the repo (e.g. `tests/test_<feature>.py` when user asked for tests).
+- Extracting shared code **after** the same logic would otherwise be duplicated in 2+ places (not preemptively).
+
+## Before marking done
+
+- List files touched; if more than 2, justify each.
+- If you created a file, confirm the user wanted it or that no existing hook existed.
+
+## If asked to “add” something
+
+Interpret as **wire into existing code** unless they say “new module,” “new service,” or “new file.”

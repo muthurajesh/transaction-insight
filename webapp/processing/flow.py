@@ -8,90 +8,18 @@ def _abs_spend_sum(spend: pd.DataFrame, row_mask: pd.Series) -> float:
         return 0.0
     return float(spend.loc[row_mask, "Amount_Numeric"].abs().sum())
 
+
 def budget_tier_from_category(category: str) -> str:
-    """Map category text to your 3-tier budget model (Need/Want/Wish)."""
-    c = str(category or "").lower()
-
-    need_patterns = [
-        "mortgage",
-        "hoa",
-        "rent",
-        "housing",
-        "utilities",
-        "telephone",
-        "internet",
-        "insurance",
-        "health",
-        "medical",
-        "household repairs",
-        "repairs",
-        "dues and subscriptions",
-        "dues",
-        "services",
-        "postage",
-        "automotive expenses",
-        "automotive",
-    ]
-    if any(p in c for p in need_patterns):
-        return "Need"
-
-    want_patterns = [
-        "grocer",
-        "gasoline",
-        "fuel",
-        "pets",
-        "personal care",
-        "gym",
-        "clothing",
-        "electronics",
-        "education",
-        "warranty",
-    ]
-    if any(p in c for p in want_patterns):
-        return "Want"
-
-    wish_patterns = [
-        "dining",
-        "restaurant",
-        "coffee",
-        "entertain",
-        "travel",
-        "hobbies",
-        "gift",
-        "charitable",
-        "general merchandise",
-        "shopping",
-        "online services",
-    ]
-    if any(p in c for p in wish_patterns):
-        return "Wish"
-
+    """Neutral default until the LLM or user assigns Need/Want/Wish."""
+    _ = category
     return "Review"
 
+
 def cost_type_from_category(category: str) -> str:
-    """Fixed vs Variable default (LLM can override for Review items)."""
-    c = str(category or "").lower()
-    fixed_patterns = [
-        "mortgage",
-        "hoa",
-        "rent",
-        "utilities",
-        "telephone",
-        "internet",
-        "insurance",
-        "dues and subscriptions",
-        "dues",
-        "subscription",
-        "online services",
-    ]
-    if any(p in c for p in fixed_patterns):
-        return "Fixed"
-
-    # Gym membership tends to be recurring
-    if "gym" in c:
-        return "Fixed"
-
+    """Neutral default until the LLM or user assigns Fixed/Variable."""
+    _ = category
     return "Variable"
+
 
 def is_paycheck_row(row: pd.Series) -> bool:
     cat = str(row.get("Category", "") or "")
@@ -102,6 +30,7 @@ def is_paycheck_row(row: pd.Series) -> bool:
         [str(row.get("Original Description", "") or ""), str(row.get("Simple Description", "") or "")]
     ).lower()
     return "payroll" in combined and amt > 0
+
 
 def _description_suggests_refund(row: pd.Series) -> bool:
     """Heuristic: bank text looks like a return/refund/reversal."""
@@ -125,8 +54,9 @@ def _description_suggests_refund(row: pd.Series) -> bool:
     )
     return any(h in text for h in hints)
 
+
 def flow_type_from_row(row: pd.Series) -> str:
-    """Classify how the amount should be summarized."""
+    """Classify how the amount should be summarized from bank export fields."""
     cat = str(row.get("Category", "") or "").strip()
     amt = float(row.get("Amount_Numeric", 0.0))
 
@@ -144,12 +74,12 @@ def flow_type_from_row(row: pd.Series) -> str:
             return "Adjustment"
         if _description_suggests_refund(row):
             return "Adjustment"
-        # Positive amount on a spending category (e.g. JetBrains subscription refund)
-        # is a credit against prior spend — not wages or business income.
+        # Positive amount on a spending category is a credit against prior spend.
         return "Adjustment"
 
     # amt < 0
     return "Expense"
+
 
 def _spend_rows(df: pd.DataFrame) -> pd.DataFrame:
     """Expense rows included in budget spend analysis."""

@@ -1,6 +1,6 @@
 # Pipeline lookups — SQLite-first (Excel optional)
 
-**Status:** Mostly shipped — DB is default runtime source; save path still uses Excel merge helpers as scratch unless `EXPORT_LOOKUPS=0` and pure in-memory merge is added  
+**Status:** Shipped — DB is default runtime source; save path is SQLite-only (Excel export optional via `EXPORT_LOOKUPS=1`)  
 **Roadmap:** §7 Pipeline storage  
 **Related:** [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md) (labels before LLM) · [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) (export web → Excel backup)
 
@@ -11,9 +11,9 @@ With **`LOOKUP_SOURCE=db`** (default in `config/.env`):
 | Step | Behavior |
 |------|----------|
 | **Load** | `webapp/adapters/lookup_store.py` builds in-memory lookup dicts from `finance.db` |
-| **First run** | `ensure_lookups_seeded()` imports from `scripts/transaction-lookups.xlsx` when DB tables are empty and the file exists |
-| **Process** | `webapp/pipeline/run.py` → `webapp/services/process.py` — no Excel read on the web path |
-| **Save** | Merged rows upserted to SQLite; optional Excel refresh when `EXPORT_LOOKUPS=1` |
+| **First run** | Optional: `LOOKUP_SEED_FROM_EXCEL=1` imports from `scripts/transaction-lookups.xlsx` when DB tables are empty (off by default) |
+| **Process** | `webapp/pipeline/run.py` — validated description cache, then LLM; User/Simple fields are LLM context only (not copied verbatim); implausible cached labels rejected |
+| **Save** | SQLite upsert only (`save_lookup_workbook_to_db`); optional Excel refresh when `EXPORT_LOOKUPS=1` |
 
 Legacy mode: `LOOKUP_SOURCE=excel` reads/writes the workbook only (not recommended).
 
@@ -32,7 +32,6 @@ Legacy mode: `LOOKUP_SOURCE=excel` reads/writes the workbook only (not recommend
 
 | Gap | Detail |
 |-----|--------|
-| **Save without Excel scratch** | Save still calls Excel merge helpers internally, then mirrors to DB — pure in-memory merge not done |
 | **merchant_labels before LLM** | Confirmed SQLite labels not applied on re-import — see [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md) |
 | **Bulk export to workbook** | Optional Settings export — see [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) |
 

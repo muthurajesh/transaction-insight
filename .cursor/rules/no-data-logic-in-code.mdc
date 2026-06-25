@@ -1,0 +1,56 @@
+---
+description: >-
+  Core design — no hardcoded finance taxonomy, merchant names, or category
+  keyword logic in application code. Labels come from LLM + user-confirmed DB rules.
+alwaysApply: true
+---
+
+# No data-based logic in code
+
+**Core design:** Transaction Insight does **not** encode user finance vocabulary, merchant names, or category taxonomies in Python/JS. Judgment lives in the **LLM**; persistence lives in **SQLite** (`merchant_labels`, `category_rules`, `description_lookup`, `cadence_rules`, `pipeline_custom_rules`, user mapping JSON). Code is structural plumbing only.
+
+## Forbidden in `webapp/` (and production prompts)
+
+Do **not** add or reintroduce:
+
+- Hardcoded category/subcategory lists (`DEFAULT_CATEGORIES`, `ALLOWED_CATEGORIES`, frozensets of label names)
+- Keyword/pattern maps from category or description text → category, tier, or type (`if "dining" in c`, `need_patterns`, `fixed_patterns`)
+- Hardcoded merchant or brand names in logic or prompts used at runtime (`Netflix`, `Starbucks`, `McDonald's`, …)
+- Prescriptive LLM prompts that enumerate a fixed taxonomy (“choose from: Groceries, Dining, …”)
+- Python validation that rejects LLM labels because they are not in a built-in list
+- Default fallbacks like `ai_category="Other"` when the bank/LLM already supplied a value
+- Baked-in synonym/merge maps (`Restaurants/Dining` → `Dining`) — only user/LLM-produced mapping JSON or DB rows
+
+## Allowed (structural only)
+
+- **Field enums** with fixed meaning: `flow_type` (Expense/Income/Transfer/Adjustment), `expense_type` (Fixed/Variable), `classification` (Personal/Business), `budget_tier` (Need/Want/Wish/Review)
+- **CSV/bank export schema**: column names, parsing amounts/dates, hashing `transaction_id`, sign rules
+- **Bank `Category` column → `flow_type`** when mapping the exporter’s own category labels (e.g. `Paychecks/Salary`, `Transfers`) — not AI `ai_category` vocabulary
+- **Text plausibility without taxonomy**: e.g. generated merchant label must appear in bank description text
+- **Neutral defaults** until LLM/user sets a value: `Variable`, `Review`, empty string, or bank `original_category`
+- **Reading labels from DB** for UI dropdowns, lookups, and SQL — never seeding dropdowns from Python lists
+
+## Where judgment belongs
+
+| Concern | Owner |
+|---------|--------|
+| Merchant label, category, sub-category, Fixed/Variable | LLM classification + user confirm |
+| Repeatable if/then | Custom Rules (English → compiled JSON → DB) |
+| Per-merchant defaults | `merchant_labels` after confirm |
+| Bank category → starting labels | `category_rules` in DB |
+| Synonym cleanup | AI Rules / user mapping JSON — not Python dicts |
+
+## Before finishing any change
+
+1. Grep changed files for category names, merchant brands, and pattern lists — remove or move to DB/LLM.
+2. If adding a “sensible default,” it must be **structural** (empty, `Review`, `Variable`) — not a guessed category.
+3. Prompt examples use placeholders (`Merchant A`, `Category X`) — not real brands or a fixed taxonomy list.
+
+## Tests
+
+- Fixture rows may use sample labels to populate an in-memory DB; that is **test data**, not product logic.
+- Do not add tests that assert a hardcoded category name is the “correct” production outcome unless testing DB rule application for that explicit fixture.
+
+## If asked to add “quick” taxonomy logic
+
+Refuse the shortcut. Implement via LLM prompt, lookup table, custom rule, or user-confirmed mapping — and say which path you used.

@@ -6,11 +6,11 @@ import sqlite3
 from difflib import SequenceMatcher
 from typing import Any
 
+from webapp.adapters.lookup_store import load_lookup_workbook_from_db
 from webapp.processing import (
     CUSTOM_RULES_SHEET,
     MERCHANT_CATEGORIES_SHEET,
     load_active_custom_rules,
-    load_lookup_workbook,
     normalize_custom_rules_sheet,
 )
 from webapp.services.categorize import list_review_items
@@ -24,7 +24,6 @@ from webapp.services.review_confirm import (
     _norm,
     align_classification_with_category,
     classification_adjusted_for_category,
-    lookup_workbook_path,
 )
 from webapp.services.review_options import get_review_options
 
@@ -50,9 +49,9 @@ Guidelines:
 - Prefer lookup_rules and similar_confirmed_merchants when they clearly match.
 - flow_type: Expense for normal spending; Income for payroll/interest; Transfer for account moves;
   Adjustment for refunds/credits.
-- expense_type: Fixed for subscriptions/rent/utilities; Variable for discretionary spend.
-- classification: Business when ai_category is Business Expenses or Business; Personal otherwise.
-- Use only category names from allowed_categories when possible; sub_category from allowed_sub_categories or invent a sensible one.
+- expense_type: Fixed for recurring charges; Variable for discretionary spend.
+- classification: Business when the category clearly indicates work/business spend; Personal otherwise.
+- Prefer allowed_categories and allowed_sub_categories when they fit; otherwise infer sensible labels from the transaction.
 - Be concise in rationale."""
 
 
@@ -106,11 +105,10 @@ def _finalize_suggestion(
     return out
 
 
-def _merchant_row_from_excel(merchant_key: str) -> tuple[dict[str, str], str] | None:
-    path = lookup_workbook_path()
-    if not path.is_file():
-        return None
-    lookups = load_lookup_workbook(path)
+def _merchant_row_from_db(
+    conn: sqlite3.Connection, merchant_key: str
+) -> tuple[dict[str, str], str] | None:
+    lookups = load_lookup_workbook_from_db(conn)
     mk_lower = merchant_key.strip().lower()
 
     sheet = lookups.get(MERCHANT_CATEGORIES_SHEET)
@@ -179,14 +177,14 @@ def _lookup_suggestion(
     conn: sqlite3.Connection,
     merchant_key: str,
 ) -> dict[str, Any] | None:
-    excel = _merchant_row_from_excel(merchant_key)
-    if excel:
-        labels, source = excel
+    saved = _merchant_row_from_db(conn, merchant_key)
+    if saved:
+        labels, source = saved
         return {
             "labels": labels,
             "confidence": "high",
             "source": source,
-            "rationale": f"Matched existing rule in {source}.",
+            "rationale": f"Matched saved lookup ({source}).",
         }
 
     sqlite_labels = _sqlite_merchant_label(conn, merchant_key)
@@ -383,6 +381,7 @@ def _llm_suggestion(
             },
         ],
         temperature=0.2,
+        caller="review.suggest_labels",
     )
     parsed = extract_json(raw)
     if not isinstance(parsed, dict):

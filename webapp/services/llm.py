@@ -37,9 +37,14 @@ def chat_completion(
     *,
     temperature: float = 0.2,
     model: str | None = None,
+    caller: str = "chat",
 ) -> str:
+    from webapp.llm.request_log import logged_chat_completions_create
+
     client = get_client()
-    resp = client.chat.completions.create(
+    resp = logged_chat_completions_create(
+        client,
+        caller=caller,
         model=model or LLM_MODEL,
         messages=messages,
         temperature=temperature,

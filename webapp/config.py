@@ -25,6 +25,11 @@ LOOKUP_FILE = Path(
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 LOOKUP_SOURCE = os.getenv("LOOKUP_SOURCE", "db").strip().lower()
+LOOKUP_SEED_FROM_EXCEL = os.getenv("LOOKUP_SEED_FROM_EXCEL", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
 EXPORT_LOOKUPS_TO_EXCEL = os.getenv("EXPORT_LOOKUPS", "").strip().lower() in (
     "1",
     "true",
@@ -63,7 +68,7 @@ class PipelineConfig:
     model: str | None = None
     batch_size: int | None = None
     source_file: str = ""
-    update_lookup_workbook: bool = True
+    update_lookup_workbook: bool = False
     lookup_source: str = LOOKUP_SOURCE
     export_lookup_excel: bool = EXPORT_LOOKUPS_TO_EXCEL
 
