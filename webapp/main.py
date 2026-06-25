@@ -36,6 +36,14 @@ from webapp.services.review_suggest import (
     suggest_labels_for_merchant,
 )
 from webapp.services.process import list_inbox_csv_paths, process_inbox_files
+from webapp.services.classification_audit import (
+    audit_summary,
+    dismiss_finding,
+    list_findings,
+    open_merchant_payload,
+    run_classification_audit,
+    schedule_post_import_audit,
+)
 from webapp.services.review_options import get_review_options
 from webapp.services.data_store import clear_data_store, table_counts
 from webapp.services.inbox_upload import save_upload_to_inbox, scan_uploaded_files
@@ -426,6 +434,7 @@ def api_process(body: ProcessRequest | None = None) -> dict[str, Any]:
             skip_cadence_detection=True,
             update_lookup_workbook=body.update_lookup_workbook,
         )
+        schedule_post_import_audit([r.get("file", "") for r in results if r.get("file")])
         return {
             "file_count": len(results),
             "results": results,
@@ -480,6 +489,9 @@ def api_process_stream(
                     "results": results,
                     "message": f"Processed {len(results)} file(s).",
                 }
+                schedule_post_import_audit(
+                    [r.get("file", "") for r in results if r.get("file")]
+                )
             except Exception as exc:
                 error_box["message"] = str(exc)
             finally:
@@ -516,6 +528,70 @@ def api_process_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.get("/api/classification-audit/summary")
+def api_classification_audit_summary() -> dict[str, Any]:
+    conn = _conn()
+    try:
+        return audit_summary(conn)
+    finally:
+        conn.close()
+
+
+@app.get("/api/classification-audit/findings")
+def api_classification_audit_findings(status: str = "open") -> list[dict[str, Any]]:
+    conn = _conn()
+    try:
+        return list_findings(conn, status=status)
+    finally:
+        conn.close()
+
+
+class ClassificationAuditRunRequest(BaseModel):
+    sample_size: int | None = None
+
+
+@app.post("/api/classification-audit/run")
+def api_classification_audit_run(
+    body: ClassificationAuditRunRequest | None = None,
+) -> dict[str, Any]:
+    body = body or ClassificationAuditRunRequest()
+    conn = _conn()
+    try:
+        return run_classification_audit(
+            conn,
+            run_type="manual",
+            sample_size=body.sample_size,
+        )
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.post("/api/classification-audit/findings/{finding_id}/dismiss")
+def api_classification_audit_dismiss(finding_id: int) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        ok = dismiss_finding(conn, finding_id)
+        if not ok:
+            raise HTTPException(404, "Open finding not found")
+        return {"dismissed": True, "id": finding_id}
+    finally:
+        conn.close()
+
+
+@app.get("/api/classification-audit/findings/{finding_id}/open-merchant")
+def api_classification_audit_open_merchant(finding_id: int) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        try:
+            return open_merchant_payload(conn, finding_id)
+        except ValueError as exc:
+            raise HTTPException(404, str(exc)) from exc
+    finally:
+        conn.close()
 
 
 @app.get("/api/review/options")

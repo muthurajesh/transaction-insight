@@ -224,6 +224,7 @@ def run_pipeline(
             batch_size=classification_batch_size,
             use_json_mode=use_json_mode,
             on_batch_progress=_classification_batch_progress,
+            conn=conn,
         )
 
     suggested_business = pd.DataFrame()
@@ -319,7 +320,12 @@ def run_pipeline(
 
     _emit(
         on_progress,
-        {"type": "done", "percent": 100, "message": "Pipeline complete", "stats": stats},
+        {
+            "type": "pipeline_complete",
+            "percent": 100,
+            "message": "Pipeline complete",
+            "stats": stats,
+        },
     )
 
     return PipelineResult(

@@ -143,6 +143,41 @@ CREATE TABLE IF NOT EXISTS pipeline_custom_rules (
     last_error TEXT,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS classification_audit_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    sample_size INTEGER NOT NULL DEFAULT 0,
+    model TEXT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    summary_json TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_classification_audit_runs_started
+    ON classification_audit_runs(started_at);
+
+CREATE TABLE IF NOT EXISTS classification_audit_findings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL REFERENCES classification_audit_runs(id),
+    merchant_key TEXT NOT NULL,
+    transaction_id TEXT,
+    source TEXT NOT NULL,
+    production_category TEXT,
+    production_sub TEXT,
+    suggested_category TEXT,
+    suggested_sub TEXT,
+    confidence REAL NOT NULL DEFAULT 0,
+    rationale TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_classification_audit_findings_status
+    ON classification_audit_findings(status);
+CREATE INDEX IF NOT EXISTS idx_classification_audit_findings_merchant
+    ON classification_audit_findings(merchant_key);
 """
 
 _TRANSACTION_CADENCE_COLUMNS = (
@@ -207,6 +242,37 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
             last_error TEXT,
             updated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS classification_audit_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            sample_size INTEGER NOT NULL DEFAULT 0,
+            model TEXT,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            summary_json TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_classification_audit_runs_started
+            ON classification_audit_runs(started_at);
+        CREATE TABLE IF NOT EXISTS classification_audit_findings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL REFERENCES classification_audit_runs(id),
+            merchant_key TEXT NOT NULL,
+            transaction_id TEXT,
+            source TEXT NOT NULL,
+            production_category TEXT,
+            production_sub TEXT,
+            suggested_category TEXT,
+            suggested_sub TEXT,
+            confidence REAL NOT NULL DEFAULT 0,
+            rationale TEXT,
+            status TEXT NOT NULL DEFAULT 'open',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_classification_audit_findings_status
+            ON classification_audit_findings(status);
+        CREATE INDEX IF NOT EXISTS idx_classification_audit_findings_merchant
+            ON classification_audit_findings(merchant_key);
         """
     )
 

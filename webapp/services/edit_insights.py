@@ -204,7 +204,7 @@ def analyze_edit(
     }
 
     stats = _gather_stats(conn, merchant_key=merchant_key, amount=amount, before=before_norm)
-    existing_rules = list_custom_rules().get("rules") or []
+    existing_rules = list_custom_rules(conn).get("rules") or []
 
     def _finalize(result: dict[str, Any]) -> dict[str, Any]:
         return suppress_duplicate_rule_suggestion(

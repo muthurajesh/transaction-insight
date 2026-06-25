@@ -42,26 +42,37 @@ Return ONLY valid JSON: {"results": [{"index": <int>, "ai_category": "<string>",
 "ai_sub_category": "<string>", "budget_tier": "Need|Want|Wish|Review", "type": "Fixed|Variable",
 "notes": "<short rationale>"}]}."""
 
-CLASSIFICATION_PROMPT = """You are a personal finance analyst. Classify each transaction below.
+CLASSIFICATION_AUDIT_PROMPT = """You are a personal finance analyst auditing transaction category labels.
 
-Use original_category from the bank export together with user_description, simple_description,
-original_description, and generated_description. Do not contradict what the bank text clearly shows.
-Choose category and sub_category labels that fit the transaction — there is no fixed list; reuse
-original_category when it is accurate, otherwise pick clear names grounded in the bank text.
+You receive one expense transaction: generated_description (merchant/payee), original_category (bank export label), amount, date, account.
 
-For each transaction, return:
-1. section: "Income" or "Expense"
-   - Income: salary, interest, dividends, refunds/credits that reduce prior spending, legitimate incoming money
-   - Expense: money spent or outflows (including transfers out, bill payments, purchases)
-   - Credit card "payment received" / "online payment thank you" on a credit card account is NOT income — treat as Expense (internal transfer)
-   - Zelle/Venmo received from individuals: use context — small peer payments may be Expense-related reimbursements; payroll-like amounts are Income
-2. category: top-level label inferred from the transaction (anchor on original_category when sensible)
-3. sub_category: short bill/spend type — NOT the merchant or store name (that is already in description)
-4. type: "Fixed" or "Variable"
-   - Fixed: recurring obligations expected each month even if the amount varies slightly
-   - Variable: discretionary or fluctuating spending
-5. sub_type: always return empty string "" (reserved for future use)
-6. budget_tier: "Need" | "Want" | "Wish" | "Review" — your judgment for budgeting priority; use Review when uncertain
+Taxonomy:
+- category: broad grouping — keep a small stable vocabulary (e.g. Food/Dining, Home, Insurance, Transfers, Utilities, Shopping).
+  Merge near-synonyms; do not copy bank jargon verbatim when a clearer broad label fits.
+- sub_category: narrower spend type within that category (e.g. Groceries, Restaurants, Home warranty, Electric).
+  NOT the merchant name. Keep sub_category labels minimal.
+- type: Fixed (recurring obligations) or Variable (discretionary/fluctuating)
+- budget_tier: Need | Want | Wish | Review — use Review when uncertain
+- confidence: 0.0–1.0 how sure you are of category and sub_category
+- rationale: one short sentence explaining the labels
+- When known_vocabulary is provided, prefer those exact category and sub_category spellings.
 
-Return ONLY valid JSON: an array of objects with keys: index, section, category, sub_category, type, sub_type, budget_tier.
+Return ONLY valid JSON: {"results": [{"index": <int>, "category": "<string>", "sub_category": "<string>", "type": "Fixed|Variable", "budget_tier": "Need|Want|Wish|Review", "confidence": <number>, "rationale": "<string>"}]}.
+The index must match the transaction index provided."""
+
+CLASSIFICATION_PROMPT = """You are a personal finance analyst. Each transaction is an expense outflow that needs category labels.
+
+You receive: generated_description (merchant/payee), original_category (bank export label), amount, date, account.
+
+Taxonomy:
+- category: broad grouping — keep a small stable vocabulary (e.g. Food/Dining, Income, Transfers, Utilities, Shopping).
+  Merge near-synonyms: prefer one label (e.g. Income) instead of splitting Salary vs Paychecks/Salary across category and sub_category.
+  Map original_category into the nearest broad category; do not copy bank jargon verbatim when a clearer broad label fits.
+- sub_category: narrower spend type within that category (e.g. Groceries, Restaurants, Electric, Salary).
+  NOT the merchant or store name (that is in generated_description). Keep sub_category labels minimal — do not duplicate the category string.
+- type: Fixed (recurring obligations) or Variable (discretionary/fluctuating)
+- budget_tier: Need | Want | Wish | Review — use Review when uncertain
+- When known_vocabulary is provided, prefer those exact category and sub_category spellings.
+
+Return ONLY valid JSON: {"results": [{"index": <int>, "category": "<string>", "sub_category": "<string>", "type": "Fixed|Variable", "budget_tier": "Need|Want|Wish|Review"}]}.
 The index must match the transaction index provided."""

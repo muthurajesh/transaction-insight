@@ -126,13 +126,12 @@ def merge_description_lookup(
     return merged.sort_values("Source Key").reset_index(drop=True)
 
 def build_description_payload(row: pd.Series, index: int) -> dict[str, Any]:
+    """Bank text fields only — category/amount are handled in the classify step."""
     return {
         "index": index,
         "original_description": str(row.get("Original Description", "") or "")[:300],
         "user_description": str(row.get("User Description", "") or "")[:200],
         "simple_description": str(row.get("Simple Description", "") or "")[:200],
-        "category": str(row.get("Category", "") or ""),
-        "amount": str(row.get("Amount", "") or ""),
     }
 
 def generate_descriptions_batch(

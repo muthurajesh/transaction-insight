@@ -103,8 +103,9 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 
 ### Pipeline LLM behavior (recent)
 
-- **Descriptions:** validated `description_lookup` cache, then LLM — no verbatim copy of User/Simple bank fields.
-- **Classification:** review spend rows only (`classify_review_mask`); prompt uses separate bank text fields + `generated_description`; no fixed category list in code.
+- **Descriptions:** validated `description_lookup` cache, then LLM — bank text fields only (Original/User/Simple); no category/amount in the LLM payload; no verbatim copy of User/Simple as the label.
+- **Classification:** review spend rows only; minimal LLM payload; vocabulary hint + normalize from DB (`CLASSIFY_VOCABULARY_HINT`) per [CLASSIFICATION_TAXONOMY.md](./CLASSIFICATION_TAXONOMY.md).
+- **Classification audit:** post-import + optional scheduled sample; heuristics + `CLASSIFICATION_AUDIT_MODEL` spot-check; Import tab alerts with **At audit / Suggested / Current in DB**; **View in Edit Transactions** (merchant search); auto-resolve when live labels match suggestion — [CLASSIFICATION_AUDIT.md](./CLASSIFICATION_AUDIT.md).
 - **Logging:** `LLM_LOG_CALLS=1` → console + `data/llm.log` (`webapp/llm/request_log.py`).
 
 ### Bulk history / migration

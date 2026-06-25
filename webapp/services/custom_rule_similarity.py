@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -96,13 +97,17 @@ def find_similar_custom_rule(
     after_labels: dict[str, str] | None = None,
     amount: float | None = None,
     existing_rules: list[dict[str, Any]] | None = None,
+    conn: sqlite3.Connection | None = None,
     similarity_threshold: float = 0.82,
 ) -> dict[str, Any] | None:
     """Return an existing custom rule that overlaps the suggested rule, if any."""
     if existing_rules is None:
-        from webapp.services.custom_rules import list_custom_rules
+        if conn is None:
+            existing_rules = []
+        else:
+            from webapp.services.custom_rules import list_custom_rules
 
-        existing_rules = list_custom_rules().get("rules") or []
+            existing_rules = list_custom_rules(conn).get("rules") or []
 
     after_labels = after_labels or {}
     norm_suggested = normalize_rule_text(suggested_rule)
