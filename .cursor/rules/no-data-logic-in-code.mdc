@@ -7,7 +7,21 @@ alwaysApply: true
 
 # No data-based logic in code
 
-**Core design:** Transaction Insight does **not** encode user finance vocabulary, merchant names, or category taxonomies in Python/JS. Judgment lives in the **LLM**; persistence lives in **SQLite** (`merchant_labels`, `category_rules`, `description_lookup`, `cadence_rules`, `pipeline_custom_rules`, user mapping JSON). Code is structural plumbing only.
+**Core design:** Transaction Insight does **not** encode user finance vocabulary, merchant names, or category taxonomies in Python/JS. **Use the LLM for judgment** — not `if`/`match` rules on description text. Persistence lives in **SQLite** (`merchant_labels`, `category_rules`, `description_lookup`, `cadence_rules`, `pipeline_custom_rules`, user mapping JSON). Code is structural plumbing only.
+
+## AI-first, not keyword rules
+
+**Do this:** LLM classification, user-confirmed `merchant_labels`, English custom rules compiled to DB JSON, lookup tables the user curates.
+
+**Never do this (even when it “works”):**
+
+```python
+# FORBIDDEN — data logic disguised as a quick fix
+if "taco bell" in description.lower():
+    category = "Food / Dining"
+```
+
+Merchant names, category names, and description keywords belong in **LLM prompts**, **DB rows**, or **user custom rules** — not Python/JS conditionals.
 
 ## Forbidden in `webapp/` (and production prompts)
 

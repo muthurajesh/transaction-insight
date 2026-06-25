@@ -21,7 +21,7 @@ alwaysApply: true
 - **Reuse** imports, types, and naming from the surrounding file — match the author’s style.
 - **Inline** when a “helper” would be fewer than ~5 lines used once.
 - **Do not** refactor unrelated code, rename symbols broadly, or “clean up” adjacent files.
-- **Do not** add tests, README, or `docs/` updates unless the user asked or workspace rules require it for a shipped feature.
+- **Do not** add tests, README, or `docs/` updates unless the user asked, workspace rules require it (behavior change → tests; significant change → docs/ROADMAP), or the pre-commit quality gate applies.
 
 ## Size guardrails
 
