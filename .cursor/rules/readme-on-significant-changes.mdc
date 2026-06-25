@@ -1,11 +1,11 @@
 ---
 description: >-
-  Pre-commit docs sync — README, ROADMAP, linked docs, commit message draft.
-  Run when the user says "pre commit check", asks to commit, or after significant user-facing changes.
+  Before commit or task done — run tests, sync README/ROADMAP/docs, draft commit message.
+  Also triggered by "pre commit check" or the pre-commit-check skill.
 alwaysApply: true
 ---
 
-# Pre-commit docs sync
+# Pre-commit quality gate (docs + tests + roadmap)
 
 ## Triggers
 
@@ -29,16 +29,20 @@ Run the **full workflow** below when any of these apply:
 ## Required workflow
 
 1. **Inspect the diff** — `git status` and `git diff` (staged + unstaged). List files changed.
-2. **Summarize** — Short bullets: what changed, why, what users should know. Use this in the reply and commit message.
-3. **Cross-check ROADMAP** — Read `docs/ROADMAP.md`. If the change completes, advances, or defers a roadmap item:
+2. **Tests** — Before commit or marking the task done:
+   - Run `pytest -v --tb=short` from the repo root (or targeted files when the change is narrow).
+   - **Behavior changes** need new or updated tests in `tests/`; do not commit failing tests.
+   - **Skip** only for docs-only or comment-only edits with zero runtime effect.
+3. **Summarize** — Short bullets: what changed, why, what users should know. Use this in the reply and commit message.
+4. **Cross-check ROADMAP** — Read `docs/ROADMAP.md`. If the change completes, advances, or defers a roadmap item:
    - Mark `[x]` / `[~]` / `[ ]` on the matching checkbox
    - Update the linked detail doc (e.g. `CHAT_RICH_UI.md`, `EXPENSE_CADENCE_PHASE_D.md`)
    - Update `docs/AI_SESSION_CONTEXT.md` if it describes shipped vs pending state for that area
-4. **Read `README.md`** — Scan affected sections (workflow table, Quick start, How AI is used, LLM setup, lookups, cadence, custom rules, project files, Further reading).
-5. **Update surgically** — Fix stale README text; add doc links; do **not** rewrite the whole README or duplicate `docs/` content.
-6. **Keep env docs aligned** — New/renamed env vars → `config/.env.example` and matching presets (common at top, LLM block at bottom).
-7. **Draft commit message** — 1–2 sentences focused on **why**; note user-facing impact. **Do not commit** unless the user asked.
-8. **Reply** — Include summary, roadmap/doc updates (if any), files in the commit, and the draft message.
+5. **Read `README.md`** — Scan affected sections (workflow table, Quick start, How AI is used, LLM setup, lookups, cadence, custom rules, project files, Further reading).
+6. **Update surgically** — Fix stale README text; add doc links; do **not** rewrite the whole README or duplicate `docs/` content.
+7. **Keep env docs aligned** — New/renamed env vars → `config/.env.example` and matching presets (common at top, LLM block at bottom).
+8. **Draft commit message** — 1–2 sentences focused on **why**; note user-facing impact. **Do not commit** unless the user asked.
+9. **Reply** — Include test results, summary, roadmap/doc updates (if any), files in the commit, and the draft message.
 
 ## README sections checklist
 
