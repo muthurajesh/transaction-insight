@@ -13,16 +13,19 @@ Supported rule_type values:
    Use match.description when the user says "description" (searches Generated, Original, Simple, and User descriptions).
    Use match.generated_description only for the merchant/payee label (Generated Description).
    For OR conditions, use a JSON array of patterns, e.g. ["*vendor a*","*vendor b*"].
+   For OR amounts, use a JSON array of dollar strings, e.g. ["36","69.31"].
    {"rule_type":"assign","match":{"description":["*vendor a*","*vendor b*"]},"set":{"ai_category":"Category A","ai_sub_category":"Sub A","type":"Variable","classification":"Business"}}
    {"rule_type":"assign","match":{"generated_description":"*check*","amount":"60"},"set":{"ai_category":"Category B","ai_sub_category":"Sub B"}}
    {"rule_type":"assign","match":{"generated_description":"Merchant X","amount":"9.99"},"set":{"category":"Category C","classification":"Business","ai_category":"Category C","ai_sub_category":"Sub C"}}
+   {"rule_type":"assign","match":{"generated_description":"*capital one*","amount":["36","69.31"]},"set":{"flow_type":"Transfer","ai_category":"Savings","ai_sub_category":"Sub A","classification":"Personal"}}
 
 2. "monthly_split_max" — rows with the same Generated Description in the same calendar/budget month:
    the row with the largest absolute Amount gets when_max; every other row in that month gets when_other.
    Use for "multiple entries per month, highest is X, others are Y".
    {"rule_type":"monthly_split_max","match":{"generated_description":"Merchant Y"},"group_by":"Budget Month","min_rows_per_group":2,"when_max":{"category":"Cat A","ai_category":"Cat A","ai_sub_category":"Sub A"},"when_other":{"category":"Cat B","classification":"Business","ai_category":"Cat B","ai_sub_category":"Sub B"}}
 
-Allowed field keys in set / when_max / when_other: category, classification, ai_category, ai_sub_category, type, sub_type, budget_tier.
+Allowed field keys in set / when_max / when_other: category, classification, ai_category, ai_sub_category, type, sub_type, budget_tier, flow_type.
+flow_type must be one of: Expense, Income, Transfer, Adjustment.
 Use exact Generated Description spelling from the user's rule when possible."""
 
 DESCRIPTION_PROMPT = """You are a personal finance assistant. For each transaction, read the bank's

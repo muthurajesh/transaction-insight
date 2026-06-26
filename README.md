@@ -23,7 +23,7 @@ This project automates that enrichment:
 | First visit | Guided **quick tour** (once per browser; skipped when data already exists) |
 | Fix uncertain merchants | **Confirm Categories** |
 | Clean duplicate labels | **AI Rules** — merge synonyms (user confirms before apply) |
-| Edit rows, cadence, custom rules | **Edit Transactions**, **Cadence**, Settings |
+| Edit rows, cadence, custom rules | **Edit Transactions**, **Custom Rules**, **Cadence** |
 | Ask questions | **Chat** — type or use **Mic** (Chrome/Edge); voice stops after 3s silence or 30s max and sends automatically |
 
 **Processing core:** [`webapp/pipeline/`](webapp/pipeline/) orchestrates [`webapp/processing/`](webapp/processing/) (LLM, rules, cadence). Lookups default to **SQLite** (`LOOKUP_SOURCE=db`); Excel is optional backup (`EXPORT_LOOKUPS=1`).
@@ -86,7 +86,7 @@ Transaction Insight mixes **deterministic code** (parsing, dedup, SQL, lookup ta
 |-------|------|----------|
 | **Deterministic** | Exact, repeatable | `transaction_id` hash, amount signs, `flow_type`, payroll spillover, SQL totals |
 | **Lookup rules** | Your saved patterns | `category_rules`, `merchant_labels`, `description_lookup`, `cadence_rules` |
-| **Compiled rules** | English → JSON, then fixed logic | **Custom Rules** in Settings (if/then on merchant, amount, description) |
+| **Compiled rules** | English → JSON, then fixed logic | **Custom Rules** tab (if/then on merchant, amount, description, flow type) |
 | **AI judgment** | Ambiguous text, new merchants, taxonomy cleanup | Descriptions, classification, suggestions, chat, **AI Rules** proposals |
 | **You** | Final authority | Confirm Categories, cadence modal, Apply on AI Rules, save Custom Rules |
 
@@ -129,11 +129,12 @@ These are **deterministic at runtime**: the pipeline reads them before calling t
 
 | Step | Where |
 |------|--------|
-| Write rule | Settings → **Custom rules** (plain English), or **Edit insights** → Save as custom rule |
+| Write rule | **Custom Rules** tab (plain English), or **Edit insights** → Save as custom rule |
+| Preview | **Run preview** — matched transactions with current vs proposed labels; read-only compiled JSON |
 | Compile | LLM turns text into JSON (`assign`, `monthly_split_max`, …) |
-| Apply | Runs on every **Run processing** (highest priority after other rules) |
+| Apply | **Save & apply** (one rule), **Apply all rules**, or on every **Run processing** (highest priority after other rules) |
 
-Detail: [docs/EDIT_INSIGHTS.md](docs/EDIT_INSIGHTS.md). These are **programmatic** once compiled — the AI only helps author and compile them.
+Detail: [docs/CUSTOM_RULES.md](docs/CUSTOM_RULES.md) · [docs/EDIT_INSIGHTS.md](docs/EDIT_INSIGHTS.md). These are **programmatic** once compiled — the AI only helps author and compile them.
 
 #### 3. AI Rules (taxonomy — global label vocabulary)
 
@@ -164,6 +165,7 @@ Detail: [docs/AI_TAXONOMY_RULES.md](docs/AI_TAXONOMY_RULES.md).
 |-----|--------|
 | [docs/AI_SESSION_CONTEXT.md](docs/AI_SESSION_CONTEXT.md) | Product direction, pitfalls, for new AI coding sessions |
 | [docs/AI_TAXONOMY_RULES.md](docs/AI_TAXONOMY_RULES.md) | AI Rules tab API and behavior |
+| [docs/CUSTOM_RULES.md](docs/CUSTOM_RULES.md) | Custom Rules tab — preview, compile, apply, Flow Type |
 | [docs/EDIT_INSIGHTS.md](docs/EDIT_INSIGHTS.md) | Post-edit insights and Custom Rule suggestions |
 | [docs/EXPENSE_CADENCE_PHASE_D.md](docs/EXPENSE_CADENCE_PHASE_D.md) | AI cadence propose + confirm |
 | [docs/CONFIRM_CATEGORIES.md](docs/CONFIRM_CATEGORIES.md) | Review queue and confirm scopes |
@@ -304,7 +306,9 @@ Manage cadence in the **Cadence** tab (`UI_SHOW_CADENCE=1`, default) and `cadenc
 
 ## Custom Rules (freeform → AI compile → apply)
 
-**Highest priority at pipeline time:** Active custom rules run after category rules, LLM classification, and cadence lookup. The LLM **compiles** your English into JSON once; each run applies that JSON deterministically.
+**Dedicated tab:** **Custom Rules** — compose, preview matches (current vs proposed), view compiled JSON, save, apply one or all.
+
+**Highest priority at pipeline time:** Active custom rules run after category rules, LLM classification, and cadence lookup.
 
 See [How AI is used — Custom Rules](#2-custom-rules-per-merchant--pattern-if-then) for when to use these vs **AI Rules**.
 

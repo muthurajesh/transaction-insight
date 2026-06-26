@@ -11,6 +11,7 @@ from webapp.services.expense_cadence import (
 
 FLOW_TYPES = ["Expense", "Income", "Transfer", "Adjustment"]
 EXPENSE_TYPES = ["Fixed", "Variable"]
+CLASSIFICATIONS = ["Personal", "Business"]
 
 
 def get_review_options(conn: sqlite3.Connection) -> dict:
@@ -68,7 +69,11 @@ def get_review_options(conn: sqlite3.Connection) -> dict:
         sub_categories_by_category.setdefault(category, []).append(sub_category)
     for category in sub_categories_by_category:
         sub_categories_by_category[category] = sorted(set(sub_categories_by_category[category]))
-    classifications = sorted({r[0] for r in class_rows if r[0]})
+    db_classifications = sorted({r[0] for r in class_rows if r[0]})
+    classifications = sorted(
+        set(CLASSIFICATIONS) | set(db_classifications),
+        key=lambda label: (label not in CLASSIFICATIONS, label.lower()),
+    )
 
     period_rows = conn.execute(
         """

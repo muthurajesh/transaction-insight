@@ -41,11 +41,11 @@ function setTab(name, options = {}) {
   if (name === "review") loadReview();
   if (name === "settings") {
     loadSettings();
-    loadCustomRules();
     if (uiShowCadence) loadCadenceRulesList();
   }
   if (name === "chat") loadChatHistory();
   if (name === "edit") loadTransactionEditor();
+  if (name === "custom-rules") loadCustomRulesPanel();
   if (name === "cadence" && uiShowCadence) loadCadencePanel();
   if (name === "taxonomy") loadTaxonomyPanel();
   if (name === "actions") loadClassificationAudit();
@@ -124,7 +124,7 @@ const ONBOARDING_STEPS = [
   },
   {
     title: "You're ready",
-    body: "Upload a CSV on Import & Categorize to get started. You can revisit Settings and Custom rules anytime.",
+    body: "Upload a CSV on Import & Categorize to get started. Use the Custom Rules tab for if/then patterns.",
     target: null,
     kicker: "Done",
     finish: true,
@@ -1722,8 +1722,13 @@ function buildSelectOptions(values, selected, { allowEmpty = false } = {}) {
   return opts.join("");
 }
 
-let customRulesExpanded = false;
 let customRulesBusy = false;
+let customRulesSelectedId = null;
+let customRulesSelectGen = 0;
+let customRulesPreviewOffset = 0;
+let customRulesPreviewTotal = 0;
+let customRulesLastCompiled = null;
+const CUSTOM_RULES_PREVIEW_PAGE = 50;
 let reviewSuggestBusy = false;
 
 function setReviewPanelBusy(busy, { title, hint } = {}) {
@@ -1743,18 +1748,35 @@ function setReviewPanelBusy(busy, { title, hint } = {}) {
   }
 }
 
+function updateCustomRulesComposerMode() {
+  const el = $("#custom-rules-composer-mode");
+  if (!el) return;
+  if (customRulesSelectedId) {
+    el.textContent =
+      `Editing saved rule #${customRulesSelectedId}. Save updates this rule — click New rule to add a separate one.`;
+  } else {
+    el.textContent = "New rule — not saved yet.";
+  }
+}
+
 function setCustomRulesBusy(busy, { title, hint } = {}) {
   customRulesBusy = busy;
   setReviewPanelBusy(reviewSuggestBusy || customRulesBusy, busy ? { title, hint } : {});
 
-  const saveBtn = $("#btn-custom-rule-save-apply");
-  const reapplyBtn = $("#btn-custom-rules-reapply");
+  [
+    "#btn-custom-rule-save-apply",
+    "#btn-custom-rule-save",
+    "#btn-custom-rule-preview",
+    "#btn-custom-rules-reapply",
+    "#btn-custom-rule-new",
+    "#btn-custom-rules-preview-prev",
+    "#btn-custom-rules-preview-next",
+  ].forEach((sel) => {
+    const el = $(sel);
+    if (el) el.disabled = busy;
+  });
   const input = $("#custom-rule-input");
-  const toggle = $("#btn-custom-rules-toggle");
-  if (saveBtn) saveBtn.disabled = busy;
-  if (reapplyBtn) reapplyBtn.disabled = busy;
   if (input) input.disabled = busy;
-  if (toggle) toggle.disabled = busy;
 }
 
 function setReviewSuggestBusy(busy, { title, hint } = {}) {
@@ -1884,6 +1906,9 @@ function showCustomRulesResult(res) {
   if (!resultEl) return;
   resultEl.dataset.sticky = "1";
   let msg = res.message || "Done.";
+  if (res.compile_error) {
+    msg = res.compile_error;
+  }
   if (res.compile_errors?.length && res.ok !== false) {
     msg += `\n\nCompile errors:\n${res.compile_errors
       .map((e) => `• ${e.rule}: ${e.error}`)
@@ -1891,7 +1916,185 @@ function showCustomRulesResult(res) {
   }
   resultEl.textContent = msg;
   resultEl.classList.remove("custom-rules-result-ok", "custom-rules-result-err");
-  resultEl.classList.add(res.ok === false ? "custom-rules-result-err" : "custom-rules-result-ok");
+  const isErr = res.ok === false || res.compile_error;
+  resultEl.classList.add(isErr ? "custom-rules-result-err" : "custom-rules-result-ok");
+}
+
+function formatCustomRuleLabels(row) {
+  const parts = [
+    row.ai_category || "—",
+    row.ai_sub_category ? `/ ${row.ai_sub_category}` : "",
+    row.expense_type ? ` · ${row.expense_type}` : "",
+    row.classification ? ` · ${row.classification}` : "",
+    row.flow_type ? ` · ${row.flow_type}` : "",
+  ];
+  return parts.join("");
+}
+
+function formatCustomRuleProposed(proposed) {
+  if (!proposed) return "—";
+  const parts = [
+    proposed.ai_category || "—",
+    proposed.ai_sub_category ? `/ ${proposed.ai_sub_category}` : "",
+    proposed.expense_type ? ` · ${proposed.expense_type}` : "",
+    proposed.classification ? ` · ${proposed.classification}` : "",
+    proposed.flow_type ? ` · ${proposed.flow_type}` : "",
+  ];
+  return parts.join("");
+}
+
+function renderCustomRuleCompiled(compiled) {
+  const el = $("#custom-rule-compiled");
+  if (!el) return;
+  if (!compiled) {
+    el.textContent = "—";
+    customRulesLastCompiled = null;
+    return;
+  }
+  customRulesLastCompiled = compiled;
+  el.textContent = JSON.stringify(compiled, null, 2);
+}
+
+function renderCustomRulesPreviewTable(transactions) {
+  const host = $("#custom-rules-preview-results");
+  if (!host) return;
+  if (!transactions?.length) {
+    host.innerHTML = '<p class="hint">No matching transactions. Run preview after entering a rule.</p>';
+    return;
+  }
+  const rows = transactions
+    .map(
+      (tx) => `
+    <tr>
+      <td>${escapeHtml(tx.date || "")}</td>
+      <td class="amount">${escapeHtml(formatMoney(tx.amount))}</td>
+      <td>${escapeHtml(tx.merchant_key || "")}</td>
+      <td class="custom-rules-label-col">${escapeHtml(formatCustomRuleLabels(tx))}</td>
+      <td class="custom-rules-label-col proposed">${escapeHtml(formatCustomRuleProposed(tx.proposed))}</td>
+    </tr>`
+    )
+    .join("");
+  host.innerHTML = `
+    <table class="edit-results-table custom-rules-preview-table">
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col">Amount</th>
+          <th scope="col">Merchant</th>
+          <th scope="col">Current labels</th>
+          <th scope="col">Proposed</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function updateCustomRulesPreviewPagination() {
+  const pag = $("#custom-rules-preview-pagination");
+  const info = $("#custom-rules-preview-page-info");
+  const meta = $("#custom-rules-preview-meta");
+  const total = customRulesPreviewTotal;
+  if (meta) {
+    meta.textContent = total ? `${total} match${total === 1 ? "" : "es"}` : "";
+  }
+  if (!pag || !info) return;
+  if (total <= CUSTOM_RULES_PREVIEW_PAGE) {
+    pag.classList.add("hidden");
+    return;
+  }
+  pag.classList.remove("hidden");
+  const page = Math.floor(customRulesPreviewOffset / CUSTOM_RULES_PREVIEW_PAGE) + 1;
+  const pages = Math.max(1, Math.ceil(total / CUSTOM_RULES_PREVIEW_PAGE));
+  info.textContent = `Page ${page} of ${pages}`;
+  const prev = $("#btn-custom-rules-preview-prev");
+  const next = $("#btn-custom-rules-preview-next");
+  if (prev) prev.disabled = customRulesPreviewOffset <= 0 || customRulesBusy;
+  if (next) next.disabled = customRulesPreviewOffset + CUSTOM_RULES_PREVIEW_PAGE >= total || customRulesBusy;
+}
+
+async function runCustomRulesPreview({ resetPage = true } = {}) {
+  if (customRulesBusy) return;
+  if (resetPage) customRulesPreviewOffset = 0;
+
+  const ruleText = ($("#custom-rule-input")?.value || "").trim();
+  const body = {
+    limit: CUSTOM_RULES_PREVIEW_PAGE,
+    offset: customRulesPreviewOffset,
+  };
+  if (ruleText) body.rule_text = ruleText;
+  else if (customRulesSelectedId) body.rule_id = customRulesSelectedId;
+  else {
+    alert("Enter rule text or select a saved rule.");
+    return;
+  }
+
+  setCustomRulesBusy(true, {
+    title: "Running preview…",
+    hint: "Compiling rule and finding matching transactions.",
+  });
+  const resultEl = $("#custom-rules-result");
+  if (resultEl) resultEl.textContent = "Running preview…";
+
+  try {
+    const res = await api("/api/custom-rules/preview", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    customRulesPreviewTotal = res.total || 0;
+    renderCustomRuleCompiled(res.compiled_rule);
+    renderCustomRulesPreviewTable(res.transactions || []);
+    updateCustomRulesPreviewPagination();
+    if (res.compile_error) {
+      showCustomRulesResult({ ok: false, compile_error: res.compile_error, message: res.compile_error });
+    } else if (resultEl) {
+      resultEl.dataset.sticky = "1";
+      resultEl.textContent = `Preview: ${customRulesPreviewTotal} matching transaction(s).`;
+      resultEl.classList.remove("custom-rules-result-err");
+      resultEl.classList.add("custom-rules-result-ok");
+    }
+  } catch (err) {
+    if (resultEl) {
+      resultEl.textContent = err.message;
+      resultEl.classList.add("custom-rules-result-err");
+    }
+  } finally {
+    setCustomRulesBusy(false);
+  }
+}
+
+async function saveCustomRuleOnly() {
+  const ruleText = ($("#custom-rule-input")?.value || "").trim();
+  if (!ruleText) {
+    alert("Enter rule text first.");
+    return;
+  }
+  setCustomRulesBusy(true, { title: "Saving rule…", hint: "Please wait." });
+  try {
+    let res;
+    const creatingNew = !customRulesSelectedId;
+    if (customRulesSelectedId) {
+      res = await api(`/api/custom-rules/${customRulesSelectedId}`, {
+        method: "PUT",
+        body: JSON.stringify({ rule: ruleText }),
+      });
+    } else {
+      res = await api("/api/custom-rules", {
+        method: "POST",
+        body: JSON.stringify({ rule: ruleText }),
+      });
+      const rules = res.rules || [];
+      if (rules.length) customRulesSelectedId = rules[rules.length - 1].id;
+    }
+    if (res.rules) renderCustomRulesList(res.rules);
+    let message = res.message || "Rule saved.";
+    if (creatingNew) message += " Click New rule before entering another rule.";
+    showCustomRulesResult({ ok: true, message });
+    updateCustomRulesComposerMode();
+  } catch (err) {
+    showCustomRulesResult({ ok: false, message: err.message });
+  } finally {
+    setCustomRulesBusy(false);
+  }
 }
 
 async function runCustomRulesWorkflow(mode, { ruleText } = {}) {
@@ -1902,32 +2105,53 @@ async function runCustomRulesWorkflow(mode, { ruleText } = {}) {
   }
 
   setCustomRulesBusy(true, {
-    title: isSave ? "Saving and applying rule…" : "Re-applying all rules…",
+    title: isSave ? "Saving and applying rule…" : "Applying all rules…",
     hint: isSave
-      ? "Compiling your rule and updating matching transactions. Please wait."
-      : "Compiling pending rules and updating transactions. Please wait.",
+      ? "Compiling your rule and updating matching transactions."
+      : "Compiling pending rules and updating transactions.",
   });
 
   const input = $("#custom-rule-input");
   const resultEl = $("#custom-rules-result");
   if (resultEl) {
     resultEl.classList.remove("custom-rules-result-ok", "custom-rules-result-err");
-    resultEl.textContent = isSave ? "Saving and applying rule…" : "Applying rules…";
+    resultEl.textContent = isSave ? "Saving and applying rule…" : "Applying all rules…";
     resultEl.dataset.sticky = "1";
   }
 
   try {
-    const res = isSave
-      ? await api("/api/custom-rules/save-apply", {
+    let res;
+    const creatingNew = isSave && !customRulesSelectedId;
+    if (isSave) {
+      if (customRulesSelectedId) {
+        await api(`/api/custom-rules/${customRulesSelectedId}`, {
+          method: "PUT",
+          body: JSON.stringify({ rule: ruleText.trim() }),
+        });
+        res = await api(`/api/custom-rules/${customRulesSelectedId}/apply`, { method: "POST" });
+      } else {
+        res = await api("/api/custom-rules/save-apply", {
           method: "POST",
           body: JSON.stringify({ rule: ruleText.trim() }),
-        })
-      : await api("/api/custom-rules/compile-apply", { method: "POST" });
+        });
+        const rules = res.rules || [];
+        if (rules.length) customRulesSelectedId = rules[rules.length - 1].id;
+      }
+    } else {
+      res = await api("/api/custom-rules/compile-apply", { method: "POST" });
+    }
 
-    if (isSave && input) input.value = "";
     if (res.rules) renderCustomRulesList(res.rules);
     else await loadCustomRules();
     showCustomRulesResult(res);
+    if (creatingNew && res.ok !== false) {
+      const msgEl = $("#custom-rules-result");
+      if (msgEl) {
+        msgEl.textContent = `${msgEl.textContent} Click New rule before entering another rule.`;
+      }
+    }
+    updateCustomRulesComposerMode();
+    await runCustomRulesPreview({ resetPage: true });
     await loadReview();
     loadStatus();
     reviewOptionsCache = null;
@@ -1945,40 +2169,141 @@ async function runCustomRulesWorkflow(mode, { ruleText } = {}) {
 
 function renderCustomRulesList(rules) {
   const list = $("#custom-rules-list");
-  const wrap = $("#custom-rules-list-wrap");
-  const toggle = $("#btn-custom-rules-toggle");
   if (!list) return;
 
   if (!rules.length) {
     list.innerHTML = '<li class="custom-rules-empty">No custom rules yet.</li>';
-    toggle?.classList.add("hidden");
     return;
   }
 
-  const visible = customRulesExpanded ? rules : rules.slice(0, 5);
-
-  list.innerHTML = visible
+  list.innerHTML = rules
     .map((r) => {
       const status = (r.status || "Pending").toLowerCase();
       const err = r.last_error
-        ? `<span class="rule-err">${escapeHtml(r.last_error)}</span>`
+        ? `<div class="rule-err">${escapeHtml(r.last_error)}</div>`
         : "";
-      return `<li>
-        <span class="rule-status ${escapeAttr(status)}">${escapeHtml(r.status || "Pending")}</span>
-        <span class="rule-text">${escapeHtml(r.rule)}</span>
+      const selected = r.id === customRulesSelectedId ? " selected" : "";
+      return `<li class="custom-rules-list-item${selected}" data-rule-id="${r.id}">
+        <button type="button" class="custom-rules-list-select">
+          <span class="rule-status ${escapeAttr(status)}">${escapeHtml(r.status || "Pending")}</span>
+          <span class="rule-text">${escapeHtml(r.rule)}</span>
+        </button>
+        <div class="custom-rules-list-actions">
+          <button type="button" class="btn-link btn-custom-rule-apply-one" data-rule-id="${r.id}">Apply</button>
+          <button type="button" class="btn-link btn-custom-rule-disable" data-rule-id="${r.id}" data-status="${escapeAttr(r.status)}">${r.status === "Disabled" ? "Enable" : "Disable"}</button>
+          <button type="button" class="btn-link btn-custom-rule-delete" data-rule-id="${r.id}">Delete</button>
+        </div>
         ${err}
       </li>`;
     })
     .join("");
 
-  if (rules.length > 5 && toggle) {
-    toggle.classList.remove("hidden");
-    toggle.textContent = customRulesExpanded ? "Show fewer" : `Show all (${rules.length})`;
-    wrap?.classList.toggle("expanded", customRulesExpanded);
-  } else {
-    toggle?.classList.add("hidden");
-    wrap?.classList.remove("expanded");
+  list.querySelectorAll(".custom-rules-list-select").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const li = btn.closest(".custom-rules-list-item");
+      const id = Number(li?.dataset.ruleId);
+      if (id) selectCustomRule(id);
+    });
+  });
+  list.querySelectorAll(".btn-custom-rule-apply-one").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (customRulesBusy) return;
+      const id = Number(btn.dataset.ruleId);
+      setCustomRulesBusy(true, { title: "Applying rule…", hint: "Please wait." });
+      try {
+        const res = await api(`/api/custom-rules/${id}/apply`, { method: "POST" });
+        showCustomRulesResult(res);
+        await loadCustomRules();
+        if (customRulesSelectedId === id) await runCustomRulesPreview({ resetPage: true });
+      } catch (err) {
+        showCustomRulesResult({ ok: false, message: err.message });
+      } finally {
+        setCustomRulesBusy(false);
+      }
+    });
+  });
+  list.querySelectorAll(".btn-custom-rule-disable").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (customRulesBusy) return;
+      const id = Number(btn.dataset.ruleId);
+      const nextStatus = btn.dataset.status === "Disabled" ? "Active" : "Disabled";
+      try {
+        await api(`/api/custom-rules/${id}`, {
+          method: "PUT",
+          body: JSON.stringify({ status: nextStatus }),
+        });
+        await loadCustomRules();
+      } catch (err) {
+        showCustomRulesResult({ ok: false, message: err.message });
+      }
+    });
+  });
+  list.querySelectorAll(".btn-custom-rule-delete").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (customRulesBusy) return;
+      if (!confirm("Delete this rule?")) return;
+      const id = Number(btn.dataset.ruleId);
+      try {
+        await api(`/api/custom-rules/${id}`, { method: "DELETE" });
+        if (customRulesSelectedId === id) {
+          customRulesSelectGen += 1;
+          customRulesSelectedId = null;
+          const input = $("#custom-rule-input");
+          if (input) input.value = "";
+          renderCustomRuleCompiled(null);
+          renderCustomRulesPreviewTable([]);
+          updateCustomRulesComposerMode();
+        }
+        await loadCustomRules();
+      } catch (err) {
+        showCustomRulesResult({ ok: false, message: err.message });
+      }
+    });
+  });
+}
+
+async function selectCustomRule(ruleId) {
+  const gen = ++customRulesSelectGen;
+  customRulesSelectedId = ruleId;
+  updateCustomRulesComposerMode();
+  try {
+    const rule = await api(`/api/custom-rules/${ruleId}`);
+    if (gen !== customRulesSelectGen) return;
+    const input = $("#custom-rule-input");
+    if (input) input.value = rule.rule || "";
+    renderCustomRuleCompiled(rule.compiled_rule);
+    await loadCustomRules();
+    if (gen !== customRulesSelectGen) return;
+    await runCustomRulesPreview({ resetPage: true });
+  } catch (err) {
+    if (gen !== customRulesSelectGen) return;
+    showCustomRulesResult({ ok: false, message: err.message });
   }
+}
+
+function newCustomRuleDraft() {
+  customRulesSelectGen += 1;
+  customRulesSelectedId = null;
+  const input = $("#custom-rule-input");
+  if (input) {
+    input.value = "";
+    input.focus();
+  }
+  renderCustomRuleCompiled(null);
+  renderCustomRulesPreviewTable([]);
+  customRulesPreviewTotal = 0;
+  updateCustomRulesPreviewPagination();
+  updateCustomRulesComposerMode();
+  const resultEl = $("#custom-rules-result");
+  if (resultEl) {
+    delete resultEl.dataset.sticky;
+    resultEl.textContent = "";
+    resultEl.classList.remove("custom-rules-result-ok", "custom-rules-result-err");
+  }
+  loadCustomRules();
 }
 
 async function loadCustomRules() {
@@ -1988,17 +2313,34 @@ async function loadCustomRules() {
     const rules = data.rules || [];
     renderCustomRulesList(rules);
     if (resultEl && !resultEl.dataset.sticky) {
-      resultEl.textContent = `${rules.length} rule(s) saved`;
+      resultEl.textContent = rules.length ? `${rules.length} rule(s) saved` : "";
     }
   } catch (err) {
     if (resultEl) resultEl.textContent = err.message;
   }
 }
 
-$("#btn-custom-rules-toggle")?.addEventListener("click", () => {
-  if (customRulesBusy) return;
-  customRulesExpanded = !customRulesExpanded;
-  loadCustomRules();
+async function loadCustomRulesPanel() {
+  await loadCustomRules();
+  updateCustomRulesComposerMode();
+}
+
+$("#custom-rule-input")?.addEventListener("input", () => {
+  const input = $("#custom-rule-input");
+  if (!input || !customRulesSelectedId) return;
+  if (!input.value.trim()) {
+    customRulesSelectedId = null;
+    loadCustomRules();
+    updateCustomRulesComposerMode();
+  }
+});
+
+$("#btn-custom-rule-preview")?.addEventListener("click", () => {
+  runCustomRulesPreview({ resetPage: true });
+});
+
+$("#btn-custom-rule-save")?.addEventListener("click", () => {
+  saveCustomRuleOnly();
 });
 
 $("#btn-custom-rule-save-apply")?.addEventListener("click", () => {
@@ -2008,6 +2350,22 @@ $("#btn-custom-rule-save-apply")?.addEventListener("click", () => {
 
 $("#btn-custom-rules-reapply")?.addEventListener("click", () => {
   runCustomRulesWorkflow("reapply");
+});
+
+$("#btn-custom-rule-new")?.addEventListener("click", () => {
+  newCustomRuleDraft();
+});
+
+$("#btn-custom-rules-preview-prev")?.addEventListener("click", () => {
+  customRulesPreviewOffset = Math.max(0, customRulesPreviewOffset - CUSTOM_RULES_PREVIEW_PAGE);
+  runCustomRulesPreview({ resetPage: false });
+});
+
+$("#btn-custom-rules-preview-next")?.addEventListener("click", () => {
+  if (customRulesPreviewOffset + CUSTOM_RULES_PREVIEW_PAGE < customRulesPreviewTotal) {
+    customRulesPreviewOffset += CUSTOM_RULES_PREVIEW_PAGE;
+    runCustomRulesPreview({ resetPage: false });
+  }
 });
 
 $("#btn-review-suggest-batch")?.addEventListener("click", () => {
@@ -3931,10 +4289,7 @@ async function loadReview() {
       const expType = item.expense_type || "Variable";
       const classification =
         EDIT_CLASSIFICATIONS.includes(item.classification) ? item.classification : "Personal";
-      const classOptions = (options.classifications || EDIT_CLASSIFICATIONS).filter((c) =>
-        EDIT_CLASSIFICATIONS.includes(c)
-      );
-      const classValues = classOptions.length ? classOptions : [...EDIT_CLASSIFICATIONS];
+      const classValues = [...EDIT_CLASSIFICATIONS];
       const cat = item.ai_category || "";
       const sub = item.ai_sub_category || "";
       const uid = `review-${idx}`;
@@ -4689,7 +5044,7 @@ function renderTaxonomyProposals(proposals) {
       const text = taxonomyCustomRuleText(edited);
       const area = $("#custom-rule-input");
       if (area) area.value = text;
-      setTab("settings");
+      setTab("custom-rules");
       area?.focus();
     });
   });

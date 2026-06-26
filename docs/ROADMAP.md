@@ -54,6 +54,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | Status | Item | Detail |
 |--------|------|--------|
 | [x] | Edit Transactions tab — search, bulk label, scopes | |
+| [x] | **Custom Rules tab** — preview matches, compiled JSON, Flow Type, apply one/all | [CUSTOM_RULES.md](./CUSTOM_RULES.md) |
 | [x] | **Edit insights (post-apply)** — AI pattern + suggested CustomRule | EDIT_INSIGHTS |
 | [x] | **AI Rules tab** — taxonomy merge proposals (heuristic + LLM), user confirm apply | [AI_TAXONOMY_RULES.md](./AI_TAXONOMY_RULES.md) |
 | [ ] | **Minimal category vocabulary** — broad AI Category + few sub-categories; reduce Salary vs Paychecks/Salary drift | → [CLASSIFICATION_TAXONOMY.md](./CLASSIFICATION_TAXONOMY.md) (vocab hint + normalize shipped; auto-merge future) |
