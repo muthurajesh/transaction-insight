@@ -34,6 +34,21 @@ class ReviewOptionsTests(unittest.TestCase):
         self.assertEqual(by_cat["Entertainment"], ["Movies", "Streaming Services"])
         self.assertEqual(by_cat["Utilities"], ["Electric"])
         self.assertIn("Streaming Services", options["sub_categories"])
+        self.assertEqual(options["classifications"], ["Business", "Personal"])
+
+    def test_classifications_include_structural_enum_without_business_rows(self):
+        conn = _conn()
+        conn.execute(
+            """
+            INSERT INTO transactions (
+                transaction_id, date, budget_month, amount, merchant_key,
+                classification, flow_type, label_status, imported_at
+            ) VALUES ('t1', '2026-01-01', '2026-01', -10, 'Merchant A', 'Personal', 'Expense', 'confirmed', 'now')
+            """
+        )
+        conn.commit()
+        options = get_review_options(conn)
+        self.assertEqual(options["classifications"], ["Business", "Personal"])
 
 
 if __name__ == "__main__":

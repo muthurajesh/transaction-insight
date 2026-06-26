@@ -83,6 +83,7 @@ from webapp.processing.custom_rules import (
     empty_custom_rules_sheet,
     load_active_custom_rules,
     normalize_custom_rules_sheet,
+    preview_rule_affected,
 )
 from webapp.processing.custom_rules import _custom_rule_match_mask
 from webapp.processing.flow import (
@@ -188,6 +189,7 @@ __all__ = [
     "open_excel_workbook",
     "parse_amount",
     "parse_transaction_dates",
+    "preview_rule_affected",
     "prepare_transaction_export_df",
     "print_business_tagging_summary",
     "resolve_batch_sizes",

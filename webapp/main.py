@@ -50,9 +50,14 @@ from webapp.services.inbox_upload import save_upload_to_inbox, scan_uploaded_fil
 from webapp.services.ingest import ingest_csv, scan_inbox
 from webapp.services.custom_rules import (
     add_custom_rule,
+    apply_custom_rule_by_id,
     compile_and_apply_custom_rules,
+    delete_custom_rule,
+    get_custom_rule,
     list_custom_rules,
+    preview_custom_rule,
     save_and_apply_custom_rule,
+    update_custom_rule,
 )
 from webapp.services.cadence_insights import propose_cadence
 from webapp.services.edit_cadence_suggest import (
@@ -160,6 +165,18 @@ class TaxonomyApplyRequest(BaseModel):
 
 class CustomRuleCreateRequest(BaseModel):
     rule: str = Field(min_length=1)
+
+
+class CustomRuleUpdateRequest(BaseModel):
+    rule: str | None = None
+    status: str | None = None
+
+
+class CustomRulePreviewRequest(BaseModel):
+    rule_text: str | None = None
+    rule_id: int | None = None
+    limit: int = 50
+    offset: int = 0
 
 
 class TransactionCadencePayload(BaseModel):
@@ -815,6 +832,84 @@ def api_custom_rules_add(body: CustomRuleCreateRequest) -> dict[str, Any]:
         return add_custom_rule(conn, body.rule)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.post("/api/custom-rules/preview")
+def api_custom_rules_preview(body: CustomRulePreviewRequest) -> dict[str, Any]:
+    if not (body.rule_text or "").strip() and body.rule_id is None:
+        raise HTTPException(400, "rule_text or rule_id is required")
+    conn = _conn()
+    try:
+        return preview_custom_rule(
+            conn,
+            rule_text=body.rule_text,
+            rule_id=body.rule_id,
+            limit=body.limit,
+            offset=body.offset,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.get("/api/custom-rules/{rule_id}")
+def api_custom_rules_get(rule_id: int) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        return get_custom_rule(conn, rule_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.put("/api/custom-rules/{rule_id}")
+def api_custom_rules_update(rule_id: int, body: CustomRuleUpdateRequest) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        return update_custom_rule(conn, rule_id, rule_text=body.rule, status=body.status)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.delete("/api/custom-rules/{rule_id}")
+def api_custom_rules_delete(rule_id: int) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        return delete_custom_rule(conn, rule_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.post("/api/custom-rules/{rule_id}/apply")
+def api_custom_rules_apply_one(rule_id: int) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        result = apply_custom_rule_by_id(conn, rule_id)
+        if not result.get("ok"):
+            raise HTTPException(400, result.get("message", "Apply failed"))
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(500, str(exc)) from exc
     finally:

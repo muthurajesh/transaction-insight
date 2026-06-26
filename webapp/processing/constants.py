@@ -181,6 +181,7 @@ CUSTOM_RULE_FIELD_MAP = {
     "type": "Type",
     "sub_type": "Sub-Type",
     "budget_tier": "Budget Tier",
+    "flow_type": "Flow Type",
 }
 
 DESCRIPTION_LOOKUP_COLUMNS = (

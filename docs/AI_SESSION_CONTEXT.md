@@ -93,6 +93,7 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 
 - Edit table: cadence columns + filters ([Phase C](./EXPENSE_CADENCE_PHASE_C.md))
 - Post-edit AI insight + CustomRule suggest; duplicate rule suppression ([EDIT_INSIGHTS.md](./EDIT_INSIGHTS.md), `custom_rule_similarity.py`)
+- **Custom Rules tab** — preview matches (current vs proposed), read-only compiled JSON, `flow_type` in rules, apply one/all ([CUSTOM_RULES.md](./CUSTOM_RULES.md))
 
 ### Chat UI
 
@@ -127,7 +128,7 @@ Per-phase timers in `webapp/pipeline/run.py` + `webapp/processing/timer.py` `Pha
 | Web API | `webapp/main.py` |
 | Chat agent | `webapp/agent/chat.py`, `tools.py`, `display.py` |
 | Cadence | `webapp/services/expense_cadence.py`, `cadence_insights.py`, `cadence_rule_similarity.py` |
-| Edit | `webapp/services/transaction_edit.py`, `edit_insights.py` |
+| Edit | `webapp/services/transaction_edit.py`, `edit_insights.py`, `custom_rules.py` |
 | DB save | `webapp/adapters/dataframe_store.py` |
 | UI | `webapp/static/app.js`, `index.html` |
 

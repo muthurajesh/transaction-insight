@@ -17,6 +17,7 @@
     <button type="button" class="tab active" data-tab="chat">Chat</button>
     <button type="button" class="tab" data-tab="review">Confirm Categories</button>
     <button type="button" class="tab" data-tab="edit">Edit Transactions</button>
+    <button type="button" class="tab" data-tab="custom-rules">Custom Rules</button>
     <button type="button" class="tab" id="tab-cadence" data-tab="cadence">Cadence</button>
     <button type="button" class="tab" data-tab="taxonomy">AI Rules</button>
     <button type="button" class="tab" data-tab="actions">Import &amp; Categorize<span id="tab-actions-badge" class="tab-badge hidden" aria-label="Classification alerts"></span></button>
@@ -88,7 +89,7 @@
         <p>No merchants waiting for label confirmation.</p>
         <ul class="empty-state-steps">
           <li>Upload a CSV and run processing on <button type="button" class="btn-link tab-jump" data-tab="actions">Import &amp; Categorize</button></li>
-          <li>Repeating patterns → <button type="button" class="btn-link tab-jump" data-tab="settings">Settings → Custom rules</button></li>
+          <li>Repeating patterns → <button type="button" class="btn-link tab-jump" data-tab="custom-rules">Custom Rules</button></li>
         </ul>
       </div>
       <div id="review-list"></div>
@@ -388,6 +389,49 @@
       </div>
     </section>
 
+    <section id="panel-custom-rules" class="panel">
+      <p class="hint panel-subtitle">Write plain-English if/then rules. Preview matches, then save and apply.</p>
+      <div class="custom-rules-tab-layout">
+        <div class="custom-rules-composer card">
+          <label class="custom-rules-add-label" for="custom-rule-input">Rule (plain English)</label>
+          <p id="custom-rules-composer-mode" class="custom-rules-composer-mode hint" aria-live="polite"></p>
+          <textarea id="custom-rule-input" rows="5" placeholder='If Generated Description is Merchant A and Amount is 9.99, set AI Category to Category X, Classification to Business, Flow Type to Expense'></textarea>
+          <div class="custom-rules-actions custom-rules-actions-row">
+            <button type="button" id="btn-custom-rule-preview" class="btn-secondary">Run preview</button>
+            <button type="button" id="btn-custom-rule-save">Save</button>
+            <button type="button" id="btn-custom-rule-save-apply">Save &amp; apply</button>
+            <button type="button" id="btn-custom-rules-reapply" class="btn-link custom-rules-reapply">Apply all rules</button>
+            <button type="button" id="btn-custom-rule-new" class="btn-link">New rule</button>
+          </div>
+          <p id="custom-rules-result" class="custom-rules-result" aria-live="polite"></p>
+        </div>
+        <div class="custom-rules-split">
+          <div class="custom-rules-list-panel card">
+            <h2>Saved rules</h2>
+            <div id="custom-rules-list-wrap" class="custom-rules-list-wrap expanded">
+              <ul id="custom-rules-list" class="custom-rules-list custom-rules-list-selectable"></ul>
+            </div>
+          </div>
+          <div class="custom-rules-compiled-panel card">
+            <h2>Compiled JSON</h2>
+            <pre id="custom-rule-compiled" class="custom-rule-compiled" aria-label="Compiled rule JSON">—</pre>
+          </div>
+        </div>
+        <div class="custom-rules-preview-panel card">
+          <div class="custom-rules-preview-header">
+            <h2>Matched transactions</h2>
+            <span id="custom-rules-preview-meta" class="custom-rules-preview-meta"></span>
+          </div>
+          <div id="custom-rules-preview-results" class="custom-rules-preview-results"></div>
+          <div id="custom-rules-preview-pagination" class="edit-pagination hidden">
+            <button type="button" id="btn-custom-rules-preview-prev" class="btn-secondary">Previous</button>
+            <span id="custom-rules-preview-page-info" class="edit-page-info"></span>
+            <button type="button" id="btn-custom-rules-preview-next" class="btn-secondary">Next</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="panel-settings" class="panel">
       <div class="card">
         <h2>Data store</h2>
@@ -401,20 +445,9 @@
         <button type="button" id="btn-clear-data" class="btn-danger">Clear data store</button>
         <pre id="clear-result"></pre>
       </div>
-      <div class="card settings-rules-card">
+      <div class="card">
         <h2>Custom rules</h2>
-        <p class="hint custom-rules-hint">Patterns saved in the database (<code>pipeline_custom_rules</code>).</p>
-        <div id="custom-rules-list-wrap" class="custom-rules-list-wrap">
-          <ul id="custom-rules-list" class="custom-rules-list"></ul>
-        </div>
-        <button type="button" id="btn-custom-rules-toggle" class="btn-link hidden">Show all rules</button>
-        <label class="custom-rules-add-label" for="custom-rule-input">New rule (plain English)</label>
-        <textarea id="custom-rule-input" rows="4" placeholder='If Generated Description contains "check" and Amount is 60, AI Category = Education, AI Sub-Category = Music Lessons'></textarea>
-        <div class="custom-rules-actions">
-          <button type="button" id="btn-custom-rule-save-apply">Save &amp; apply rule</button>
-          <button type="button" id="btn-custom-rules-reapply" class="btn-link custom-rules-reapply">Re-apply all rules</button>
-        </div>
-        <pre id="custom-rules-result" class="custom-rules-result" aria-live="polite"></pre>
+        <p class="hint">Manage if/then categorization rules on the <button type="button" class="btn-link tab-jump" data-tab="custom-rules">Custom Rules</button> tab.</p>
       </div>
       <div class="card settings-rules-card" id="settings-cadence-rules-card">
         <h2>Cadence rules</h2>

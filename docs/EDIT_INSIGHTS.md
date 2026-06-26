@@ -17,12 +17,12 @@ After you **Apply** label changes in **Edit Transactions**, the app calls the LL
 | **Pattern summary** | One-line headline |
 | **Suggested rule** | Plain-English text for the **CustomRules** sheet (editable before save) |
 | **Future note** | How this interacts with the next CSV import / pipeline |
-| **Save as custom rule** | Appends to `transaction-lookups.xlsx` → CustomRules (Pending) |
+| **Save as custom rule** | Appends to `pipeline_custom_rules` (Pending); optional compile from Edit insight modal |
 | **Compile & apply** | Compiles pending rules via LLM and updates matching SQLite rows |
 
 If the LLM is unavailable, a **fallback** heuristic still suggests a rule when scope or volume warrants it.
 
-Before showing **Save as custom rule**, the app compares the suggestion against existing **CustomRules** in `transaction-lookups.xlsx`. If a similar rule already exists (same merchant pattern and category, or near-identical text), the save action is hidden and the existing rule is shown instead.
+Before showing **Save as custom rule**, the app compares the suggestion against existing rules in the database. If a similar rule already exists (same merchant pattern and category, or near-identical text), the save action is hidden and the existing rule is shown instead.
 
 ## What edits do *not* do automatically
 

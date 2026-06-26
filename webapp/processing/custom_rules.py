@@ -227,18 +227,32 @@ def _match_custom_rule_amount(df: pd.DataFrame, amount_spec: Any) -> pd.Series:
     """Match rows where |Amount| equals the target (expenses are often negative)."""
     if amount_spec is None or (isinstance(amount_spec, float) and pd.isna(amount_spec)):
         return pd.Series(True, index=df.index)
-    text = str(amount_spec).strip().replace("$", "").replace(",", "")
-    if not text or text.lower() == "nan":
+
+    specs = (
+        _normalize_match_patterns(amount_spec)
+        if isinstance(amount_spec, (list, tuple))
+        else [amount_spec]
+    )
+    if not specs:
         return pd.Series(True, index=df.index)
-    try:
-        target = abs(parse_amount(text))
-    except (TypeError, ValueError):
-        return pd.Series(False, index=df.index)
+
     if "Amount_Numeric" not in df.columns:
         amounts = df.get("Amount", pd.Series("", index=df.index)).apply(parse_amount)
     else:
         amounts = df["Amount_Numeric"]
-    return amounts.apply(lambda a: abs(float(a)) == target)
+
+    mask = pd.Series(False, index=df.index)
+    for spec in specs:
+        text = str(spec).strip().replace("$", "").replace(",", "")
+        if not text or text.lower() == "nan":
+            mask |= pd.Series(True, index=df.index)
+            continue
+        try:
+            target = abs(parse_amount(text))
+        except (TypeError, ValueError):
+            continue
+        mask |= amounts.apply(lambda a, t=target: abs(float(a)) == t)
+    return mask
 
 def _custom_rule_match_mask(df: pd.DataFrame, match: dict[str, Any]) -> pd.Series:
     """AND of all match keys in a compiled custom rule."""
@@ -288,6 +302,50 @@ def _apply_custom_rule_monthly_split_max(df: pd.DataFrame, rule: dict[str, Any])
                 _apply_custom_field_spec(df, int(idx), spec)
                 updated += 1
     return updated
+
+def preview_rule_affected(
+    df: pd.DataFrame, rule: dict[str, Any]
+) -> list[tuple[int, dict[str, Any]]]:
+    """Return (row_index, set_spec) pairs the rule would touch, without mutating df."""
+    rule_type = str(rule.get("rule_type", "") or "").strip().lower()
+    if rule_type == "assign":
+        match = rule.get("match", {}) or {}
+        mask = _custom_rule_match_mask(df, match)
+        spec = rule.get("set", {}) or {}
+        if not mask.any() or not spec:
+            return []
+        return [(int(idx), dict(spec)) for idx in df[mask].index]
+
+    if rule_type in ("monthly_split_max", "monthly_highest_split"):
+        match = rule.get("match", {}) or {}
+        mask = _custom_rule_match_mask(df, match)
+        if not mask.any():
+            return []
+        group_col = str(rule.get("group_by", "Budget Month") or "Budget Month")
+        if group_col not in df.columns:
+            group_col = "Calendar Month"
+        min_rows = int(rule.get("min_rows_per_group", 2))
+        when_max = rule.get("when_max", {}) or {}
+        when_other = rule.get("when_other", {}) or {}
+        affected: list[tuple[int, dict[str, Any]]] = []
+        subset = df[mask]
+        for _, grp in subset.groupby(group_col, dropna=False):
+            if len(grp) < min_rows:
+                continue
+            amounts = (
+                grp["Amount_Numeric"].abs()
+                if "Amount_Numeric" in grp.columns
+                else grp.index.to_series()
+            )
+            idx_max = amounts.idxmax()
+            for idx in grp.index:
+                spec = when_max if idx == idx_max else when_other
+                if spec:
+                    affected.append((int(idx), dict(spec)))
+        return affected
+
+    return []
+
 
 def apply_custom_rules(df: pd.DataFrame, compiled_rules: list[dict[str, Any]]) -> int:
     """
