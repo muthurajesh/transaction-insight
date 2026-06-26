@@ -15,10 +15,14 @@ Use Custom Rules when one merchant needs **different labels by amount or descrip
 1. **Rule (plain English)** — multiline composer at the top.
 2. **Run preview** — compiles (LLM) and lists matching transactions with **Current** vs **Proposed** labels.
 3. **Compiled JSON** — read-only view of the compiled rule.
-4. **Saved rules** — click to load; **Apply** one rule, **Disable**, or **Delete**.
+4. **Saved rules** — click to load; **Apply** one rule, **Disable**, or **Delete**. **New rule** clears selection so **Save** creates a separate rule (editing an existing rule updates it in place).
 5. **Save** — stores as Pending (no DB apply). **Save & apply** — compile + update matching rows. **Apply all rules** — compile pending + apply every Active rule.
 
+Composer hint shows **Editing saved rule #N** vs **New rule — not saved yet**.
+
 Storage: SQLite `pipeline_custom_rules` (stable numeric `id` per rule).
+
+**Apply behavior:** matching rows get `label_status = confirmed` and drop off **Confirm Categories**, even when labels were already correct before apply.
 
 ## Rule types (compiled JSON)
 
@@ -33,7 +37,7 @@ Storage: SQLite `pipeline_custom_rules` (stable numeric `id` per rule).
 |-----|---------|
 | `description` | Generated + Original + Simple + User text (wildcards `*text*`, `prefix*`, `*suffix`) |
 | `generated_description` | Merchant label only |
-| `amount` | Absolute dollar value |
+| `amount` | Absolute dollar value — **exact** match (`-36` matches amount `36`). JSON **array** = OR (e.g. `["36","69.31"]`). **Not supported:** greater than, less than, or ranges — use explicit amounts or `description` patterns. |
 
 ### Set fields
 
@@ -61,3 +65,7 @@ Storage: SQLite `pipeline_custom_rules` (stable numeric `id` per rule).
 | `webapp/services/custom_rules.py` | CRUD, preview API, apply to SQLite |
 | `webapp/static/app.js` | Custom Rules tab UI |
 | `webapp/llm/prompts.py` | `CUSTOM_RULE_COMPILER_PROMPT` |
+
+## Tests
+
+`tests/test_custom_rules.py` (match/apply engine) · `tests/test_custom_rules_service.py` (CRUD, preview, apply-one).
