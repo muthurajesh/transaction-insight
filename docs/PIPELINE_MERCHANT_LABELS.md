@@ -1,118 +1,64 @@
 # Pipeline: SQLite merchant_labels on re-import
 
-**Status:** Not implemented  
+**Status:** Implemented — confirmed user/web-authored merchant labels are authoritative before LLM review.  
 **Roadmap:** §3 Edit transactions
 
-## Problem (from project chat)
+## Problem
 
-User edits labels in **Edit Transactions** (SQLite). On **next month Run processing**:
+User edits labels in **Edit Transactions** or **Confirm Categories**. On later **Run processing**, pipeline-generated merchant labels must not override those explicit decisions.
 
-- Pipeline reads **`finance.db`** lookup tables (`LOOKUP_SOURCE=db`) — not Excel on each run
-- Pipeline does **not** read SQLite `merchant_labels`
-- Web edits (except “same merchant all amounts” scope) may be **overwritten** on re-process
+## Current behavior
 
-Q&A documented in chat: Apply updates SQLite only; Excel unchanged unless user saves CustomRule.
+Run processing loads SQLite lookup tables through `load_lookup_workbook_from_db()` and applies the resulting merchant rows through `apply_merchant_category_lookup()` before LLM classification.
 
-## Goal
+That DB load now intentionally includes only `merchant_labels` that are:
 
-When Run processing categorizes a row, **confirmed SQLite merchant labels** should apply **before or instead of** redundant LLM calls — same spirit as Excel BusinessCategoryRules.
+- `label_status = 'confirmed'`, and
+- explicitly user/web-authored, currently recognized by markers such as `rationale = 'user edited'`, `rationale = 'user confirmed'`, or confirmed-via-web notes.
 
-## Current data flow
+Pipeline-generated merchant labels (`rationale = 'pipeline'`) remain persisted for review/metadata, but they are **not** loaded as authoritative re-import labels.
 
-```text
-CSV → run_pipeline (webapp/pipeline/run.py) → dataframe_store.save_processed_dataframe → SQLite transactions
-                                      ↓
-                            merchant_labels upsert (from pipeline output only)
-```
+## Run-processing precedence
 
-`merchant_labels` table columns: `merchant_key`, `ai_category`, `ai_sub_category`, `expense_type`, `label_status`, `confidence`, `rationale`, …
+Highest priority wins:
 
-Populated by:
+1. **Custom Rules** — unchanged final pass.
+2. **Confirmed user/web `merchant_labels`** — loaded from SQLite and applied by merchant before LLM review.
+3. **Other DB lookup rules** — category rules and other lookup-derived behavior.
+4. **LLM classification** — only for spend rows that still need review after lookup application.
 
-- Run processing (`dataframe_store.py`)
-- Edit Transactions — scope “same merchant (all amounts)” (`transaction_edit.py`)
-- Import lookups (`lookups_import.py`)
+When a confirmed user/web merchant label supplies category, semantic sub-category, type, and non-`Review` budget tier, the row no longer matches the LLM review mask and is not sent back for classification.
 
-## Proposed behavior
+## Save protection
 
-### Precedence (highest wins)
+Both transaction persistence and lookup persistence skip merchant-label updates when the existing `merchant_labels` row is a confirmed user/web-authored label. This prevents pipeline-generated values from overwriting an explicit user decision during re-import or lookup-save.
 
-1. **CustomRules** (unchanged — final pass)
-2. **SQLite `merchant_labels`** where `label_status = 'confirmed'` and user/web source
-3. **DB category rules** / merchant rows from lookup tables
-4. **LLM** review for remaining `needs_review` rows
+`clear_existing` transaction imports clear transactions/ingested files, but do not delete durable merchant labels.
 
-### Hook point
+## Fields applied from `merchant_labels`
 
-**Option A (recommended):** In `webapp/adapters/dataframe_store.py` **before** or **after** `save_processed_dataframe`, apply labels from DB to dataframe — no pipeline refactor required.
-
-**Option B:** Inject SQLite labels inside `run_pipeline` via adapter callback — more invasive.
-
-**Option C:** Export SQLite → temporary Excel sheet before pipeline — avoid.
-
-### Implementation sketch (Option A)
-
-New `webapp/services/merchant_label_apply.py`:
-
-```python
-def load_confirmed_merchant_labels(conn) -> dict[str, dict]:
-    ...
-
-def apply_merchant_labels_to_dataframe(df, labels_by_merchant) -> int:
-    """Set AI Category, Sub-Category, Type, label_status on matching Generated Description / merchant_key."""
-```
-
-Call from `process_csv_file()`:
-
-```python
-labels = load_confirmed_merchant_labels(conn)
-apply_merchant_labels_to_dataframe(result.dataframe, labels)
-save_processed_dataframe(...)
-```
-
-Match key: `merchant_key` == `Generated Description` (same as web app).
-
-### What to set on match
-
-| Field | Source |
-|-------|--------|
+| DataFrame field | Source |
+|---|---|
 | `AI Category` | `merchant_labels.ai_category` |
 | `AI Sub-Category` | `merchant_labels.ai_sub_category` |
-| `Type` / expense_type | `merchant_labels.expense_type` |
-| `label_status` | `confirmed` |
-| `rationale` | `sqlite:merchant_labels` |
+| `Type` | `merchant_labels.expense_type` |
+| `Budget Tier` | `merchant_labels.budget_tier` when non-empty and not `Review` |
+| `Flow Type` | `merchant_labels.flow_type` when present |
+| `Classification` | `merchant_labels.classification` when present |
 
-Skip LLM review queue for these rows if already confirmed.
-
-### Edge cases
+## Edge cases
 
 | Case | Rule |
-|------|------|
-| Excel BusinessCategoryRules conflicts | Document: SQLite user edits win for same merchant (or make configurable) |
-| `needs_review` in DB | Do not auto-confirm; still send to review |
-| New merchant in CSV | Normal pipeline |
-| Re-process same file | Idempotent label apply |
-
-## Optional: Excel sync (separate item)
-
-See [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) — exporting web edits **to** `transaction-lookups.xlsx` is a different feature (user-triggered export).
-
-## Files to change
-
-| File | Change |
-|------|--------|
-| `webapp/services/merchant_label_apply.py` | New |
-| `webapp/services/process.py` | Call before save |
-| `README.md` or ROADMAP | Note precedence |
-| Tests | Merchant with DB label survives re-process |
+|---|---|
+| Pipeline-generated `merchant_labels` | Persisted, but not authoritative on re-import and cannot overwrite confirmed user/web labels |
+| `needs_review` labels in DB | Not loaded as authoritative labels; normal review flow continues |
+| New merchant in CSV | Normal pipeline + LLM review as needed |
+| Custom Rule matches same row | Custom Rule still wins because it runs as the final pass |
 
 ## Verification
 
-1. Edit merchant “Netflix” → Entertainment in web (merchant scope)
-2. Re-run processing on new CSV containing Netflix
-3. Row arrives as Entertainment without LLM re-guess
-4. `merchant_labels` row still `confirmed`
-
-## Context source
-
-Explicit user Q&A in project chat about Edit Apply vs Excel vs next month import.
+1. Confirm or edit merchant “Netflix” to Entertainment/Streaming in web.
+2. Re-run processing on a CSV containing Netflix.
+3. The row is labeled from `merchant_labels` before LLM review.
+4. If fully classified, it is not sent to LLM classification.
+5. The confirmed `merchant_labels` row remains confirmed and user-authored after save.
