@@ -27,7 +27,6 @@ def save_processed_dataframe(
     """
     if clear_existing:
         conn.execute("DELETE FROM transactions")
-        conn.execute("DELETE FROM merchant_labels")
         conn.execute("DELETE FROM ingested_files")
 
     if replace_source_file and source_file:
@@ -161,6 +160,13 @@ def save_processed_dataframe(
                     confidence=excluded.confidence,
                     label_status=excluded.label_status,
                     updated_at=excluded.updated_at
+                WHERE NOT (
+                    merchant_labels.label_status = 'confirmed'
+                    AND (
+                        LOWER(COALESCE(merchant_labels.rationale, '')) IN ('user edited', 'user confirmed')
+                        OR LOWER(COALESCE(merchant_labels.rationale, '')) LIKE 'confirmed via web%'
+                    )
+                )
                 """,
                 (mk, ai_cat, ai_sub, exp_type, confidence, label_status, now),
             )
