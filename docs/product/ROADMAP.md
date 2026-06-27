@@ -63,7 +63,6 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | **Classification audit** — post-import + scheduled sampled re-check (14b vs audit model); in-app alerts | [CLASSIFICATION_AUDIT.md](../classification/CLASSIFICATION_AUDIT.md) |
 | [ ] | Auto-apply taxonomy rules at confidence threshold | Future — `automation_ready` on proposals |
 | [x] | Pipeline reads confirmed user/web SQLite `merchant_labels` before LLM on re-import | Authoritative before LLM; Custom Rules remain final → [PIPELINE_MERCHANT_LABELS.md](../pipeline/PIPELINE_MERCHANT_LABELS.md) |
-| [~] | Sync web edits → `transaction-lookups.xlsx` (optional export) | Confirm Categories writes **MerchantCategories**; bulk Settings export → [PIPELINE_EXCEL_SYNC.md](../pipeline/PIPELINE_EXCEL_SYNC.md) |
 
 ---
 
@@ -80,7 +79,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | `transactions` cadence columns | EXPENSE_CADENCE § Transaction columns |
 | [x] | `cadence_rules` table | EXPENSE_CADENCE § Merchant rules |
 | [x] | Persist cadence on Run processing | `dataframe_store.py` |
-| [x] | Import ExpenseCadenceRules from Excel | `lookups_import.py` |
+| [x] | Import cadence rules into SQLite | `cadence_rules` via pipeline / Cadence tab |
 | [x] | `normalize_monthly_amount` + `effective_amount` | EXPENSE_CADENCE § Normalization |
 | [x] | Cadence APIs (`/api/cadence-rules`, `/api/transactions/{id}/cadence`) | EXPENSE_CADENCE § API |
 
@@ -105,7 +104,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 
 **Detail:** [EXPENSE_CADENCE_PHASE_D.md](../cadence/EXPENSE_CADENCE_PHASE_D.md) (Slice D1 first) · broader layers [REPORT_LAYERS.md](../reporting/REPORT_LAYERS.md)
 
-#### Slice D1 — AI cadence propose + confirm (next)
+#### Slice D1 — AI cadence propose + confirm (shipped)
 
 | Status | Item | What to implement |
 |--------|------|-------------------|
@@ -160,29 +159,30 @@ Single index for planned and completed work. Use this file to pick **what to do 
 
 ---
 
-## 7. Pipeline storage — SQLite-first
+## 7. Pipeline storage — SQLite only
 
 **Detail:** [PIPELINE_DB_LOOKUPS.md](../pipeline/PIPELINE_DB_LOOKUPS.md)
 
-**Context:** Run processing loads and saves pipeline lookups from **`finance.db`** by default (`LOOKUP_SOURCE=db`). `scripts/transaction-lookups.xlsx` is optional — seeded once when DB tables are empty, or refreshed when `EXPORT_LOOKUPS=1`. Remaining work: pure in-memory merge on save. Confirmed user/web merchant labels now apply before LLM and are protected from pipeline overwrites.
+**Context:** Run processing loads and saves pipeline lookups from **`finance.db` only**. Confirmed user/web merchant labels apply before LLM and are protected from pipeline overwrites. Remaining work: pure in-memory merge on save (no legacy workbook helpers in the save path).
 
 | Status | Item | Detail |
 |--------|------|--------|
-| [~] | **Make SQLite authoritative for pipeline lookups** | DB default; optional Excel export via `EXPORT_LOOKUPS=1` |
+| [x] | **SQLite authoritative for pipeline lookups** | Load + save via `lookup_store.py` |
 | [x] | Phase 1 — DB schema for description cache, category rules, custom rules | `description_lookup`, `category_rules`, `pipeline_custom_rules` |
-| [x] | Phase 2 — Pipeline loads lookups from DB (web path) | `webapp/adapters/lookup_store.py`, `LOOKUP_SOURCE=db` |
-| [~] | Phase 3 — Pipeline persists lookup updates to DB | Save via DB + Excel merge scratch; set `EXPORT_LOOKUPS=0` to skip Excel refresh |
-| [x] | Phase 4 — One-time workbook migration | `ensure_lookups_seeded()` on first run when DB empty |
+| [x] | Phase 2 — Pipeline loads lookups from DB (web path) | `webapp/adapters/lookup_store.py` |
+| [~] | Phase 3 — Pipeline persists lookup updates to DB | Save works; in-memory merge hardening still open |
+| [x] | Confirmed `merchant_labels` before LLM on re-import | [PIPELINE_MERCHANT_LABELS.md](../pipeline/PIPELINE_MERCHANT_LABELS.md) |
+| [x] | Remove Excel lookup import/export from product surface | Settings import removed; docs/env cleaned Jun 2026 |
 
 ---
 
 ## Suggested order (next work)
 
-1. **Phase D Slice D1** — tune cadence AI on full merchant history (D1 shipped)
-2. **Pipeline lookup save hardening** — pure in-memory merge on save; keep confirmed user/web merchant labels authoritative
-3. **Chat Tier 3** — multiline composer (save-as-report shipped — [CHAT_CUSTOM_REPORTS.md](../chat/CHAT_CUSTOM_REPORTS.md))
-4. **Phase D2–D3** — report layers + layered reports  
-5. **§7 Pipeline lookups** — pure in-memory merge on save; optional Excel export UI ([PIPELINE_DB_LOOKUPS.md](../pipeline/PIPELINE_DB_LOOKUPS.md))
+1. **Pipeline lookup save hardening** — pure in-memory merge on save; keep confirmed user/web merchant labels authoritative ([PIPELINE_DB_LOOKUPS.md](../pipeline/PIPELINE_DB_LOOKUPS.md))
+2. **Chat Tier 3 — multiline composer** (save-as-report shipped — [CHAT_CUSTOM_REPORTS.md](../chat/CHAT_CUSTOM_REPORTS.md))
+3. **Classification vocabulary / auto-merge** — reduce category drift ([CLASSIFICATION_TAXONOMY.md](../classification/CLASSIFICATION_TAXONOMY.md))
+4. **Phase D2–D3 — report layers** + layered reports ([REPORT_LAYERS.md](../reporting/REPORT_LAYERS.md))
+5. **Optional:** cadence AI tuning (D1 polish); import file-picker for re-run ([IMPORT_PROCESS_UPLOAD.md](../pipeline/IMPORT_PROCESS_UPLOAD.md))
 
 ---
 
@@ -206,9 +206,8 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [CHAT_TIER3_SAVE_REPORT.md](../chat/CHAT_TIER3_SAVE_REPORT.md) | Save-as-report button + API |
 | [CHAT_CUSTOM_REPORTS.md](../chat/CHAT_CUSTOM_REPORTS.md) | Chat conversational custom reports (save, tweak, version) |
 | [PIPELINE_MERCHANT_LABELS.md](../pipeline/PIPELINE_MERCHANT_LABELS.md) | SQLite labels on re-import |
-| [CONFIRM_CATEGORIES.md](../classification/CONFIRM_CATEGORIES.md) | Confirm merchant → Excel MerchantCategories + DB |
-| [PIPELINE_DB_LOOKUPS.md](../pipeline/PIPELINE_DB_LOOKUPS.md) | SQLite as pipeline lookup source (shipped; save hardening in progress) |
-| [PIPELINE_EXCEL_SYNC.md](../pipeline/PIPELINE_EXCEL_SYNC.md) | Bulk export web labels → Excel (Settings; partial; interim until §7) |
+| [CONFIRM_CATEGORIES.md](../classification/CONFIRM_CATEGORIES.md) | Confirm merchant → SQLite `merchant_labels` + transactions |
+| [PIPELINE_DB_LOOKUPS.md](../pipeline/PIPELINE_DB_LOOKUPS.md) | SQLite pipeline lookups (save hardening in progress) |
 | [CLASSIFICATION_TAXONOMY.md](../classification/CLASSIFICATION_TAXONOMY.md) | Classify payload, broad category / minimal sub-category goals |
 | [CLASSIFICATION_AUDIT.md](../classification/CLASSIFICATION_AUDIT.md) | Sampled classification quality audit |
 | [CUSTOM_REPORTS_UI.md](../chat/CUSTOM_REPORTS_UI.md) | Settings UI for saved reports |

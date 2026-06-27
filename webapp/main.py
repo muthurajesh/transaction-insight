@@ -120,7 +120,6 @@ class ReviewConfirmRequest(BaseModel):
     transaction_id: str | None = None
     scope: str = "pending"
     replace_conflicting_rule: bool = False
-    replace_excel: bool | None = None  # legacy alias
 
 
 class ReviewConfirmPreviewRequest(BaseModel):
@@ -145,10 +144,6 @@ class IngestRequest(BaseModel):
 
 class ClearDataRequest(BaseModel):
     confirm: str
-
-
-class ImportLookupsRequest(BaseModel):
-    path: str | None = None
 
 
 class TaxonomyProposalsRequest(BaseModel):
@@ -1202,7 +1197,6 @@ def api_review_confirm(merchant_key: str, body: ReviewConfirmRequest) -> dict[st
                 transaction_id=body.transaction_id,
                 scope=body.scope,
                 replace_conflicting_rule=body.replace_conflicting_rule,
-                replace_excel=body.replace_excel,
             )
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
@@ -1296,14 +1290,6 @@ def api_settings_clear(body: ClearDataRequest) -> dict[str, Any]:
         return clear_data_store(conn)
     finally:
         conn.close()
-
-
-@app.post("/api/settings/import-lookups")
-def api_settings_import_lookups(body: ImportLookupsRequest | None = None) -> dict[str, Any]:
-    raise HTTPException(
-        410,
-        "Excel lookup import removed. Lookups are stored in finance.db only.",
-    )
 
 
 @app.get("/api/custom-reports")

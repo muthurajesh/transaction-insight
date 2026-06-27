@@ -349,7 +349,7 @@ def _gather_item_context(
     ).fetchall()
     ctx["recently_confirmed"] = [dict(r) for r in recent]
 
-    lookup = _merchant_row_from_excel(merchant_key)
+    lookup = _merchant_row_from_db(conn, merchant_key)
     if lookup:
         ctx["lookup_rules"] = {"source": lookup[1], "labels": lookup[0]}
 

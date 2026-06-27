@@ -26,11 +26,9 @@ SQLite database (`data/finance.db`) populated by **Run processing** in the web a
 |-------|---------|
 | `transactions` | All processed rows from CSV exports |
 | `merchant_labels` | Confirmed labels per merchant (from processing + Confirm Categories) |
-| `description_lookup`, `category_rules`, `pipeline_custom_rules`, `cadence_rules` | Pipeline lookups (default source with `LOOKUP_SOURCE=db`) |
+| `description_lookup`, `category_rules`, `pipeline_custom_rules`, `cadence_rules` | Pipeline lookups in SQLite |
 | `ingested_files` | Scan-inbox history (hash per CSV); optional |
 | `chat_messages` | Chat history |
-
-Optional seed/backup: **`scripts/transaction-lookups.xlsx`** — imported when DB lookup tables are empty; not queried directly by chat tools.
 
 ## `transactions` — key columns
 

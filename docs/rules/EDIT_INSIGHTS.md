@@ -26,9 +26,9 @@ Before showing **Save as custom rule**, the app compares the suggestion against 
 
 ## What edits do *not* do automatically
 
-- **SQLite edits** do not modify `transaction-lookups.xlsx` unless you save a custom rule.
+- **Row-only edits** do not update `merchant_labels` unless you check **Save merchant label**.
 - **Merchant labels** (merchant scope) are stored in SQLite and help future categorization for that payee.
-- **New month CSV processing** still runs the pipeline (Excel lookups + LLM); align rules/labels if you want imports to match your edits.
+- **New month CSV processing** re-runs the pipeline (SQLite lookups + LLM); promote important fixes to merchant labels or custom rules so re-import stays aligned.
 
 ## API
 

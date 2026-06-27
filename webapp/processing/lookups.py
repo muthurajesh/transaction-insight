@@ -52,10 +52,8 @@ def _workbook_path(filename: str) -> Path:
     return canonical
 
 def default_lookup_path() -> Path:
-    """Shared lookup workbook path (from webapp.config)."""
-    from webapp.config import LOOKUP_FILE
-
-    return LOOKUP_FILE
+    """Legacy workbook path (dead code path; runtime uses SQLite)."""
+    return _workbook_path(LOOKUP_FILENAME)
 
 def _norm_lookup_key(category: str, sub_category: str) -> tuple[str, str]:
     return str(category or "").strip().lower(), str(sub_category or "").strip().lower()

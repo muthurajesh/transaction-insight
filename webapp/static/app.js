@@ -1,7 +1,6 @@
 const $ = (sel) => document.querySelector(sel);
 
 let uiShowCadence = true;
-let uiShowExcelLookupImport = true;
 
 function applyUiFeatureFlags() {
   const cadenceTab = $("#tab-cadence");
@@ -13,8 +12,6 @@ function applyUiFeatureFlags() {
       setTab("chat", { skipCadenceGuard: true });
     }
   }
-  const excelCard = $("#settings-excel-import-card");
-  if (excelCard) excelCard.classList.toggle("hidden", !uiShowExcelLookupImport);
   const cadenceRulesCard = $("#settings-cadence-rules-card");
   if (cadenceRulesCard) cadenceRulesCard.classList.toggle("hidden", !uiShowCadence);
 }
@@ -445,7 +442,6 @@ function focusReviewMerchantIfRequested() {
 async function loadStatus() {
   const s = await api("/api/status");
   uiShowCadence = s.ui_show_cadence !== false;
-  uiShowExcelLookupImport = s.ui_show_excel_lookup_import !== false;
   applyUiFeatureFlags();
   const provider = s.llm_provider ? `${s.llm_provider} · ` : "";
   let modelLabel = s.chat_model || s.llm_model || "";
@@ -4159,7 +4155,7 @@ function renderReviewConfirmBody(preview, merchantKey) {
     parts.push(`<div class="review-confirm-warn">${escapeHtml(preview.custom_rule_hint)}</div>`);
   }
 
-  const conflicts = preview.lookup_conflicts || preview.excel_conflicts || [];
+  const conflicts = preview.lookup_conflicts || [];
   if (conflicts.length) {
     const conflictLines = conflicts
       .map((c) => {
@@ -4188,7 +4184,7 @@ function openReviewConfirmModal(preview, item, payload, cardEl) {
   if (title) title.textContent = `Confirm — ${item.merchant_key}`;
   if (body) body.innerHTML = renderReviewConfirmBody(preview, item.merchant_key);
   if (replaceWrap) {
-    const conflicts = preview.lookup_conflicts || preview.excel_conflicts || [];
+    const conflicts = preview.lookup_conflicts || [];
     replaceWrap.classList.toggle("hidden", !conflicts.length);
   }
   if (replaceCb) replaceCb.checked = false;
@@ -4219,7 +4215,6 @@ async function submitReviewConfirm(scope) {
         ...payload,
         scope,
         replace_conflicting_rule: replaceRule,
-        replace_excel: replaceRule,
       }),
     });
     if (cardEl) cardEl.remove();

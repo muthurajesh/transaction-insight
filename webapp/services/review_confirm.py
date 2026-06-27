@@ -350,8 +350,6 @@ def confirm_preview(
             else ""
         ),
         "lookup_conflicts": lookup_conflicts,
-        # Legacy keys for older clients.
-        "excel_conflicts": lookup_conflicts,
     }
 
 
@@ -406,7 +404,6 @@ def confirm_merchant_group(
     classification: str = "Personal",
     scope: str = "pending",
     replace_conflicting_rule: bool = False,
-    replace_excel: bool | None = None,
 ) -> dict[str, Any]:
     mk = merchant_key.strip()
     if mk in SPLIT_REVIEW_MERCHANT_KEYS:
@@ -424,9 +421,8 @@ def confirm_merchant_group(
     if scope not in CONFIRM_SCOPES:
         raise ValueError(f"scope must be one of: {', '.join(sorted(CONFIRM_SCOPES))}")
 
-    replace = replace_conflicting_rule if replace_excel is None else replace_excel
     conflicts = find_lookup_conflicts(conn, mk, proposed)
-    if conflicts and not replace:
+    if conflicts and not replace_conflicting_rule:
         sources = ", ".join(sorted({c["source"] for c in conflicts}))
         raise ValueError(
             f"Saved lookup conflict in {sources}. Choose Replace existing rule to overwrite, "
@@ -453,8 +449,6 @@ def confirm_merchant_group(
         "scope": scope,
         "lookup_synced": True,
         "lookup_conflicts_replaced": bool(conflicts),
-        "excel_synced": True,
-        "excel_conflicts_replaced": bool(conflicts),
         "suggest_custom_rule": preview["suggest_custom_rule"],
         "custom_rule_hint": preview["custom_rule_hint"],
     }
@@ -472,7 +466,6 @@ def confirm_merchant_or_transaction(
     transaction_id: str | None = None,
     scope: str = "pending",
     replace_conflicting_rule: bool = False,
-    replace_excel: bool | None = None,
 ) -> dict[str, Any]:
     if transaction_id:
         updated = confirm_transaction(
@@ -489,7 +482,6 @@ def confirm_merchant_or_transaction(
             "transaction_id": transaction_id,
             "rows_updated": updated,
             "lookup_synced": False,
-            "excel_synced": False,
         }
     return confirm_merchant_group(
         conn,
@@ -501,5 +493,4 @@ def confirm_merchant_or_transaction(
         classification=classification,
         scope=scope,
         replace_conflicting_rule=replace_conflicting_rule,
-        replace_excel=replace_excel,
     )

@@ -85,7 +85,7 @@ Implementation detail: [pipeline/PIPELINE_MERCHANT_LABELS.md](../pipeline/PIPELI
 1. User loads a CSV through the web app.
 2. Minimum useful columns: **date**, **amount**, **category**, and **one or more description** fields.
 3. Additional columns (account, bank expense type, etc.) are welcome — the pipeline should use them when present, not require them.
-4. Source data is preserved for audit (SQLite; optional Excel export for lookups).
+4. Source data is preserved for audit in SQLite.
 
 ---
 

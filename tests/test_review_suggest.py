@@ -90,7 +90,7 @@ class ReviewSuggestTests(unittest.TestCase):
             result = suggest_labels_for_item(conn, item)
         mock_llm.assert_not_called()
         self.assertEqual(result["labels"]["ai_category"], "Subscriptions")
-        self.assertEqual(result["source"], MERCHANT_CATEGORIES_SHEET)
+        self.assertEqual(result["source"], "merchant_labels")
         self.assertEqual(result["confidence"], "high")
 
     def test_sqlite_confirmed_merchant_lookup(self):

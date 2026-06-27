@@ -23,9 +23,8 @@ Start here to find the right doc. **Product decisions** always defer to the char
 | Doc | Purpose | Status |
 |-----|---------|--------|
 | [pipeline/IMPORT_PROCESS_UPLOAD.md](./pipeline/IMPORT_PROCESS_UPLOAD.md) | CSV upload + Run processing file picker | Partial / planned |
-| [pipeline/PIPELINE_DB_LOOKUPS.md](./pipeline/PIPELINE_DB_LOOKUPS.md) | SQLite as lookup source (`LOOKUP_SOURCE=db`) | Shipped |
+| [pipeline/PIPELINE_DB_LOOKUPS.md](./pipeline/PIPELINE_DB_LOOKUPS.md) | SQLite pipeline lookups | Shipped |
 | [pipeline/PIPELINE_MERCHANT_LABELS.md](./pipeline/PIPELINE_MERCHANT_LABELS.md) | Confirmed user labels before LLM on re-import | Shipped |
-| [pipeline/PIPELINE_EXCEL_SYNC.md](./pipeline/PIPELINE_EXCEL_SYNC.md) | Optional Excel export of web labels | Partial |
 
 ---
 
@@ -85,6 +84,7 @@ Start here to find the right doc. **Product decisions** always defer to the char
 | Doc | Purpose | Status |
 |-----|---------|--------|
 | [archive/REQUIREMENTS_PRE_WEBAPP.md](./archive/REQUIREMENTS_PRE_WEBAPP.md) | Pre–web-app script analysis (Apr 2026 sample CSV, keyword rules) | **Superseded** by [PRODUCT_CHARTER.md](./product/PRODUCT_CHARTER.md) |
+| [archive/PIPELINE_EXCEL_SYNC.md](./archive/PIPELINE_EXCEL_SYNC.md) | Cancelled Excel export/sync idea | **Superseded** by SQLite-only lookups |
 
 ---
 
@@ -103,7 +103,8 @@ Start here to find the right doc. **Product decisions** always defer to the char
 
 All docs above remain **relevant** except:
 
-- **archive/REQUIREMENTS_PRE_WEBAPP.md** — historical; contains rule-based category examples that contradict current AI-first design. Kept for payroll-spillover and data-model ideas only; do not copy keyword logic into code.
+- **archive/REQUIREMENTS_PRE_WEBAPP.md** — historical; keyword-rule examples; do not copy into code.
+- **archive/PIPELINE_EXCEL_SYNC.md** — cancelled; lookups are SQLite-only.
 - **product/AGENTIC_AI_DESIGN.md** — aspirational; useful for long-term direction, not current sprint scope. References `docs/MCP_SETUP.md` which was never written.
 - **chat/CHAT_TIER3_SAVE_REPORT.md** — largely absorbed by CHAT_CUSTOM_REPORTS; kept as Tier 3 checklist detail until merged or deleted in a future cleanup.
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from webapp.adapters.dataframe_store import save_processed_dataframe
-from webapp.config import INBOX_DIR, PROCESSED_DIR, PipelineConfig, default_lookup_path
+from webapp.config import INBOX_DIR, PROCESSED_DIR, PipelineConfig
 from webapp.inbox import move_csv_to_processed
 from webapp.pipeline import run_pipeline
 from webapp.processing import load_csv
@@ -119,7 +119,6 @@ def process_csv_file(
         )
 
     config = PipelineConfig(
-        lookup_path=default_lookup_path(),
         skip_lookup_update=skip_lookup_update,
         skip_cadence_detection=skip_cadence_detection,
         update_lookup_workbook=update_lookup_workbook,

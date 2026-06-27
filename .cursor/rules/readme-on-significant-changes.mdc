@@ -53,7 +53,7 @@ Run the **full workflow** below when any of these apply:
 | Quick start / `config/.env` | Install, paths, or first-run steps change |
 | How AI is used | LLM touchpoints or confirm-before-save behavior change |
 | LLM setup | Provider, models, or env var names change |
-| Pipeline lookups | `LOOKUP_SOURCE`, import/export, or storage change |
+| Pipeline lookups | SQLite load/save via `lookup_store.py` |
 | Expense cadence | Cadence UI, rules, or analytics views change |
 | Custom Rules | Compile/apply flow or Settings behavior change |
 | Project files / Further reading | New modules or important `docs/` entry points |

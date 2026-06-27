@@ -15,7 +15,7 @@ Full charter: [PRODUCT_CHARTER.md](PRODUCT_CHARTER.md).
 | **AI-first judgment** | LLM handles ambiguous calls (cadence, routing, label nuance). Avoid growing rule/heuristic sprawl for new patterns. |
 | **Rules for exact math** | Layer 0 amounts, dedup fingerprints, SQL aggregation, `effective_amount` / `expense_view` — deterministic code. |
 | **User confirm before persist** | AI *proposes*; user confirms (edit insights modal, cadence modal) before writes to rules/DB. |
-| **Excel + SQLite** | Pipeline lookups default to **SQLite** (`LOOKUP_SOURCE=db`). Excel seeded once if DB empty; optional export with `EXPORT_LOOKUPS=1`. |
+| **SQLite only** | Pipeline lookups live in `finance.db`; load/save via `lookup_store.py`. |
 
 ---
 
@@ -71,7 +71,7 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 | Edit Transactions (row only) | **No** — pipeline UPDATE overwrites labels + tx cadence columns |
 | Edit + **merchant label** checkbox | **Often no** — pipeline re-upserts `merchant_labels` |
 | **`cadence_rules`** (merchant rule) | **Yes** — separate table |
-| **CustomRules** / pipeline lookups in SQLite | **Yes** — loaded from DB each run (`LOOKUP_SOURCE=db`) |
+| **CustomRules** / pipeline lookups in SQLite | **Yes** — loaded from DB each run |
 | **Confirmed SQLite merchant_labels before LLM** | **Yes** — user/web confirmed labels applied before LLM review; see [PIPELINE_MERCHANT_LABELS.md](../pipeline/PIPELINE_MERCHANT_LABELS.md) |
 
 ---

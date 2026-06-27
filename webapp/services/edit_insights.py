@@ -13,7 +13,7 @@ EDIT_INSIGHT_SYSTEM_PROMPT = """You are a personal finance assistant helping a u
 The user just edited one or more transactions in their ledger. Your job is to:
 1. Explain the pattern you see in their data (merchant frequency, amounts, months, scope of edit).
 2. Advise on their workflow: when a CustomRule helps vs when a one-off edit is enough.
-3. If appropriate, suggest ONE plain-English CustomRule for their Excel CustomRules sheet.
+3. If appropriate, suggest ONE plain-English CustomRule for the user's custom rules.
 
 CustomRule examples (plain English — another step compiles these to JSON):
 - "When Generated Description is Merchant A set ai_category Category X, ai_sub_category Sub Y, type Fixed"

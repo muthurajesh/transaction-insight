@@ -10,7 +10,7 @@ Personal finance apps export transactions as flat CSV files. Useful analysis—s
 
 This project automates that enrichment:
 
-1. **Preserve the source data** for auditability (stored in SQLite and optional Excel lookups).
+1. **Preserve the source data** for auditability (stored in SQLite).
 2. **Split transactions** into Income, Expenses, and Adjustments.
 3. **Add categories and sub-categories** using AI that reads descriptions, amounts, accounts, and existing labels.
 4. **Label cost behavior** with **Type** (Fixed or Variable) and **Sub-Type** (reserved for future use). Nuance: mortgage and monthly utilities are fixed; groceries and dining are variable.
@@ -28,7 +28,7 @@ This project automates that enrichment:
 | Edit rows, cadence, custom rules | **Edit Transactions**, **Custom Rules**, **Cadence** |
 | Ask questions | **Chat** — type or use **Mic** (Chrome/Edge); voice stops after 3s silence or 30s max and sends automatically |
 
-**Processing core:** [`webapp/pipeline/`](webapp/pipeline/) orchestrates [`webapp/processing/`](webapp/processing/) (LLM, rules, cadence). Lookups default to **SQLite** (`LOOKUP_SOURCE=db`); Excel is optional backup (`EXPORT_LOOKUPS=1`).
+**Processing core:** [`webapp/pipeline/`](webapp/pipeline/) orchestrates [`webapp/processing/`](webapp/processing/) (LLM, rules, cadence). Pipeline lookups load and save from **SQLite** (`finance.db`).
 
 Configure Ollama or LM Studio via `config/.env` — copy from `config/.env.example` or a preset (`config/.env.lmstudio`, `config/.env.ollama`). Common settings (paths, UI flags, lookups) sit at the **top** of each file; **LLM provider** settings at the **bottom**. See [Configuration](#configuration).
 
@@ -68,10 +68,6 @@ See [docs/classification/CONFIRM_CATEGORIES.md](docs/classification/CONFIRM_CATE
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `UI_SHOW_CADENCE` | `1` (show) | Cadence tab, Edit Transactions cadence links, Settings → Cadence rules, chat cadence actions. Set `0` to hide. |
-| `UI_SHOW_EXCEL_LOOKUP_IMPORT` | `1` (show) | Settings → **Import from Excel lookups**. Set `0` to hide (API/import still works). |
-| `LOOKUP_SOURCE` | `db` | Pipeline reads/writes SQLite lookups; `excel` is legacy. |
-| `LOOKUP_SEED_FROM_EXCEL` | off | Set `1` only to one-time import from `transaction-lookups.xlsx` when DB tables are empty. |
-| `EXPORT_LOOKUPS` | off | Set `1` to refresh `transaction-lookups.xlsx` on each run. |
 | `LLM_LOG_CALLS` | `1` | Log pipeline/chat LLM requests to console and `data/llm.log`. Set `0` to disable. |
 | `PIPELINE_SECONDS_PER_ROW` | `1.2` | ETA heuristic for Import & Categorize progress bar. |
 | `FINANCE_DB_PATH`, `FINANCE_INBOX_DIR`, `FINANCE_PROCESSED_DIR` | see `.env.example` | Override data paths. |
@@ -106,7 +102,7 @@ Models are configured in `config/.env`. You can split **pipeline** vs **chat** m
 | **Label cleanup** | **AI Rules** tab | **Analyze** (heuristics only) or **Suggest with AI** — duplicate categories, sub-categories, merchant spellings. | No — you select proposals, preview, then Apply. |
 | **Analytics** | Chat | LLM writes read-only **`query_sql`**; save multi-turn explorations as **custom reports** (prompt + SQL, rerun/tweak/version). Help panel includes report workflows. | Saved reports in `custom_reports` table; see [docs/chat/CHAT_CUSTOM_REPORTS.md](docs/chat/CHAT_CUSTOM_REPORTS.md). |
 
-**Not AI:** Import upload, inbox archive, Excel optional export, table counts, most Edit Transactions field updates (direct SQLite), and cadence **math** (`effective_amount`, cash/core/normalized views).
+**Not AI:** Import upload, inbox archive, table counts, most Edit Transactions field updates (direct SQLite), and cadence **math** (`effective_amount`, cash/core/normalized views).
 
 ### Three ways to improve logic over time
 
@@ -118,8 +114,8 @@ Use the right tool for the scope of the problem:
 
 | Mechanism | Where you set it | Effect on next Run processing |
 |-----------|------------------|-------------------------------|
-| Confirm merchant | **Confirm Categories** | `merchant_labels` in SQLite (+ optional Excel row) |
-| Category rules | Settings → import Excel or DB | `category_rules` |
+| Confirm merchant | **Confirm Categories** | `merchant_labels` in SQLite |
+| Category rules | Settings / pipeline | `category_rules` in SQLite |
 | Description cache | Automatic after processing | `description_lookup` — validated cache hit or LLM (User/Simple are context only, not copied verbatim) |
 | Cadence | **Cadence** tab → save rule | `cadence_rules` |
 
@@ -186,11 +182,10 @@ Detail: [docs/classification/AI_TAXONOMY_RULES.md](docs/classification/AI_TAXONO
 | `input/*.csv` | Bank exports you process |
 | `processed/*.csv` | Archived inbox CSVs after a successful run |
 | `data/finance.db` | **Primary store** — transactions, labels, cadence, chat, pipeline lookups |
-| `scripts/transaction-lookups.xlsx` | **Optional** — one-time seed if DB lookup tables are empty; merge scratch on save unless you add pure in-memory merge later |
 
 ## What Run processing does
 
-Each CSV is loaded, enriched by the pipeline, and saved to `finance.db`. With **`LOOKUP_SOURCE=db`** (default), rules and description cache are read from SQLite; new keys are written back to DB after each run. Set **`EXPORT_LOOKUPS=1`** in `.env` if you also want `transaction-lookups.xlsx` refreshed on save.
+Each CSV is loaded, enriched by the pipeline, and saved to `finance.db`. Rules and description cache are read from SQLite; new keys are written back to DB after each run.
 
 ### Columns added (Income & Expenses)
 
@@ -268,21 +263,13 @@ The pipeline uses LM Studio’s **OpenAI-compatible API** on your LAN.
 
 Set `LLM_PROVIDER=openai` and `OPENAI_API_KEY` in `config/.env`.
 
-## Pipeline lookups (SQLite + optional Excel)
-
-Default (**`LOOKUP_SOURCE=db`** in `config/.env`):
+## Pipeline lookups (SQLite)
 
 1. **Load** — `description_lookup`, `category_rules`, `pipeline_custom_rules`, `merchant_labels`, `cadence_rules` from `finance.db`
-2. **First run** — optional one-time import from `scripts/transaction-lookups.xlsx` when `LOOKUP_SEED_FROM_EXCEL=1` and DB tables are empty
-3. **Process** — validated description cache, then LLM (User/Simple bank fields are context only); implausible cached labels rejected
-4. **Save** — merge new description keys, merchant rows, and rules into SQLite after each run
-5. **Optional Excel** — set `EXPORT_LOOKUPS=1` to also refresh `transaction-lookups.xlsx` (off by default)
+2. **Process** — validated description cache, then LLM (User/Simple bank fields are context only); implausible cached labels rejected
+3. **Save** — merge new description keys, merchant rows, and rules into SQLite after each run
 
-Legacy mode: `LOOKUP_SOURCE=excel` reads/writes the workbook only (not recommended).
-
-Settings can **import** sheets from Excel into SQLite when **Import from Excel lookups** is visible (`UI_SHOW_EXCEL_LOOKUP_IMPORT=1`, default). **Confirm Categories** still upserts **MerchantCategories** in the workbook when you confirm a merchant (for Excel backup users).
-
-Lookup data (same concepts as the old workbook sheets):
+Lookup tables:
 
 | Store | Contents |
 |-------|----------|
@@ -306,7 +293,7 @@ After categories are correct, separate **normal monthly run-rate** from **irregu
 | **In Monthly Run-Rate?** | `Y` = core monthly budget; `N` = cash spend excluded from run-rate |
 | **Cadence Source** | `Lookup`, `Detected`, or `Default` |
 
-Manage cadence in the **Cadence** tab (`UI_SHOW_CADENCE=1`, default) and `cadence_rules` in SQLite. Import **ExpenseCadenceRules** from Excel via Settings when the import card is shown. Chat and analytics support **cash**, **core**, and **normalized** views — see [docs/cadence/EXPENSE_CADENCE.md](docs/cadence/EXPENSE_CADENCE.md).
+Manage cadence in the **Cadence** tab (`UI_SHOW_CADENCE=1`, default) and `cadence_rules` in SQLite. Chat and analytics support **cash**, **core**, and **normalized** views — see [docs/cadence/EXPENSE_CADENCE.md](docs/cadence/EXPENSE_CADENCE.md).
 
 ## Custom Rules (freeform → AI compile → apply)
 
@@ -332,7 +319,6 @@ Example: split duplicate monthly charges by amount, or tag Apple $9.99 as Busine
 | `webapp/processing/` | Parse, classify, rules, cadence |
 | `webapp/pipeline/` | `run_pipeline()` orchestration |
 | `webapp/adapters/` | DataFrame → SQLite, `lookup_store` |
-| `scripts/transaction-lookups.xlsx` | Optional seed / backup workbook (not required at runtime with `LOOKUP_SOURCE=db`) |
 | `input/` | Bank CSV inbox |
 | `processed/` | Archived CSVs after successful processing |
 | `data/finance.db` | SQLite database (gitignored) |

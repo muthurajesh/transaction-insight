@@ -19,7 +19,7 @@ Populated on **Run processing** from pipeline `Expense Cadence` columns.
 
 One row per `merchant_key` — Layer **1**. Overrides unknown transaction cadence when resolving.
 
-Imported from **ExpenseCadenceRules** in `transaction-lookups.xlsx` (Import lookups or pipeline).
+Imported from **`cadence_rules`** in SQLite (Cadence tab or pipeline).
 
 ## Normalization
 
