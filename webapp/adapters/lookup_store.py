@@ -83,6 +83,12 @@ def load_lookup_workbook_from_db(conn: sqlite3.Connection) -> dict[str, pd.DataF
                COALESCE(sample_count, 0) AS "Transaction Count",
                COALESCE(notes, '') AS "Notes"
         FROM merchant_labels
+        WHERE label_status = 'confirmed'
+          AND (
+              LOWER(COALESCE(rationale, '')) IN ('user edited', 'user confirmed')
+              OR LOWER(COALESCE(rationale, '')) LIKE 'confirmed via web%'
+              OR LOWER(COALESCE(notes, '')) LIKE '%confirmed via web%'
+          )
         ORDER BY merchant_key
         """
     ).fetchall()
@@ -285,6 +291,14 @@ def save_lookup_workbook_to_db(
                     notes=excluded.notes,
                     sample_count=excluded.sample_count,
                     updated_at=excluded.updated_at
+                WHERE NOT (
+                    merchant_labels.label_status = 'confirmed'
+                    AND (
+                        LOWER(COALESCE(merchant_labels.rationale, '')) IN ('user edited', 'user confirmed')
+                        OR LOWER(COALESCE(merchant_labels.rationale, '')) LIKE 'confirmed via web%'
+                        OR LOWER(COALESCE(merchant_labels.notes, '')) LIKE '%confirmed via web%'
+                    )
+                )
                 """,
                 (
                     mk,

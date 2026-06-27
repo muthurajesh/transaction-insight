@@ -60,7 +60,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [ ] | **Minimal category vocabulary** — broad AI Category + few sub-categories; reduce Salary vs Paychecks/Salary drift | → [CLASSIFICATION_TAXONOMY.md](./CLASSIFICATION_TAXONOMY.md) (vocab hint + normalize shipped; auto-merge future) |
 | [x] | **Classification audit** — post-import + scheduled sampled re-check (14b vs audit model); in-app alerts | [CLASSIFICATION_AUDIT.md](./CLASSIFICATION_AUDIT.md) |
 | [ ] | Auto-apply taxonomy rules at confidence threshold | Future — `automation_ready` on proposals |
-| [ ] | Pipeline reads SQLite `merchant_labels` before LLM on re-import | → [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md) |
+| [x] | Pipeline reads confirmed user/web SQLite `merchant_labels` before LLM on re-import | Authoritative before LLM; Custom Rules remain final → [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md) |
 | [~] | Sync web edits → `transaction-lookups.xlsx` (optional export) | Confirm Categories writes **MerchantCategories**; bulk Settings export → [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) |
 
 ---
@@ -162,7 +162,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 
 **Detail:** [PIPELINE_DB_LOOKUPS.md](./PIPELINE_DB_LOOKUPS.md)
 
-**Context:** Run processing loads and saves pipeline lookups from **`finance.db`** by default (`LOOKUP_SOURCE=db`). `scripts/transaction-lookups.xlsx` is optional — seeded once when DB tables are empty, or refreshed when `EXPORT_LOOKUPS=1`. Remaining work: pure in-memory merge on save, merchant labels before LLM on re-import.
+**Context:** Run processing loads and saves pipeline lookups from **`finance.db`** by default (`LOOKUP_SOURCE=db`). `scripts/transaction-lookups.xlsx` is optional — seeded once when DB tables are empty, or refreshed when `EXPORT_LOOKUPS=1`. Remaining work: pure in-memory merge on save. Confirmed user/web merchant labels now apply before LLM and are protected from pipeline overwrites.
 
 | Status | Item | Detail |
 |--------|------|--------|
@@ -177,7 +177,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 ## Suggested order (next work)
 
 1. **Phase D Slice D1** — tune cadence AI on full merchant history (D1 shipped)
-2. **PIPELINE_MERCHANT_LABELS** — SQLite confirmed labels before LLM on re-import
+2. **Pipeline lookup save hardening** — pure in-memory merge on save; keep confirmed user/web merchant labels authoritative
 3. **Chat Tier 3** — multiline composer (save-as-report shipped — [CHAT_CUSTOM_REPORTS.md](./CHAT_CUSTOM_REPORTS.md))
 4. **Phase D2–D3** — report layers + layered reports  
 5. **§7 Pipeline lookups** — pure in-memory merge on save; optional Excel export UI ([PIPELINE_DB_LOOKUPS.md](./PIPELINE_DB_LOOKUPS.md))
