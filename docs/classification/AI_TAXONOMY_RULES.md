@@ -40,4 +40,4 @@ Each proposal includes `confidence` (0–1) and `automation_ready` when confiden
 ## Related
 
 - `webapp/services/label_health.py` — underlying merge engine
-- `docs/EDIT_INSIGHTS.md` — per-edit CustomRule suggestions (different scope)
+- `docs/rules/EDIT_INSIGHTS.md` — per-edit CustomRule suggestions (different scope)

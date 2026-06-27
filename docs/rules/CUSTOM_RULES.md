@@ -2,7 +2,7 @@
 
 **Status:** Shipped — dedicated **Custom Rules** tab with preview, Flow Type, and id-stable CRUD.
 
-**Related:** [EDIT_INSIGHTS.md](./EDIT_INSIGHTS.md) · [CONFIRM_CATEGORIES.md](./CONFIRM_CATEGORIES.md)
+**Related:** [EDIT_INSIGHTS.md](EDIT_INSIGHTS.md) · [CONFIRM_CATEGORIES.md](../classification/CONFIRM_CATEGORIES.md)
 
 ## Overview
 

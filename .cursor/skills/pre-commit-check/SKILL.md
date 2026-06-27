@@ -56,9 +56,9 @@ pytest -v --tb=short
 
 ## 4. ROADMAP and linked docs
 
-1. Read `docs/ROADMAP.md`.
+1. Read `docs/product/ROADMAP.md` and `docs/product/PRODUCT_CHARTER.md` if the change affects product direction.
 2. If this work completes, advances, or defers an item: update `[x]` / `[~]` / `[ ]` and the linked detail doc.
-3. Update `docs/AI_SESSION_CONTEXT.md` when shipped vs pending state changed.
+3. Update `docs/product/AI_SESSION_CONTEXT.md` when shipped vs pending state changed.
 
 ## 5. README and env
 

@@ -24,4 +24,4 @@ How agent constraints are split so the project stays LLM-first and does not drif
 
 1. **Any coding session** — rules apply automatically; agents should refuse `if "taco bell" in desc` style shortcuts.
 2. **Before commit** — say *pre commit check* or invoke `/pre-commit-check`.
-3. **New chat** — `@docs/AI_SESSION_CONTEXT.md` for product context.
+3. **New chat** — `@docs/product/PRODUCT_CHARTER.md` + `@docs/product/AI_SESSION_CONTEXT.md` for product context.

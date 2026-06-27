@@ -1,7 +1,7 @@
 # Confirm Categories — merchant confirm flow
 
 **Status:** Implemented (web)  
-**Related:** [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md), [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md)
+**Related:** [PIPELINE_EXCEL_SYNC.md](../pipeline/PIPELINE_EXCEL_SYNC.md), [PIPELINE_MERCHANT_LABELS.md](../pipeline/PIPELINE_MERCHANT_LABELS.md)
 
 ## Overview
 
@@ -118,5 +118,5 @@ For single-transaction confirm, include `"transaction_id": "..."` (Check Payment
 
 ## Still open
 
-- Pipeline reads SQLite `merchant_labels` before LLM on re-import ([PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md))
-- Bulk export of all web labels to Excel from Settings ([PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md))
+- Pipeline reads SQLite `merchant_labels` before LLM on re-import ([PIPELINE_MERCHANT_LABELS.md](../pipeline/PIPELINE_MERCHANT_LABELS.md))
+- Bulk export of all web labels to Excel from Settings ([PIPELINE_EXCEL_SYNC.md](../pipeline/PIPELINE_EXCEL_SYNC.md))

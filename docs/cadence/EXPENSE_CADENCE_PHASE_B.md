@@ -1,7 +1,7 @@
 # Expense cadence — Phase B (analytics & chat views)
 
 **Status:** Implemented  
-**Depends on:** [EXPENSE_CADENCE.md](./EXPENSE_CADENCE.md) (Phase A — done)
+**Depends on:** [EXPENSE_CADENCE.md](EXPENSE_CADENCE.md) (Phase A — done)
 
 ## Goal
 
@@ -113,11 +113,11 @@ Example mapping:
   - **A (simple):** Document that `run_custom_report` with raw SQL stays **cash**; normalized reports use chat tools / new `run_expense_report` helper later
   - **B (better):** Add named report templates in code for normalized top-N
 
-Recommend **A** for B, document limitation in [CUSTOM_REPORTS.md](./CUSTOM_REPORTS.md).
+Recommend **A** for B, document limitation in [CHAT_CUSTOM_REPORTS.md](../chat/CHAT_CUSTOM_REPORTS.md).
 
 ### 7. Chat routing fix
 
-Ship [CHAT_ROUTING.md](./CHAT_ROUTING.md) with or before Phase B.
+Ship [CHAT_ROUTING.md](../chat/CHAT_ROUTING.md) with or before Phase B.
 
 ## Test plan
 
@@ -139,7 +139,7 @@ curl -s 'http://127.0.0.1:8000/api/...'  # or chat: "normalized top categories A
 - `webapp/agent/chat.py`
 - `webapp/agent/display.py`
 - `webapp/agent/DATA_CHEATSHEET.md`
-- `docs/ROADMAP.md` — mark Phase B items `[x]`
+- `docs/product/ROADMAP.md` — mark Phase B items `[x]`
 
 ## Context from project chat
 

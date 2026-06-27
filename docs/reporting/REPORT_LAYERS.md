@@ -1,7 +1,7 @@
 # Report layers — Phase D & E (AI rules, bake, cache)
 
-**Status:** Not implemented (Slice D1 cadence AI → [EXPENSE_CADENCE_PHASE_D.md](./EXPENSE_CADENCE_PHASE_D.md))  
-**Depends on:** [EXPENSE_CADENCE.md](./EXPENSE_CADENCE.md) (Phase A), [EXPENSE_CADENCE_PHASE_B.md](./EXPENSE_CADENCE_PHASE_B.md), [EXPENSE_CADENCE_PHASE_C.md](./EXPENSE_CADENCE_PHASE_C.md)
+**Status:** Not implemented (Slice D1 cadence AI → [EXPENSE_CADENCE_PHASE_D.md](../cadence/EXPENSE_CADENCE_PHASE_D.md))  
+**Depends on:** [EXPENSE_CADENCE.md](../cadence/EXPENSE_CADENCE.md) (Phase A), [EXPENSE_CADENCE_PHASE_B.md](../cadence/EXPENSE_CADENCE_PHASE_B.md), [EXPENSE_CADENCE_PHASE_C.md](../cadence/EXPENSE_CADENCE_PHASE_C.md)
 
 ## Concept (from project chat)
 
@@ -18,7 +18,7 @@ Report lens: same date range + expense_view (cash | core | normalized)
 
 ## Phase D — AI-authored layers
 
-**Slice D1 (cadence AI):** implement first per [EXPENSE_CADENCE_PHASE_D.md](./EXPENSE_CADENCE_PHASE_D.md).  
+**Slice D1 (cadence AI):** implement first per [EXPENSE_CADENCE_PHASE_D.md](../cadence/EXPENSE_CADENCE_PHASE_D.md).  
 **Slices D2–D3 below** = report layers beyond cadence.
 
 ### User stories
@@ -75,7 +75,7 @@ CREATE TABLE report_layers (
 
 ### UX flow (cadence via chat)
 
-Mirror [EDIT_INSIGHTS.md](./EDIT_INSIGHTS.md):
+Mirror [EDIT_INSIGHTS.md](../rules/EDIT_INSIGHTS.md):
 
 1. User explains charge in chat
 2. Assistant proposes cadence + rationale

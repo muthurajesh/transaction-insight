@@ -1,7 +1,7 @@
 # Chat Tier 3 — Save as report (table replies)
 
-**Status:** Partially implemented (save/tweak/manage in Chat — see [CHAT_CUSTOM_REPORTS.md](./CHAT_CUSTOM_REPORTS.md))  
-**Detail parent:** [CHAT_RICH_UI.md](./CHAT_RICH_UI.md) § Tier 3
+**Status:** Partially implemented (save/tweak/manage in Chat — see [CHAT_CUSTOM_REPORTS.md](CHAT_CUSTOM_REPORTS.md))  
+**Detail parent:** [CHAT_RICH_UI.md](CHAT_RICH_UI.md) § Tier 3
 
 ## User intent (from project chat)
 
@@ -93,7 +93,7 @@ Chat tools remain; REST is for UI button.
 | `webapp/static/app.js` | Save button in `mountTableDisplay`; modal; `saveReportFromMessage(msg)` |
 | `webapp/static/index.html` | Modal markup (or dynamic) |
 | `webapp/static/styles.css` | Modal + toolbar button |
-| `docs/CHAT_RICH_UI.md` | Mark Tier 3 save-as-report done |
+| `docs/chat/CHAT_RICH_UI.md` | Mark Tier 3 save-as-report done |
 
 ## Multiline composer (same tier, separate item)
 

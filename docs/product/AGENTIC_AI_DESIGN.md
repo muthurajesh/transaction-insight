@@ -2,7 +2,7 @@
 
 **Status:** Design proposal (Jun 2026)  
 **Scope:** Web app + SQLite + local LLM. **Out of scope:** legacy CLI/scripts package (removed); optional Excel backup/export only.  
-**Audience:** Future implementation chats — pair with [AI_SESSION_CONTEXT.md](./AI_SESSION_CONTEXT.md) and [ROADMAP.md](./ROADMAP.md).
+**Audience:** Future implementation chats — pair with [AI_SESSION_CONTEXT.md](AI_SESSION_CONTEXT.md) and [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -960,4 +960,4 @@ The migration is four phases over ~12–16 weeks, each delivering user-visible v
 
 ---
 
-*Related docs: [AI_SESSION_CONTEXT.md](./AI_SESSION_CONTEXT.md) · [ROADMAP.md](./ROADMAP.md) · [REPORT_LAYERS.md](./REPORT_LAYERS.md) · [EXPENSE_CADENCE_PHASE_D.md](./EXPENSE_CADENCE_PHASE_D.md)*
+*Related docs: [AI_SESSION_CONTEXT.md](AI_SESSION_CONTEXT.md) · [ROADMAP.md](ROADMAP.md) · [REPORT_LAYERS.md](../reporting/REPORT_LAYERS.md) · [EXPENSE_CADENCE_PHASE_D.md](../cadence/EXPENSE_CADENCE_PHASE_D.md)*

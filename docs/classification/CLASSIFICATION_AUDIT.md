@@ -1,7 +1,7 @@
 # Classification audit — sampled quality check
 
 **Status:** Shipped  
-**Related:** [CLASSIFICATION_TAXONOMY.md](./CLASSIFICATION_TAXONOMY.md) · [CONFIRM_CATEGORIES.md](./CONFIRM_CATEGORIES.md)
+**Related:** [CLASSIFICATION_TAXONOMY.md](CLASSIFICATION_TAXONOMY.md) · [CONFIRM_CATEGORIES.md](CONFIRM_CATEGORIES.md)
 
 ## Purpose
 

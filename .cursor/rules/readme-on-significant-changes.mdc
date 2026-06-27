@@ -34,10 +34,11 @@ Run the **full workflow** below when any of these apply:
    - **Behavior changes** need new or updated tests in `tests/`; do not commit failing tests.
    - **Skip** only for docs-only or comment-only edits with zero runtime effect.
 3. **Summarize** — Short bullets: what changed, why, what users should know. Use this in the reply and commit message.
-4. **Cross-check ROADMAP** — Read `docs/ROADMAP.md`. If the change completes, advances, or defers a roadmap item:
+4. **Cross-check ROADMAP** — Read `docs/product/ROADMAP.md`. If the change completes, advances, or defers a roadmap item:
    - Mark `[x]` / `[~]` / `[ ]` on the matching checkbox
-   - Update the linked detail doc (e.g. `CHAT_RICH_UI.md`, `EXPENSE_CADENCE_PHASE_D.md`)
-   - Update `docs/AI_SESSION_CONTEXT.md` if it describes shipped vs pending state for that area
+   - Update the linked detail doc (e.g. `chat/CHAT_RICH_UI.md`, `cadence/EXPENSE_CADENCE_PHASE_D.md`)
+   - Update `docs/product/AI_SESSION_CONTEXT.md` if it describes shipped vs pending state for that area
+   - If the change conflicts with `docs/product/PRODUCT_CHARTER.md`, flag it to the user before finishing
 5. **Read `README.md`** — Scan affected sections (workflow table, Quick start, How AI is used, LLM setup, lookups, cadence, custom rules, project files, Further reading).
 6. **Update surgically** — Fix stale README text; add doc links; do **not** rewrite the whole README or duplicate `docs/` content.
 7. **Keep env docs aligned** — New/renamed env vars → `config/.env.example` and matching presets (common at top, LLM block at bottom).

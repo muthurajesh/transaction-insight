@@ -2,6 +2,8 @@
 
 Turn raw monthly bank transaction exports into categorized, analyzable data with AI-assisted labels, income/expense separation, and fixed vs. variable cost tagging — all through a local web app backed by SQLite.
 
+**Documentation catalog:** [docs/INDEX.md](docs/INDEX.md) — all design docs by area (charter, roadmap, pipeline, chat, etc.). This file is for **running and onboarding** the app.
+
 ## What we are trying to do
 
 Personal finance apps export transactions as flat CSV files. Useful analysis—seeing true income vs. spending, grouping by category, and understanding which costs are **fixed** (recurring obligations) vs. **variable** (discretionary)—requires extra structure that the export does not provide.
@@ -54,7 +56,7 @@ uvicorn webapp.main:app --reload --host 127.0.0.1 --port 8000
 
 Or use `./start.sh` if present. Open http://127.0.0.1:8000.
 
-See [docs/CONFIRM_CATEGORIES.md](docs/CONFIRM_CATEGORIES.md) for the label queue. Chat dollar amounts use the same spend rules as the pipeline (negative outflows only).
+See [docs/classification/CONFIRM_CATEGORIES.md](docs/classification/CONFIRM_CATEGORIES.md) for the label queue. Chat dollar amounts use the same spend rules as the pipeline (negative outflows only).
 
 ## Configuration
 
@@ -102,7 +104,7 @@ Models are configured in `config/.env`. You can split **pipeline** vs **chat** m
 | **After an edit** | Edit Transactions → Apply → AI insight modal | Explains the pattern; may suggest a **Custom Rule** (plain English). | No — save rule is optional. |
 | **Cadence** | Cadence tab → ✨ Suggest cadence (AI); Chat | Proposes recurring vs lump vs one-time from merchant history + your hint. | No — Review & save in modal or cadence queue. |
 | **Label cleanup** | **AI Rules** tab | **Analyze** (heuristics only) or **Suggest with AI** — duplicate categories, sub-categories, merchant spellings. | No — you select proposals, preview, then Apply. |
-| **Analytics** | Chat | LLM writes read-only **`query_sql`**; save multi-turn explorations as **custom reports** (prompt + SQL, rerun/tweak/version). Help panel includes report workflows. | Saved reports in `custom_reports` table; see [docs/CHAT_CUSTOM_REPORTS.md](docs/CHAT_CUSTOM_REPORTS.md). |
+| **Analytics** | Chat | LLM writes read-only **`query_sql`**; save multi-turn explorations as **custom reports** (prompt + SQL, rerun/tweak/version). Help panel includes report workflows. | Saved reports in `custom_reports` table; see [docs/chat/CHAT_CUSTOM_REPORTS.md](docs/chat/CHAT_CUSTOM_REPORTS.md). |
 
 **Not AI:** Import upload, inbox archive, Excel optional export, table counts, most Edit Transactions field updates (direct SQLite), and cadence **math** (`effective_amount`, cash/core/normalized views).
 
@@ -134,7 +136,7 @@ These are **deterministic at runtime**: the pipeline reads them before calling t
 | Compile | LLM turns text into JSON (`assign`, `monthly_split_max`, …) |
 | Apply | **Save & apply** (one rule), **Apply all rules**, or on every **Run processing** (highest priority after other rules) |
 
-Detail: [docs/CUSTOM_RULES.md](docs/CUSTOM_RULES.md) · [docs/EDIT_INSIGHTS.md](docs/EDIT_INSIGHTS.md). These are **programmatic** once compiled — the AI only helps author and compile them.
+Detail: [docs/rules/CUSTOM_RULES.md](docs/rules/CUSTOM_RULES.md) · [docs/rules/EDIT_INSIGHTS.md](docs/rules/EDIT_INSIGHTS.md). These are **programmatic** once compiled — the AI only helps author and compile them.
 
 #### 3. AI Rules (taxonomy — global label vocabulary)
 
@@ -148,7 +150,7 @@ Detail: [docs/CUSTOM_RULES.md](docs/CUSTOM_RULES.md) · [docs/EDIT_INSIGHTS.md](
 
 This is a **different abstraction** from Custom Rules: it cleans **label dictionaries** across the database, not per-transaction if/then. Nothing applies automatically today; proposals include a confidence score for possible future auto-apply when you trust the pattern.
 
-Detail: [docs/AI_TAXONOMY_RULES.md](docs/AI_TAXONOMY_RULES.md).
+Detail: [docs/classification/AI_TAXONOMY_RULES.md](docs/classification/AI_TAXONOMY_RULES.md).
 
 ### Suggested workflow (monthly)
 
@@ -163,17 +165,19 @@ Detail: [docs/AI_TAXONOMY_RULES.md](docs/AI_TAXONOMY_RULES.md).
 
 | Doc | Topic |
 |-----|--------|
-| [docs/AI_SESSION_CONTEXT.md](docs/AI_SESSION_CONTEXT.md) | Product direction, pitfalls, for new AI coding sessions |
-| [docs/AI_TAXONOMY_RULES.md](docs/AI_TAXONOMY_RULES.md) | AI Rules tab API and behavior |
-| [docs/CUSTOM_RULES.md](docs/CUSTOM_RULES.md) | Custom Rules tab — preview, compile, apply, Flow Type |
-| [docs/EDIT_INSIGHTS.md](docs/EDIT_INSIGHTS.md) | Post-edit insights and Custom Rule suggestions |
-| [docs/EXPENSE_CADENCE_PHASE_D.md](docs/EXPENSE_CADENCE_PHASE_D.md) | AI cadence propose + confirm |
-| [docs/CONFIRM_CATEGORIES.md](docs/CONFIRM_CATEGORIES.md) | Review queue and confirm scopes |
-| [docs/CHAT_RICH_UI.md](docs/CHAT_RICH_UI.md) | Chat tables, Help panel, voice input |
-| [docs/CHAT_CUSTOM_REPORTS.md](docs/CHAT_CUSTOM_REPORTS.md) | Build, save, and rerun custom reports in Chat |
-| [docs/CLASSIFICATION_TAXONOMY.md](docs/CLASSIFICATION_TAXONOMY.md) | Classify LLM payload and category vocabulary goals |
-| [docs/CLASSIFICATION_AUDIT.md](docs/CLASSIFICATION_AUDIT.md) | Sampled classification quality audit (14b vs audit model) |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | What’s shipped vs planned (e.g. auto-apply taxonomy at confidence threshold) |
+| [docs/INDEX.md](docs/INDEX.md) | **Documentation index** — all docs by area |
+| [docs/product/PRODUCT_CHARTER.md](docs/product/PRODUCT_CHARTER.md) | **Master product reference** — vision, AI-first design, decision gate |
+| [docs/product/AI_SESSION_CONTEXT.md](docs/product/AI_SESSION_CONTEXT.md) | Product direction, pitfalls, for new AI coding sessions |
+| [docs/classification/AI_TAXONOMY_RULES.md](docs/classification/AI_TAXONOMY_RULES.md) | AI Rules tab API and behavior |
+| [docs/rules/CUSTOM_RULES.md](docs/rules/CUSTOM_RULES.md) | Custom Rules tab — preview, compile, apply, Flow Type |
+| [docs/rules/EDIT_INSIGHTS.md](docs/rules/EDIT_INSIGHTS.md) | Post-edit insights and Custom Rule suggestions |
+| [docs/cadence/EXPENSE_CADENCE_PHASE_D.md](docs/cadence/EXPENSE_CADENCE_PHASE_D.md) | AI cadence propose + confirm |
+| [docs/classification/CONFIRM_CATEGORIES.md](docs/classification/CONFIRM_CATEGORIES.md) | Review queue and confirm scopes |
+| [docs/chat/CHAT_RICH_UI.md](docs/chat/CHAT_RICH_UI.md) | Chat tables, Help panel, voice input |
+| [docs/chat/CHAT_CUSTOM_REPORTS.md](docs/chat/CHAT_CUSTOM_REPORTS.md) | Build, save, and rerun custom reports in Chat |
+| [docs/classification/CLASSIFICATION_TAXONOMY.md](docs/classification/CLASSIFICATION_TAXONOMY.md) | Classify LLM payload and category vocabulary goals |
+| [docs/classification/CLASSIFICATION_AUDIT.md](docs/classification/CLASSIFICATION_AUDIT.md) | Sampled classification quality audit (14b vs audit model) |
+| [docs/product/ROADMAP.md](docs/product/ROADMAP.md) | What’s shipped vs planned (e.g. auto-apply taxonomy at confidence threshold) |
 
 ## Where files live
 
@@ -288,7 +292,7 @@ Lookup data (same concepts as the old workbook sheets):
 | **`pipeline_custom_rules`** | Freeform rules → compiled JSON |
 | **`cadence_rules`** | Merchant cadence for run-rate views |
 
-See [docs/PIPELINE_DB_LOOKUPS.md](docs/PIPELINE_DB_LOOKUPS.md) for lookup storage details.
+See [docs/pipeline/PIPELINE_DB_LOOKUPS.md](docs/pipeline/PIPELINE_DB_LOOKUPS.md) for lookup storage details.
 
 ## Expense cadence
 
@@ -302,7 +306,7 @@ After categories are correct, separate **normal monthly run-rate** from **irregu
 | **In Monthly Run-Rate?** | `Y` = core monthly budget; `N` = cash spend excluded from run-rate |
 | **Cadence Source** | `Lookup`, `Detected`, or `Default` |
 
-Manage cadence in the **Cadence** tab (`UI_SHOW_CADENCE=1`, default) and `cadence_rules` in SQLite. Import **ExpenseCadenceRules** from Excel via Settings when the import card is shown. Chat and analytics support **cash**, **core**, and **normalized** views — see [docs/EXPENSE_CADENCE.md](docs/EXPENSE_CADENCE.md).
+Manage cadence in the **Cadence** tab (`UI_SHOW_CADENCE=1`, default) and `cadence_rules` in SQLite. Import **ExpenseCadenceRules** from Excel via Settings when the import card is shown. Chat and analytics support **cash**, **core**, and **normalized** views — see [docs/cadence/EXPENSE_CADENCE.md](docs/cadence/EXPENSE_CADENCE.md).
 
 ## Custom Rules (freeform → AI compile → apply)
 
@@ -334,7 +338,9 @@ Example: split duplicate monthly charges by amount, or tag Apple $9.99 as Busine
 | `data/finance.db` | SQLite database (gitignored) |
 | `config/` | `.env` and presets (`.env.example`, `.env.lmstudio`, `.env.ollama`) |
 | `.cursor/rules/` | Cursor agent rules (e.g. README sync on significant changes) |
-| `docs/ROADMAP.md` | Master plan — phases and detail doc links |
-| `docs/AI_TAXONOMY_RULES.md` | AI Rules tab — taxonomy merge proposals |
-| `docs/AI_SESSION_CONTEXT.md` | Bootstrap context for new AI chats |
+| `docs/INDEX.md` | Documentation index — all docs by area |
+| `docs/product/PRODUCT_CHARTER.md` | Master product reference — vision, decision gate |
+| `docs/product/ROADMAP.md` | Master plan — phases and detail doc links |
+| `docs/classification/AI_TAXONOMY_RULES.md` | AI Rules tab — taxonomy merge proposals |
+| `docs/product/AI_SESSION_CONTEXT.md` | Bootstrap context for new AI chats |
 | `requirements.txt` | Python dependencies |

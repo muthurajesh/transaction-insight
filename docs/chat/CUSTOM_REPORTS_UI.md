@@ -1,7 +1,7 @@
 # Custom reports — Settings UI
 
 **Status:** Not implemented (partial backend)  
-**Related:** [CHAT_TIER3_SAVE_REPORT.md](./CHAT_TIER3_SAVE_REPORT.md), Phase B `:expense_view`
+**Related:** [CHAT_TIER3_SAVE_REPORT.md](CHAT_TIER3_SAVE_REPORT.md), Phase B `:expense_view`
 
 ## Problem
 

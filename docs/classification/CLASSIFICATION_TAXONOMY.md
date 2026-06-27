@@ -2,7 +2,7 @@
 
 **Status:** Review-path payload + prompt shipped; vocabulary minimization is ongoing (AI Rules + future pipeline assist).
 
-**Related:** [AI_TAXONOMY_RULES.md](./AI_TAXONOMY_RULES.md) · [CONFIRM_CATEGORIES.md](./CONFIRM_CATEGORIES.md)
+**Related:** [AI_TAXONOMY_RULES.md](AI_TAXONOMY_RULES.md) · [CONFIRM_CATEGORIES.md](CONFIRM_CATEGORIES.md)
 
 ## Pipeline classify (production)
 
@@ -55,6 +55,6 @@ Env: `CLASSIFY_VOCABULARY_MAX_CATEGORIES`, `CLASSIFY_VOCABULARY_MAX_SUBS`, `CLAS
 | Approach | Where |
 |----------|--------|
 | **AI Rules** — merge synonym categories/sub-categories | **AI Rules** tab (shipped); user confirms before apply |
-| **Auto-apply merges** at confidence threshold | [ROADMAP.md](./ROADMAP.md) §3 |
+| **Auto-apply merges** at confidence threshold | [ROADMAP.md](../product/ROADMAP.md) §3 |
 
 Goal: reports and charts show a **minimal** category tree without manual cleanup every import.

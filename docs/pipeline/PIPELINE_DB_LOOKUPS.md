@@ -2,7 +2,7 @@
 
 **Status:** Shipped — DB is default runtime source; save path is SQLite-only (Excel export optional via `EXPORT_LOOKUPS=1`)  
 **Roadmap:** §7 Pipeline storage  
-**Related:** [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md) (labels before LLM) · [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) (export web → Excel backup)
+**Related:** [PIPELINE_MERCHANT_LABELS.md](PIPELINE_MERCHANT_LABELS.md) (labels before LLM) · [PIPELINE_EXCEL_SYNC.md](PIPELINE_EXCEL_SYNC.md) (export web → Excel backup)
 
 ## Current state
 
@@ -32,8 +32,10 @@ Legacy mode: `LOOKUP_SOURCE=excel` reads/writes the workbook only (not recommend
 
 | Gap | Detail |
 |-----|--------|
-| **merchant_labels before LLM** | Confirmed SQLite labels not applied on re-import — see [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md) |
-| **Bulk export to workbook** | Optional Settings export — see [PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md) |
+| **Bulk export to workbook** | Optional Settings export — see [PIPELINE_EXCEL_SYNC.md](PIPELINE_EXCEL_SYNC.md) |
+| **Save-path hardening** | Pure in-memory merge on save; confirmed user/web merchant labels must stay authoritative (see ROADMAP §7) |
+
+**Shipped:** Confirmed SQLite `merchant_labels` applied before LLM on re-import — [PIPELINE_MERCHANT_LABELS.md](PIPELINE_MERCHANT_LABELS.md).
 
 ## Phased checklist
 
@@ -51,7 +53,7 @@ Legacy mode: `LOOKUP_SOURCE=excel` reads/writes the workbook only (not recommend
 - [x] Web path calls `run_pipeline` with DB-backed lookups
 - [x] Description cache from `description_lookup`
 - [x] CustomRules from `pipeline_custom_rules`
-- [ ] Ship [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md) — confirmed `merchant_labels` before LLM
+- [x] Confirmed `merchant_labels` before LLM — [PIPELINE_MERCHANT_LABELS.md](PIPELINE_MERCHANT_LABELS.md)
 
 ### Phase 3 — Pipeline writes DB
 
@@ -61,7 +63,7 @@ Legacy mode: `LOOKUP_SOURCE=excel` reads/writes the workbook only (not recommend
 ### Phase 4 — Migration & optional Excel
 
 - [x] Auto-seed from workbook when DB empty (`ensure_lookups_seeded()`)
-- [ ] Settings **Export to Excel** for full backup ([PIPELINE_EXCEL_SYNC.md](./PIPELINE_EXCEL_SYNC.md))
+- [ ] Settings **Export to Excel** for full backup ([PIPELINE_EXCEL_SYNC.md](PIPELINE_EXCEL_SYNC.md))
 - [x] `transaction-lookups.xlsx` not required at runtime with `LOOKUP_SOURCE=db` — documented in README
 
 ## Non-goals

@@ -97,7 +97,7 @@ Insert in `_maybe_direct_answer` **before** `_maybe_list_transactions_answer`.
 1. Ask chat: `top 10 expense categories for April 2026`
 2. Tool trace shows `top_categories`, not `list_transactions`
 3. Insurance ~$1,200, Groceries ~$800 — not $599 total
-4. Mark `[x]` in `docs/ROADMAP.md` §2
+4. Mark `[x]` in `docs/product/ROADMAP.md` §2
 
 ## Context source
 

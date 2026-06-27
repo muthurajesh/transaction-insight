@@ -1,7 +1,7 @@
 # Expense cadence — Phase D (AI suggestions)
 
 **Status:** Slice D1 implemented  
-**Depends on:** [EXPENSE_CADENCE.md](./EXPENSE_CADENCE.md) (Phase A), [EXPENSE_CADENCE_PHASE_C.md](./EXPENSE_CADENCE_PHASE_C.md) (manual Edit UI)
+**Depends on:** [EXPENSE_CADENCE.md](EXPENSE_CADENCE.md) (Phase A), [EXPENSE_CADENCE_PHASE_C.md](EXPENSE_CADENCE_PHASE_C.md) (manual Edit UI)
 
 ## Goal
 
@@ -24,7 +24,7 @@ Pipeline **Detected** cadence (`analyze_merchant_cadence_profiles`) is rule-base
 
 ### LLM input (per merchant)
 
-Reuse stats pattern from [EDIT_INSIGHTS.md](./EDIT_INSIGHTS.md) `_gather_stats`:
+Reuse stats pattern from [EDIT_INSIGHTS.md](../rules/EDIT_INSIGHTS.md) `_gather_stats`:
 
 - `merchant_key`, transaction count, months active
 - Top amounts + counts, same-amount count
@@ -97,7 +97,7 @@ Decision at implement time — default recommendation: **demote Detected** once 
 
 ## Slice D2 — Report layers (defer)
 
-Saved **report layers** beyond cadence — e.g. “exclude transfers from spend lens.” Full spec: [REPORT_LAYERS.md](./REPORT_LAYERS.md) § Phase D (stories 2–3).
+Saved **report layers** beyond cadence — e.g. “exclude transfers from spend lens.” Full spec: [REPORT_LAYERS.md](../reporting/REPORT_LAYERS.md) § Phase D (stories 2–3).
 
 | Item | Doc |
 |------|-----|
@@ -111,7 +111,7 @@ Saved **report layers** beyond cadence — e.g. “exclude transfers from spend 
 
 ## Relationship to Phase E
 
-[E](./REPORT_LAYERS.md) **bake** = promote stable AI layers into columns/snapshots for speed. Build after D1 proves cadence AI loop.
+[E](../reporting/REPORT_LAYERS.md) **bake** = promote stable AI layers into columns/snapshots for speed. Build after D1 proves cadence AI loop.
 
 ## Context
 

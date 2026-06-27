@@ -1,7 +1,7 @@
 # Expense cadence — Phase C (Edit UI)
 
 **Status:** Implemented  
-**Depends on:** [EXPENSE_CADENCE.md](./EXPENSE_CADENCE.md) (Phase A — APIs exist)
+**Depends on:** [EXPENSE_CADENCE.md](EXPENSE_CADENCE.md) (Phase A — APIs exist)
 
 ## Goal
 

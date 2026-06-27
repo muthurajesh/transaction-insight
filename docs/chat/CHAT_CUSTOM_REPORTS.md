@@ -1,7 +1,7 @@
 # Chat custom reports (v1)
 
 **Status:** Implemented  
-**Related:** [CHAT_TIER3_SAVE_REPORT.md](./CHAT_TIER3_SAVE_REPORT.md), [CUSTOM_REPORTS_UI.md](./CUSTOM_REPORTS_UI.md), [REPORT_LAYERS.md](./REPORT_LAYERS.md)
+**Related:** [CHAT_TIER3_SAVE_REPORT.md](CHAT_TIER3_SAVE_REPORT.md), [CUSTOM_REPORTS_UI.md](CUSTOM_REPORTS_UI.md), [REPORT_LAYERS.md](../reporting/REPORT_LAYERS.md)
 
 ## Goal
 
@@ -31,7 +31,7 @@ Build saved analytics **in app chat** through multi-turn conversation (Chain of 
 - **Fast** — `run_custom_report` executes SQL (Settings REST or chat tool).
 - **Tweak** — chat loads `report_prompt` + runs report, then ad-hoc SQL.
 
-Normalized/cadence-heavy rules: use chat + `propose_cadence_rule` today; full layered runner remains in [REPORT_LAYERS.md](./REPORT_LAYERS.md).
+Normalized/cadence-heavy rules: use chat + `propose_cadence_rule` today; full layered runner remains in [REPORT_LAYERS.md](../reporting/REPORT_LAYERS.md).
 
 ## REST API
 
@@ -58,8 +58,8 @@ Help panel includes: **Build custom report**, **Run saved report**, **Tweak save
 
 ## Out of scope (v1)
 
-- Settings tab list UI ([CUSTOM_REPORTS_UI.md](./CUSTOM_REPORTS_UI.md))
-- `report_layers` / `run_layered_report` ([REPORT_LAYERS.md](./REPORT_LAYERS.md))
+- Settings tab list UI ([CUSTOM_REPORTS_UI.md](CUSTOM_REPORTS_UI.md))
+- `report_layers` / `run_layered_report` ([REPORT_LAYERS.md](../reporting/REPORT_LAYERS.md))
 - Bake / materialized cache
 
 ## Files

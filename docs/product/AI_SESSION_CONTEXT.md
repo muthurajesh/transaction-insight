@@ -2,11 +2,13 @@
 
 **Purpose:** Paste or `@`-reference this file when opening a **new chat** so the agent inherits product direction, shipped work, and pitfalls without replaying long threads.
 
-**Maintenance:** Update when major decisions ship. **Status/checklists** live in [ROADMAP.md](./ROADMAP.md); **implementation detail** in linked phase docs — do not duplicate those here.
+**Maintenance:** Update when major decisions ship. **Non-negotiable direction:** [PRODUCT_CHARTER.md](PRODUCT_CHARTER.md). **Status/checklists:** [ROADMAP.md](ROADMAP.md). **Implementation detail:** linked phase docs in [docs/INDEX.md](../INDEX.md) — do not duplicate here.
 
 ---
 
 ## 1. Product direction (non-negotiable)
+
+Full charter: [PRODUCT_CHARTER.md](PRODUCT_CHARTER.md).
 
 | Principle | Meaning |
 |-----------|---------|
@@ -70,7 +72,7 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 | Edit + **merchant label** checkbox | **Often no** — pipeline re-upserts `merchant_labels` |
 | **`cadence_rules`** (merchant rule) | **Yes** — separate table |
 | **CustomRules** / pipeline lookups in SQLite | **Yes** — loaded from DB each run (`LOOKUP_SOURCE=db`) |
-| **SQLite merchant_labels before LLM** | **Not implemented** — see [PIPELINE_MERCHANT_LABELS.md](./PIPELINE_MERCHANT_LABELS.md) |
+| **Confirmed SQLite merchant_labels before LLM** | **Yes** — user/web confirmed labels applied before LLM review; see [PIPELINE_MERCHANT_LABELS.md](../pipeline/PIPELINE_MERCHANT_LABELS.md) |
 
 ---
 
@@ -80,33 +82,33 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 
 | Phase | Status | Doc |
 |-------|--------|-----|
-| A — schema & APIs | Done | [EXPENSE_CADENCE.md](./EXPENSE_CADENCE.md) |
-| B — `expense_view` in analytics/chat | Done | [EXPENSE_CADENCE_PHASE_B.md](./EXPENSE_CADENCE_PHASE_B.md) |
-| C — Edit UI cadence | Done | [EXPENSE_CADENCE_PHASE_C.md](./EXPENSE_CADENCE_PHASE_C.md) |
-| D1 — AI propose + confirm | Done | [EXPENSE_CADENCE_PHASE_D.md](./EXPENSE_CADENCE_PHASE_D.md) |
-| D2–D3 — report layers | Not started | [REPORT_LAYERS.md](./REPORT_LAYERS.md) |
+| A — schema & APIs | Done | [EXPENSE_CADENCE.md](../cadence/EXPENSE_CADENCE.md) |
+| B — `expense_view` in analytics/chat | Done | [EXPENSE_CADENCE_PHASE_B.md](../cadence/EXPENSE_CADENCE_PHASE_B.md) |
+| C — Edit UI cadence | Done | [EXPENSE_CADENCE_PHASE_C.md](../cadence/EXPENSE_CADENCE_PHASE_C.md) |
+| D1 — AI propose + confirm | Done | [EXPENSE_CADENCE_PHASE_D.md](../cadence/EXPENSE_CADENCE_PHASE_D.md) |
+| D2–D3 — report layers | Not started | [REPORT_LAYERS.md](../reporting/REPORT_LAYERS.md) |
 
 **D1 triggers:** Chat with cadence keyword + merchant name; or `POST /api/cadence-rules/propose`; tool `propose_cadence_rule`.  
 **D1 gaps:** LLM may invent merchant names; use `transaction_id` for amount-specific preview; date ranges (e.g. 6-month policy) may still propose 12 months — user must verify modal.
 
 ### Edit & insights
 
-- Edit table: cadence columns + filters ([Phase C](./EXPENSE_CADENCE_PHASE_C.md))
-- Post-edit AI insight + CustomRule suggest; duplicate rule suppression ([EDIT_INSIGHTS.md](./EDIT_INSIGHTS.md), `custom_rule_similarity.py`)
-- **Custom Rules tab** — preview matches (current vs proposed), read-only compiled JSON, `flow_type` in rules, apply one/all ([CUSTOM_RULES.md](./CUSTOM_RULES.md))
+- Edit table: cadence columns + filters ([Phase C](../cadence/EXPENSE_CADENCE_PHASE_C.md))
+- Post-edit AI insight + CustomRule suggest; duplicate rule suppression ([EDIT_INSIGHTS.md](../rules/EDIT_INSIGHTS.md), `custom_rule_similarity.py`)
+- **Custom Rules tab** — preview matches (current vs proposed), read-only compiled JSON, `flow_type` in rules, apply one/all ([CUSTOM_RULES.md](../rules/CUSTOM_RULES.md))
 
 ### Chat UI
 
-- Tiers 1–2 done; routing fix for top categories ([CHAT_RICH_UI.md](./CHAT_RICH_UI.md), [CHAT_ROUTING.md](./CHAT_ROUTING.md))
+- Tiers 1–2 done; routing fix for top categories ([CHAT_RICH_UI.md](../chat/CHAT_RICH_UI.md), [CHAT_ROUTING.md](../chat/CHAT_ROUTING.md))
 - **Mic** — continuous listen, 3s silence / 30s cap, auto-send when listening ends (CHAT_RICH_UI § Voice input)
-- Tier 3: **save-as-report** shipped in chat ([CHAT_CUSTOM_REPORTS.md](./CHAT_CUSTOM_REPORTS.md)); multiline composer still pending
+- Tier 3: **save-as-report** shipped in chat ([CHAT_CUSTOM_REPORTS.md](../chat/CHAT_CUSTOM_REPORTS.md)); multiline composer still pending
 - First-visit onboarding tour + Import progress ETA (`PIPELINE_SECONDS_PER_ROW`)
 
 ### Pipeline LLM behavior (recent)
 
 - **Descriptions:** validated `description_lookup` cache, then LLM — bank text fields only (Original/User/Simple); no category/amount in the LLM payload; no verbatim copy of User/Simple as the label.
-- **Classification:** review spend rows only; minimal LLM payload; vocabulary hint + normalize from DB (`CLASSIFY_VOCABULARY_HINT`) per [CLASSIFICATION_TAXONOMY.md](./CLASSIFICATION_TAXONOMY.md).
-- **Classification audit:** post-import + optional scheduled sample; heuristics + `CLASSIFICATION_AUDIT_MODEL` spot-check; Import tab alerts with **At audit / Suggested / Current in DB**; **View in Edit Transactions** (merchant search); auto-resolve when live labels match suggestion — [CLASSIFICATION_AUDIT.md](./CLASSIFICATION_AUDIT.md).
+- **Classification:** review spend rows only; minimal LLM payload; vocabulary hint + normalize from DB (`CLASSIFY_VOCABULARY_HINT`) per [CLASSIFICATION_TAXONOMY.md](../classification/CLASSIFICATION_TAXONOMY.md).
+- **Classification audit:** post-import + optional scheduled sample; heuristics + `CLASSIFICATION_AUDIT_MODEL` spot-check; Import tab alerts with **At audit / Suggested / Current in DB**; **View in Edit Transactions** (merchant search); auto-resolve when live labels match suggestion — [CLASSIFICATION_AUDIT.md](../classification/CLASSIFICATION_AUDIT.md).
 - **Logging:** `LLM_LOG_CALLS=1` → console + `data/llm.log` (`webapp/llm/request_log.py`).
 
 ### Bulk history / migration
@@ -156,17 +158,17 @@ Per-phase timers in `webapp/pipeline/run.py` + `webapp/processing/timer.py` `Pha
 
 ## 9. Suggested next work
 
-See [ROADMAP.md](./ROADMAP.md) § Suggested order. Short list:
+See [ROADMAP.md](ROADMAP.md) § Suggested order. Short list:
 
-1. Tune D1 (merchant-from-amount, date-range → period_count) `PIPELINE_MERCHANT_LABELS` — apply SQLite labels before LLM on re-import
-4. Chat Tier 3, report layers D2–D3
+1. Tune D1 (merchant-from-amount, date-range → period_count)
+2. Chat Tier 3 multiline composer; report layers D2–D3
 
 ---
 
 ## 10. How to start a new chat (copy-paste)
 
 ```text
-@docs/AI_SESSION_CONTEXT.md @docs/ROADMAP.md
+@docs/product/PRODUCT_CHARTER.md @docs/product/AI_SESSION_CONTEXT.md @docs/product/ROADMAP.md
 
 Task: [one sentence goal]
 
@@ -178,7 +180,7 @@ Constraints: AI-first; minimal diff; read linked docs before coding.
 | Approach | Use for |
 |----------|---------|
 | **This file** | Session bootstrap — direction, pitfalls, workflows |
-| **[ROADMAP.md](./ROADMAP.md)** | What's done / next; checkboxes |
+| **[ROADMAP.md](ROADMAP.md)** | What's done / next; checkboxes |
 | **Phase docs** (`EXPENSE_CADENCE_*.md`, etc.) | How to implement a feature |
 | **Cursor rules** (`.cursor/rules/`) | Always-on constraints (browser MCP, commit policy) |
 | **Long chat threads** | Short follow-ups only; summaries compress detail |

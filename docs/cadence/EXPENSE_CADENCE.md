@@ -40,17 +40,17 @@ normalized_monthly =
 | `normalized` | Spread lumps / scale recurring |
 
 Chat tools: `month_total`, `top_categories`, `flow_totals_by_month` accept `expense_view`.
-Detail: [EXPENSE_CADENCE_PHASE_B.md](./EXPENSE_CADENCE_PHASE_B.md).
+Detail: [EXPENSE_CADENCE_PHASE_B.md](EXPENSE_CADENCE_PHASE_B.md).
 
 ## Phase roadmap
 
 | Phase | Status | Doc |
 |-------|--------|-----|
 | A — schema & APIs | Done | this file |
-| B — analytics views | Done | [EXPENSE_CADENCE_PHASE_B.md](./EXPENSE_CADENCE_PHASE_B.md) |
-| C — Edit UI | Done | [EXPENSE_CADENCE_PHASE_C.md](./EXPENSE_CADENCE_PHASE_C.md) |
-| D — AI propose + confirm | **Next** | [EXPENSE_CADENCE_PHASE_D.md](./EXPENSE_CADENCE_PHASE_D.md) |
-| E — bake / cache | Planned | [REPORT_LAYERS.md](./REPORT_LAYERS.md) |
+| B — analytics views | Done | [EXPENSE_CADENCE_PHASE_B.md](EXPENSE_CADENCE_PHASE_B.md) |
+| C — Edit UI | Done | [EXPENSE_CADENCE_PHASE_C.md](EXPENSE_CADENCE_PHASE_C.md) |
+| D — AI propose + confirm | Done (D1) | [EXPENSE_CADENCE_PHASE_D.md](EXPENSE_CADENCE_PHASE_D.md) |
+| E — bake / cache | Planned | [REPORT_LAYERS.md](../reporting/REPORT_LAYERS.md) |
 
 ## API
 
