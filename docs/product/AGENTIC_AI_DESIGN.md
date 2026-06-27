@@ -61,7 +61,7 @@ The transformation is **incremental**: the existing `webapp/pipeline/run.py` pha
 2. **Chat shortcuts bypass reasoning** — `_maybe_direct_answer()` in `chat.py` uses regex to route "top categories" and cadence intents without LLM planning, creating two parallel routing systems.
 3. **No workflow persistence** — if processing fails at phase 6, there is no checkpoint; user re-runs from scratch.
 4. **Propose/confirm is fragmented** — cadence modal, edit insights modal, and Confirm Categories are three different UX patterns for the same HITL principle.
-5. **Lookup state split** — pipeline still reads `transaction-lookups.xlsx`; web edits in SQLite may be overwritten on re-process (documented pitfall in AI_SESSION_CONTEXT).
+5. **Lookup save merge** — pipeline persists to SQLite; in-memory merge on save still needs hardening so confirmed web edits stay authoritative (see ROADMAP §7).
 6. **`agent_runs` unused** — no trace of multi-step agent executions, no resume, no audit trail.
 7. **Single model role** — pipeline model vs chat model is configured, but there is no model routing per agent task (fast vs reasoning).
 
@@ -749,8 +749,7 @@ Run via `python -m webapp.agents.evals --agent classification` in CI.
 | Create tool registry with existing analytics tools | `webapp/agents/tools/` |
 | Wire `agent_runs` logging | All agent entry points |
 | Add `category_rules`, `description_cache`, `custom_rules` tables | `webapp/db/schema.py` |
-| Pipeline reads merchant_labels + new tables before LLM | `webapp/pipeline/run.py`, `webapp/adapters/lookup_store.py` |
-| Migrate Excel lookups → SQLite one-time import | `lookups_import.py` |
+| Pipeline reads merchant_labels + lookup tables before LLM | `webapp/pipeline/run.py`, `webapp/adapters/lookup_store.py` |
 
 **Exit criteria:** Pipeline runs without Excel; agent_runs populated on process.
 

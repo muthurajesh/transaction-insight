@@ -10,7 +10,7 @@
 |------|----------|
 | **Load** | `webapp/adapters/lookup_store.py` builds in-memory lookup dicts from `finance.db` |
 | **Process** | `webapp/pipeline/run.py` — validated description cache, then LLM (bank text only); implausible cached labels rejected |
-| **Save** | SQLite upsert only (`save_lookup_workbook_to_db`) when `update_lookup_workbook=True` on the pipeline config |
+| **Save** | SQLite upsert only (`save_lookup_workbook_to_db`) when `save_lookups=True` on the pipeline config |
 
 ### Table mapping (internal sheet names → SQLite)
 
@@ -28,35 +28,24 @@
 |-----|--------|
 | **Save-path hardening** | Pure in-memory merge on save; confirmed user/web merchant labels must stay authoritative (see ROADMAP §7) |
 
-**Shipped:** Confirmed SQLite `merchant_labels` applied before LLM on re-import — [PIPELINE_MERCHANT_LABELS.md](PIPELINE_MERCHANT_LABELS.md).
+**Shipped:** Confirmed SQLite `merchant_labels` applied before LLM on re-import — [PIPELINE_MERCHANT_LABELS.md](PIPELINE_MERCHANT_LABELS.md).  
+**Shipped (Tier C):** Removed `webapp/excel/`, workbook load/save helpers, and `openpyxl` dependency.
 
 ## Phased checklist
 
 ### Phase 1 — Schema
 
-- [x] `description_lookup` — `source_key`, descriptions, `generated_description`, model, `updated_at`
-- [x] `category_rules` — bank source category → AI category, budget tier, type, notes
-- [x] `pipeline_custom_rules` — rule text, status, compiled JSON, errors, timestamps
-- [~] Extend `merchant_labels` for Budget Tier, Classification, Flow Type, notes (partial)
-- [x] `cadence_rules` covers merchant cadence behavior
+- [x] `description_lookup`, `category_rules`, `pipeline_custom_rules`, `merchant_labels`, `cadence_rules`
 
 ### Phase 2 — Pipeline reads DB
 
-- [x] `lookup_store.py` — in-memory dict shape for pipeline phases
-- [x] Web path calls `run_pipeline` with DB-backed lookups
-- [x] Description cache from `description_lookup`
-- [x] CustomRules from `pipeline_custom_rules`
-- [x] Confirmed `merchant_labels` before LLM — [PIPELINE_MERCHANT_LABELS.md](PIPELINE_MERCHANT_LABELS.md)
+- [x] `lookup_store.load_lookup_workbook_from_db`
+- [x] Confirmed `merchant_labels` before LLM
 
 ### Phase 3 — Pipeline writes DB
 
-- [x] After processing, upsert description keys, merchant labels, rules into SQLite
-- [~] Pure in-memory merge on save (drop legacy workbook helper code from save path — Tier C)
-
-## Non-goals
-
-- Per-run Excel ledgers — removed; not part of web workflow
-- Workbook import/export in Settings — removed Jun 2026
+- [x] After processing, upsert into SQLite
+- [~] Pure in-memory merge on save (hardening still open)
 
 ## Key files
 
@@ -64,8 +53,8 @@
 |------|------|
 | Schema | `webapp/db/schema.py` |
 | Load / save | `webapp/adapters/lookup_store.py` |
+| Apply rules | `webapp/processing/lookups.py` |
 | Process | `webapp/services/process.py`, `webapp/pipeline/run.py` |
-| Merge logic | `webapp/processing/lookups.py`, `webapp/llm/descriptions.py` |
 
 ## Verification
 
@@ -75,5 +64,4 @@
 
 ## Open decisions
 
-1. Remove dead `webapp/excel/` and Excel paths in `lookups.py` (Tier C — code prune)
-2. Retain `lookup_snapshots` or fold into typed tables only
+1. Retain `lookup_snapshots` or fold into typed tables only

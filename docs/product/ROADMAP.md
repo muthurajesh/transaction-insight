@@ -172,7 +172,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | Phase 2 — Pipeline loads lookups from DB (web path) | `webapp/adapters/lookup_store.py` |
 | [~] | Phase 3 — Pipeline persists lookup updates to DB | Save works; in-memory merge hardening still open |
 | [x] | Confirmed `merchant_labels` before LLM on re-import | [PIPELINE_MERCHANT_LABELS.md](../pipeline/PIPELINE_MERCHANT_LABELS.md) |
-| [x] | Remove Excel lookup import/export from product surface | Settings import removed; docs/env cleaned Jun 2026 |
+| [x] | Remove Excel lookup import/export and dead code | Tier A–C: Settings import removed; `webapp/excel/` deleted; `openpyxl` removed |
 
 ---
 

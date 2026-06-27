@@ -48,7 +48,7 @@ class PipelineConfig:
     model: str | None = None
     batch_size: int | None = None
     source_file: str = ""
-    update_lookup_workbook: bool = False
+    save_lookups: bool = False
 
 
 LLM_PROVIDER, LLM_BASE_URL, PIPELINE_MODEL = resolve_provider_config(

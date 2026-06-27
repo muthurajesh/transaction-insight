@@ -1,20 +1,5 @@
 """Transaction processing pipeline — public API formerly on transaction_insight.core."""
 
-from webapp.excel.export import write_excel
-from webapp.excel.formatting import (
-    autofit_workbook,
-    format_baseline_worksheet,
-    format_spending_insights_worksheet,
-    format_transaction_worksheet,
-    open_excel_workbook,
-)
-from webapp.excel.insights import (
-    build_baseline_sheets,
-    build_month_category_breakdown,
-    build_monthly_expense_overview,
-    write_baseline_sheet,
-    write_spending_insights_sheet,
-)
 from webapp.llm.classify import (
     classify_all,
     classify_batch,
@@ -96,9 +81,6 @@ from webapp.processing.lookups import (
     apply_lookup_rules,
     apply_merchant_category_lookup,
     build_merchant_category_map,
-    default_lookup_path,
-    load_lookup_workbook,
-    update_lookup_workbook,
 )
 from webapp.processing.parse import (
     assign_transaction_ids,
@@ -135,16 +117,12 @@ __all__ = [
     "apply_lookup_rules",
     "apply_merchant_category_lookup",
     "assign_transaction_ids",
-    "autofit_workbook",
     "analyze_merchant_cadence_profiles",
     "build_analytics_ledger",
-    "build_baseline_sheets",
     "build_cadence_review_df",
     "build_description_lookup_map",
     "build_description_payload",
     "build_merchant_category_map",
-    "build_month_category_breakdown",
-    "build_monthly_expense_overview",
     "budget_tier_from_category",
     "business_category_rule_keys",
     "business_rows_needing_rules",
@@ -156,7 +134,6 @@ __all__ = [
     "compile_custom_rules_sheet",
     "cost_type_from_category",
     "create_client",
-    "default_lookup_path",
     "drop_rows_with_invalid_dates",
     "empty_custom_rules_sheet",
     "empty_expense_cadence_rules_sheet",
@@ -166,10 +143,7 @@ __all__ = [
     "fill_generated_descriptions",
     "finalize_expense_cadence_defaults",
     "flow_type_from_row",
-    "format_baseline_worksheet",
     "format_duration",
-    "format_spending_insights_worksheet",
-    "format_transaction_worksheet",
     "generate_descriptions_batch",
     "generated_description_plausible",
     "heuristic_generated_description",
@@ -178,7 +152,6 @@ __all__ = [
     "json_for_prompt",
     "load_active_custom_rules",
     "load_csv",
-    "load_lookup_workbook",
     "mark_business_from_category_rules",
     "merge_business_category_rules",
     "merge_description_lookup",
@@ -186,7 +159,6 @@ __all__ = [
     "merchant_key",
     "normalize_custom_rules_sheet",
     "normalize_expense_cadence_rules_sheet",
-    "open_excel_workbook",
     "parse_amount",
     "parse_transaction_dates",
     "preview_rule_affected",
@@ -196,9 +168,5 @@ __all__ = [
     "resolve_provider_config",
     "sort_expenses_for_export",
     "transaction_fingerprint",
-    "update_lookup_workbook",
-    "write_baseline_sheet",
-    "write_excel",
-    "write_spending_insights_sheet",
     "_custom_rule_match_mask",
 ]

@@ -381,7 +381,7 @@ def api_ingest_file(body: IngestRequest) -> dict[str, Any]:
 class ProcessRequest(BaseModel):
     filename: str | None = None
     skip_lookup_update: bool = False
-    update_lookup_workbook: bool = True
+    save_lookups: bool = True
 
 
 class CustomReportFinalizeRequest(BaseModel):
@@ -444,7 +444,7 @@ def api_process(body: ProcessRequest | None = None) -> dict[str, Any]:
             paths,
             skip_lookup_update=body.skip_lookup_update,
             skip_cadence_detection=True,
-            update_lookup_workbook=body.update_lookup_workbook,
+            save_lookups=body.save_lookups,
         )
         schedule_post_import_audit([r.get("file", "") for r in results if r.get("file")])
         return {
@@ -462,7 +462,7 @@ def api_process(body: ProcessRequest | None = None) -> dict[str, Any]:
 def api_process_stream(
     filename: str | None = None,
     skip_lookup_update: bool = False,
-    update_lookup_workbook: bool = True,
+    save_lookups: bool = True,
 ) -> StreamingResponse:
     """SSE progress for shared CLI categorization pipeline."""
 
@@ -493,7 +493,7 @@ def api_process_stream(
                     paths,
                     skip_lookup_update=skip_lookup_update,
                     skip_cadence_detection=True,
-                    update_lookup_workbook=update_lookup_workbook,
+                    save_lookups=save_lookups,
                     on_progress=on_progress,
                 )
                 result_box["data"] = {

@@ -1,10 +1,9 @@
-"""Load and persist pipeline lookup data in SQLite (replaces Excel at runtime)."""
+"""Load and persist pipeline lookup data in SQLite."""
 
 from __future__ import annotations
 
 import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -30,13 +29,8 @@ def _table_count(conn: sqlite3.Connection, table: str) -> int:
     return int(row[0] if row else 0)
 
 
-def ensure_lookups_seeded(conn: sqlite3.Connection, excel_path: Path) -> bool:
-    """Legacy Excel seed removed — lookups live in SQLite only."""
-    return False
-
-
 def load_lookup_workbook_from_db(conn: sqlite3.Connection) -> dict[str, pd.DataFrame]:
-    """Build the same sheet dict shape as load_lookup_workbook (Excel)."""
+    """Build in-memory lookup dicts (sheet names) from SQLite tables."""
     sheets: dict[str, pd.DataFrame] = {}
 
     desc_rows = conn.execute(

@@ -17,15 +17,7 @@ OUTPUT_DIR = PROJECT_ROOT / "output"
 
 load_dotenv(CONFIG_DIR / ".env")
 
-LOOKUP_FILENAME = os.getenv("LOOKUP_FILE", "transaction-lookups.xlsx")
-
 PAYROLL_SPILLOVER_DAYS = int(os.getenv("PAYROLL_SPILLOVER_DAYS", "7"))
-
-BASELINE_VARIABLE_BUFFER_PCT = float(os.getenv("BASELINE_VARIABLE_BUFFER_PCT", "10"))
-
-BASELINE_FIXED_BUFFER_PCT = float(os.getenv("BASELINE_FIXED_BUFFER_PCT", "5"))
-
-BASELINE_RECOMMENDED_MONTHS = int(os.getenv("BASELINE_RECOMMENDED_MONTHS", "3"))
 
 CADENCE_SPIKE_RATIO = float(os.getenv("CADENCE_SPIKE_RATIO", "2.0"))
 
@@ -36,77 +28,6 @@ CADENCE_YEARLY_GAP_MIN = int(os.getenv("CADENCE_YEARLY_GAP_MIN", "10"))
 CADENCE_YEARLY_GAP_MAX = int(os.getenv("CADENCE_YEARLY_GAP_MAX", "14"))
 
 DROP_OUTPUT_COLUMNS = ("Status", "Split Type", "Currency", "Memo")
-
-HIDDEN_DESCRIPTION_COLUMNS = ("Original Description", "User Description", "Simple Description")
-
-TRANSACTION_SHEETS = ("Raw Data", "Income", "Expenses", "Adjustments")
-
-DETAIL_TRANSACTION_SHEETS = ("Income", "Expenses", "Adjustments")
-
-EXCEL_CURRENCY_FORMAT = "$#,##0.00"
-
-EXCEL_PERCENT_FORMAT = "0.0%"
-
-EXCEL_SHORT_DATE_FORMAT = "m/d/yyyy"
-
-EXCEL_AUTOFIT_COLUMNS = True  # applied to every sheet on all workbooks this script writes
-
-EXCEL_AUTOFIT_MIN_WIDTH = 8
-
-EXCEL_AUTOFIT_MAX_WIDTH = 55
-
-EXCEL_AUTOFIT_PADDING = 1.5
-
-SUMMARY_INSIGHTS_SHEET = "Summary"
-
-SUMMARY_OVERVIEW_CURRENCY_COLUMNS = (
-    "Gross Income",
-    "Total Expenses",
-    "Avg Monthly Expenses",
-    "vs Avg",
-)
-
-SUMMARY_OVERVIEW_PERCENT_COLUMNS = ("vs Avg %",)
-
-SUMMARY_DETAIL_CURRENCY_COLUMNS = (
-    "Month Spend",
-    "Avg Monthly Spend",
-    "vs Avg",
-)
-
-SUMMARY_DETAIL_PERCENT_COLUMNS = ("vs Avg %", "% of Month")
-
-BASELINE_CATEGORY_CURRENCY_COLUMNS = (
-    "Total Spend",
-    "Typical Monthly Spend (Core)",
-    "Avg Monthly Spend",
-    "Min Month Spend",
-    "Max Month Spend",
-    "Suggested Monthly Budget",
-)
-
-BASELINE_MONTHLY_CURRENCY_COLUMNS = (
-    "Total Spend",
-    "Core Monthly Spend",
-    "vs Monthly Avg",
-)
-
-BASELINE_OVERVIEW_CURRENCY_METRICS = frozenset(
-    {
-        "Overall avg monthly spend",
-        "Overall typical core monthly spend",
-        "Sum of suggested category budgets",
-    }
-)
-
-LOOKUP_SHEETS = (
-    "Categories",
-    "CategoryRules",
-    "Types",
-    "BusinessCategoryRules",
-    "DescriptionLookup",
-    "MerchantCategories",
-)
 
 MERCHANT_CATEGORIES_SHEET = "MerchantCategories"
 

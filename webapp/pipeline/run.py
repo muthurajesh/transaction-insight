@@ -301,7 +301,7 @@ def run_pipeline(
             stats["custom_rules_applied"] = core.apply_custom_rules(df, active_custom_rules)
 
     with core.PhaseTimer.track(timer, "Save lookups"):
-        if config.update_lookup_workbook and not config.skip_lookup_update and conn is not None:
+        if config.save_lookups and not config.skip_lookup_update and conn is not None:
             _phase_progress(on_progress, percent=95, message="Saving lookups")
             from webapp.adapters.lookup_store import save_lookup_workbook_to_db
 

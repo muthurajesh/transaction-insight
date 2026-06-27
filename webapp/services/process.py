@@ -77,7 +77,7 @@ def process_csv_file(
     *,
     skip_lookup_update: bool = False,
     skip_cadence_detection: bool = False,
-    update_lookup_workbook: bool = True,
+    save_lookups: bool = True,
     clear_db_first: bool = False,
     on_progress: ProgressCallback | None = None,
     file_index: int = 1,
@@ -121,7 +121,7 @@ def process_csv_file(
     config = PipelineConfig(
         skip_lookup_update=skip_lookup_update,
         skip_cadence_detection=skip_cadence_detection,
-        update_lookup_workbook=update_lookup_workbook,
+        save_lookups=save_lookups,
         source_file=path.name,
     )
     result = run_pipeline(
@@ -156,7 +156,7 @@ def process_inbox_files(
     *,
     skip_lookup_update: bool = False,
     skip_cadence_detection: bool = False,
-    update_lookup_workbook: bool = True,
+    save_lookups: bool = True,
     clear_db_first: bool = False,
     on_progress: ProgressCallback | None = None,
 ) -> list[dict[str, Any]]:
@@ -192,7 +192,7 @@ def process_inbox_files(
             path,
             skip_lookup_update=skip_lookup_update,
             skip_cadence_detection=skip_cadence_detection,
-            update_lookup_workbook=update_lookup_workbook,
+            save_lookups=save_lookups,
             clear_db_first=clear_db_first and file_idx == 0,
             on_progress=file_progress if on_progress else None,
             file_index=file_idx + 1,

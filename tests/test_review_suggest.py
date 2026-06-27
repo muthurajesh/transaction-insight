@@ -1,12 +1,7 @@
 import sqlite3
-import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
-import pandas as pd
-
-from webapp.processing import MERCHANT_CATEGORIES_SHEET, MERCHANT_CATEGORY_COLUMNS, open_excel_workbook
 from webapp.db.schema import SCHEMA_SQL, _migrate_schema
 from webapp.services.review_suggest import (
     REVIEW_SUGGEST_BATCH_LIMITS,
@@ -44,26 +39,6 @@ def _conn() -> sqlite3.Connection:
     return conn
 
 
-def _write_merchant_lookup(path: Path, merchant_key: str, category: str) -> None:
-    frame = pd.DataFrame(
-        [
-            {
-                "Merchant Key": merchant_key,
-                "AI Category": category,
-                "AI Sub-Category": "Streaming",
-                "Budget Tier": "Want",
-                "Type": "Fixed",
-                "Flow Type": "Expense",
-                "Classification": "Personal",
-                "Transaction Count": 1,
-                "Notes": "",
-            }
-        ],
-        columns=list(MERCHANT_CATEGORY_COLUMNS),
-    )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open_excel_workbook(path) as writer:
-        frame.to_excel(writer, sheet_name=MERCHANT_CATEGORIES_SHEET, index=False)
 
 
 class ReviewSuggestTests(unittest.TestCase):
