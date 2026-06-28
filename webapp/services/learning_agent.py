@@ -223,7 +223,7 @@ def run_learning_agent(
         if LEARNING_AGENT_USE_LLM:
             try:
                 from webapp.agent.learning_analyst import run_decision_analyst
-                from webapp.config import LEARNING_AGENT_MODEL
+                from webapp.config import LEARNING_AGENT_MODEL, UI_SHOW_CADENCE
 
                 analyst_meta = run_decision_analyst(
                     conn,
@@ -231,6 +231,7 @@ def run_learning_agent(
                     lookback_days=LEARNING_AGENT_LOOKBACK_DAYS,
                     max_insights=LEARNING_AGENT_MAX_INSIGHTS,
                     model=LEARNING_AGENT_MODEL,
+                    include_cadence=UI_SHOW_CADENCE,
                 )
                 llm_proposals = analyst_meta.get("insights") or []
                 proposals.extend(llm_proposals)
@@ -241,7 +242,10 @@ def run_learning_agent(
         if len(proposals) < LEARNING_AGENT_MAX_INSIGHTS:
             remaining = LEARNING_AGENT_MAX_INSIGHTS - len(proposals)
             heuristic = _category_correction_patterns(events)
-            heuristic.extend(_cadence_candidates(conn))
+            from webapp.config import UI_SHOW_CADENCE
+
+            if UI_SHOW_CADENCE:
+                heuristic.extend(_cadence_candidates(conn))
             seen_summaries = {p.get("pattern_summary") for p in proposals}
             for p in heuristic:
                 if len(proposals) >= LEARNING_AGENT_MAX_INSIGHTS:

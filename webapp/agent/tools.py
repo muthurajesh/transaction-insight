@@ -145,6 +145,12 @@ TOOL_DEFINITIONS = [
 CHAT_TOOL_DEFINITIONS = [t for t in TOOL_DEFINITIONS if t["name"] in CHAT_READ_ONLY_TOOLS]
 
 
+def chat_tool_definitions(*, include_cadence: bool = True) -> list[dict[str, Any]]:
+    if include_cadence:
+        return list(CHAT_TOOL_DEFINITIONS)
+    return [t for t in CHAT_TOOL_DEFINITIONS if t["name"] != "propose_cadence_rule"]
+
+
 def run_tool(
     conn: sqlite3.Connection,
     name: str,
@@ -152,6 +158,7 @@ def run_tool(
     *,
     chat_mode: bool = False,
     learning_agent_mode: bool = False,
+    learning_agent_allowed_tables: frozenset[str] | None = None,
 ) -> Any:
     if name not in ALL_TOOL_NAMES:
         raise ValueError(f"Unknown tool: {name}")
@@ -163,13 +170,24 @@ def run_tool(
         raise ValueError(
             f"Tool {name!r} is not available in chat — use query_sql for data questions."
         )
+    from webapp.config import UI_SHOW_CADENCE
+
+    if chat_mode and name == "propose_cadence_rule" and not UI_SHOW_CADENCE:
+        raise ValueError("Cadence proposals are disabled (UI_SHOW_CADENCE=0).")
     if name == "query_sql":
+        la_tables = learning_agent_allowed_tables
+        if learning_agent_mode and la_tables is None:
+            from webapp.agent.db_query import learning_agent_allowed_tables as _la_tables
+
+            la_tables = _la_tables(include_cadence=UI_SHOW_CADENCE)
         return execute_readonly_sql(
             conn,
             args["sql"],
             max_rows=int(args.get("max_rows", 500)),
             allowed_tables=(
-                LEARNING_AGENT_ALLOWED_TABLES if learning_agent_mode else None
+                la_tables
+                if learning_agent_mode
+                else None
             ),
         )
     if name == "month_total":

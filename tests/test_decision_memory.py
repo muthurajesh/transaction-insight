@@ -19,6 +19,8 @@ from webapp.services.decision_events import (
     list_recent_events,
 )
 from webapp.services.pending_confirmations import (
+    filter_cadence_confirmations,
+    is_cadence_confirmation,
     list_pending_confirmations,
     preview_pending_confirmation,
 )
@@ -68,6 +70,41 @@ class DecisionMemoryTests(unittest.TestCase):
         data = list_pending_confirmations(self.conn)
         self.assertEqual(data["count"], 0)
         self.assertEqual(data["items"], [])
+
+    def test_learning_agent_prompt_omits_cadence_when_disabled(self) -> None:
+        from webapp.llm.prompts import learning_agent_system_prompt
+
+        prompt = learning_agent_system_prompt(include_cadence=False)
+        self.assertIn("cadence UI is disabled", prompt)
+        self.assertNotIn("| `cadence_rule` |", prompt)
+        self.assertNotIn("review_cadence` |", prompt)
+        self.assertNotIn("**cadence_rules**", prompt)
+
+    def test_pending_confirmations_hide_cadence_when_disabled(self) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO ai_insights (
+                insight_type, title, pattern_summary, rationale, confidence,
+                merchant_key, proposal_json, status, created_at, updated_at
+            ) VALUES (
+                'cadence_rule', 'Cadence gap', 'Recurring spend', 'No cadence rule saved',
+                0.7, 'Merchant A', '{"suggested_action":"review_cadence"}', 'open',
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00'
+            )
+            """
+        )
+        self.conn.commit()
+        item = {
+            "confirmation_type": "cadence_rule",
+            "proposal": {"suggested_action": "review_cadence"},
+        }
+        self.assertTrue(is_cadence_confirmation(item))
+        all_items = list_pending_confirmations(self.conn, include_cadence=True)
+        hidden = list_pending_confirmations(self.conn, include_cadence=False)
+        self.assertEqual(all_items["count"], 1)
+        self.assertEqual(hidden["count"], 0)
+        filtered = filter_cadence_confirmations(all_items["items"], include_cadence=False)
+        self.assertEqual(filtered, [])
 
     def test_category_correction_patterns(self) -> None:
         events = [
@@ -157,6 +194,44 @@ class DecisionMemoryTests(unittest.TestCase):
         preview = preview_pending_confirmation(self.conn, item)
         self.assertEqual(preview["total"], 1)
         self.assertEqual(preview["transactions"][0]["proposed"]["ai_category"], "Cat New")
+        self.assertEqual(preview["transactions"][0]["merchant_key"], "Merchant A")
+        ctx = preview.get("context") or {}
+        self.assertEqual(ctx.get("kind"), "merchant_label")
+        self.assertTrue(ctx.get("paragraphs"))
+        self.assertIn("needs review", " ".join(ctx.get("paragraphs", [])).lower())
+
+    def test_preview_merchant_label_context_when_labels_match(self) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO transactions (
+                transaction_id, date, budget_month, amount, merchant_key,
+                ai_category, ai_sub_category, expense_type, flow_type,
+                classification, label_status, rationale, confidence, imported_at
+            ) VALUES (
+                'tx2', '2026-01-15', '2026-01', -10.0, 'Merchant B',
+                'Cat B', 'Sub B', 'Variable', 'Expense',
+                'Personal', 'pending', 'Deposit from employer payroll.', 0.82,
+                '2026-01-01T00:00:00+00:00'
+            )
+            """
+        )
+        self.conn.commit()
+        item = {
+            "confirmation_type": "merchant_label",
+            "entity_key": "Merchant B",
+            "proposal": {
+                "ai_category": "Cat B",
+                "ai_sub_category": "Sub B",
+                "expense_type": "Variable",
+                "flow_type": "Expense",
+                "classification": "Personal",
+            },
+        }
+        preview = preview_pending_confirmation(self.conn, item)
+        ctx = preview["context"]
+        self.assertTrue(ctx["labels_match"])
+        self.assertIn("pending", ctx["status_phrase"])
+        self.assertIn("Deposit from employer payroll.", " ".join(ctx["paragraphs"]))
 
     def test_preview_pattern_insight_without_merchant(self) -> None:
         preview = preview_pending_confirmation(

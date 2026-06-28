@@ -142,6 +142,7 @@ def list_review_items(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                    MAX(classification) AS classification,
                    MAX(confidence) AS confidence,
                    MAX(label_status) AS label_status,
+                   MAX(rationale) AS sample_rationale,
                    MIN(simple_description) AS sample_description
             FROM transactions
             WHERE label_status IN ('needs_review', 'pending')
@@ -164,6 +165,7 @@ def list_review_items(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                    MAX(classification) AS classification,
                    MAX(confidence) AS confidence,
                    MAX(label_status) AS label_status,
+                   MAX(rationale) AS sample_rationale,
                    MIN(simple_description) AS sample_description
             FROM transactions
             WHERE label_status IN ('needs_review', 'pending')
@@ -224,6 +226,7 @@ def list_merchant_transactions(
         SELECT date,
                budget_month,
                amount,
+               merchant_key,
                source_category,
                account_name,
                user_description,
@@ -235,6 +238,8 @@ def list_merchant_transactions(
                ai_sub_category,
                expense_type,
                label_status,
+               confidence,
+               rationale,
                source_file
         FROM transactions
         WHERE merchant_key = ?{status_filter}

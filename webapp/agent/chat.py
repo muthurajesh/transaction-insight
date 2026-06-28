@@ -18,15 +18,16 @@ from webapp.agent.sql_intent import (
     trace_has_successful_query,
     validate_query_sql,
 )
-from webapp.agent.tools import CHAT_TOOL_DEFINITIONS, available_months, run_tool
+from webapp.agent.tools import chat_tool_definitions, available_months, run_tool
 from webapp.agent.workspace_proposals import workspace_items_from_trace
 from webapp.services.cadence_insights import (
     cadence_proposal_from_trace,
     find_merchant_key_from_text,
     propose_cadence,
 )
-from webapp.config import INBOX_DIR
+from webapp.config import INBOX_DIR, UI_SHOW_CADENCE
 from webapp.services.llm import chat_completion, extract_json
+from webapp.services.pending_confirmations import filter_cadence_confirmations
 
 _DATA_CHEATSHEET_PATH = Path(__file__).resolve().parent / "DATA_CHEATSHEET.md"
 
@@ -83,8 +84,7 @@ GROUP BY budget_month
 ```
 
 ## Other tools (special cases only)
-- `propose_cadence_rule` — user explains annual/recurring charge treatment (UI confirm).
-- `propose_custom_rule` — draft plain-English if/then rule; preview matches; user confirms before save.
+{cadence_tool_line}- `propose_custom_rule` — draft plain-English if/then rule; preview matches; user confirms before save.
 - `list_open_insights` — open Learning Agent proposals in the Workspace inbox.
 - `run_decision_analysis` — run Decision Analyst; new insights appear in inbox (user reviews there).
 - `accept_insight` / `reject_insight` — only when the user explicitly asks to accept or dismiss an insight by id.
@@ -113,7 +113,7 @@ When saving is discussed, summarize: goal, filters, parameters exposed, and whet
 Do **not** guess totals. Call `query_sql` before `{{"answer": "..."}}`.
 
 ## Read-only policy
-- `query_sql` allows SELECT on: transactions, merchant_labels, cadence_rules, custom_reports, decision_events, ai_insights, pipeline_custom_rules, category_rules, description_lookup.
+- `query_sql` allows SELECT on: transactions, merchant_labels{cadence_tables_clause}, custom_reports, decision_events, ai_insights, pipeline_custom_rules, category_rules, description_lookup.
 - Chat cannot write transaction data directly — use propose_* tools or accept/reject insight when the user confirms.
 
 ## Data model cheat sheet
@@ -139,9 +139,12 @@ def _chat_payload(answer: str, trace: list[dict[str, Any]] | None = None) -> dic
     if display:
         payload["display"] = display
     proposal = cadence_proposal_from_trace(trace)
-    if proposal:
+    if proposal and UI_SHOW_CADENCE:
         payload["cadence_proposal"] = proposal
-    workspace_items = workspace_items_from_trace(trace)
+    workspace_items = filter_cadence_confirmations(
+        workspace_items_from_trace(trace),
+        include_cadence=UI_SHOW_CADENCE,
+    )
     if workspace_items:
         payload["workspace_proposals"] = workspace_items
     return payload
@@ -461,6 +464,8 @@ def _has_cadence_intent(user_message: str) -> bool:
 def _maybe_cadence_propose_answer(
     conn: sqlite3.Connection, user_message: str
 ) -> dict[str, Any] | None:
+    if not UI_SHOW_CADENCE:
+        return None
     if not _has_cadence_intent(user_message):
         return None
     merchant_key = find_merchant_key_from_text(conn, user_message)
@@ -720,10 +725,18 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
         )
         return direct
 
-    tools_desc = json.dumps(CHAT_TOOL_DEFINITIONS, indent=2)
+    tools_desc = json.dumps(chat_tool_definitions(include_cadence=UI_SHOW_CADENCE), indent=2)
+    cadence_tool_line = (
+        "- `propose_cadence_rule` — user explains annual/recurring charge treatment (UI confirm).\n"
+        if UI_SHOW_CADENCE
+        else ""
+    )
+    cadence_tables_clause = ", cadence_rules" if UI_SHOW_CADENCE else ""
     system = CHAT_SYSTEM.format(
         data_cheatsheet=_load_data_cheatsheet(),
         tools=tools_desc,
+        cadence_tool_line=cadence_tool_line,
+        cadence_tables_clause=cadence_tables_clause,
     )
     context_parts = [
         _inbox_csv_context(),

@@ -75,7 +75,7 @@
             <button type="button" id="btn-workspace-inbox-refresh" class="btn-secondary btn-sm">Refresh</button>
           </div>
           <p class="hint workspace-inbox-hint">AI proposals awaiting your review — labels, quality flags, cadence patterns, insights.</p>
-          <ul id="workspace-inbox-list" class="workspace-inbox-list"></ul>
+          <div id="workspace-inbox-list" class="workspace-inbox-list" role="list"></div>
         </aside>
       </div>
     </section>
@@ -728,12 +728,23 @@
       <div class="modal-header">
         <h3 id="workspace-confirm-title">Review AI proposal</h3>
         <div class="modal-header-actions">
-          <button type="button" id="btn-workspace-confirm-help" class="btn-modal-help" aria-expanded="false" aria-controls="workspace-confirm-help" title="Help">?</button>
-          <button type="button" id="btn-workspace-confirm-close" class="btn-modal-close" aria-label="Close">×</button>
+          <button type="button" id="btn-workspace-confirm-help" class="btn-modal-help" aria-expanded="false" aria-controls="workspace-confirm-help" title="Help" aria-label="Help">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+              <path d="M12 17h.01"/>
+            </svg>
+          </button>
+          <button type="button" id="btn-workspace-confirm-close" class="btn-modal-close" aria-label="Close">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
         </div>
       </div>
       <div id="workspace-confirm-help" class="workspace-confirm-help hidden" role="region" aria-label="Proposal actions help">
-        <p><strong>Approve</strong> — Apply the proposal: confirm labels, fix audit flags, open Custom Rules with preview, review cadence, or open AI Rules for category renames.</p>
+        <p id="workspace-confirm-help-approve"><strong>Approve</strong> — Apply the proposal: confirm labels, fix audit flags, open Custom Rules with preview, review cadence, or open AI Rules for category renames.</p>
         <p><strong>Reject</strong> — Decline this proposal. Audit flags and Learning Agent insights are marked rejected. Custom rule drafts are discarded.</p>
         <p><strong>Cancel</strong> — Close without deciding. The item stays in Pending proposals for later.</p>
         <p><strong>Edit in Transactions</strong> — Jump to Edit Transactions with this merchant pre-searched (label and quality proposals only).</p>

@@ -36,6 +36,13 @@ _CHAT_ALLOWED_TABLES = frozenset(
 
 LEARNING_AGENT_ALLOWED_TABLES = _CHAT_ALLOWED_TABLES
 
+
+def learning_agent_allowed_tables(*, include_cadence: bool = True) -> frozenset[str]:
+    tables = set(LEARNING_AGENT_ALLOWED_TABLES)
+    if not include_cadence:
+        tables.discard("cadence_rules")
+    return frozenset(tables)
+
 _FROM_JOIN_TABLE = re.compile(r"\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_]*)", re.I)
 _CTE_NAME = re.compile(r"\b(?:WITH|,)\s+([A-Za-z_][A-Za-z0-9_]*)\s+AS\b", re.I)
 

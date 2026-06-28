@@ -29,6 +29,10 @@ When enabled, the default tab is **Workspace** (formerly Chat-only):
 
 ## Inbox item types
 
+The **Pending** panel groups items by type (Labels, Quality flags, Cadence, Custom rules, Category & taxonomy, Insights). Each group header shows a count; only one group is expanded at a time.
+
+Clicking an item opens **Review AI proposal** with a plain-language summary (label status, AI rationale, proposed labels) and an affected-transactions preview.
+
 | `confirmation_type` | Source |
 |-----------------------|--------|
 | `merchant_label` | Review queue |
@@ -42,7 +46,7 @@ Unified modal: **Approve** · **Reject** · **Cancel** · **Edit in Transactions
 
 | Action | Behavior |
 |--------|----------|
-| **Approve** | Apply labels (review confirm), apply audit fix, open Custom Rules draft + preview, open cadence modal, or open AI Rules for category renames |
+| **Approve** | Apply labels (review confirm), apply audit fix, open Custom Rules draft + preview, open cadence modal (when `UI_SHOW_CADENCE=1`), or open AI Rules for category renames |
 | **Reject** | Dismiss audit finding or reject Learning Agent insight |
 | **Cancel** | Close; item stays in inbox |
 | **Edit in Transactions** | Pre-search merchant (label / quality only) |
@@ -76,4 +80,4 @@ Learning Agent `proposal_json.suggested_action` values: `rename_category`, `revi
 
 ## Cadence UX
 
-No Cadence tab. Cadence is inferred by the Learning Agent and proposed in the inbox; user confirms before `cadence_rules` is written. Corrections via Edit Transactions or chat.
+When `UI_SHOW_CADENCE=0` (default with workspace): no Cadence tab and no cadence rows in the Pending inbox or chat proposal buttons. When `UI_SHOW_CADENCE=1`: cadence appears in the inbox (Learning Agent) and via chat `propose_cadence_rule`; user confirms before `cadence_rules` is written.

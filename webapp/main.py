@@ -664,7 +664,7 @@ def api_pending_confirmations() -> dict[str, Any]:
 
     conn = _conn()
     try:
-        return list_pending_confirmations(conn)
+        return list_pending_confirmations(conn, include_cadence=UI_SHOW_CADENCE)
     finally:
         conn.close()
 

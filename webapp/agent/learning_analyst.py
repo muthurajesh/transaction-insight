@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from webapp.agent.tools import run_tool
-from webapp.llm.prompts import LEARNING_AGENT_SYSTEM_PROMPT
+from webapp.llm.prompts import learning_agent_system_prompt
 from webapp.services.llm import chat_completion, extract_json
 
 _CHEATSHEET_PATH = Path(__file__).resolve().parent / "DECISION_MEMORY_CHEATSHEET.md"
@@ -85,11 +85,22 @@ LEARNING_AGENT_MAX_TOOL_ROUNDS = max(
 )
 
 
-def _load_cheatsheet() -> str:
+def _load_cheatsheet(*, include_cadence: bool = True) -> str:
     try:
-        return _CHEATSHEET_PATH.read_text(encoding="utf-8").strip()
+        text = _CHEATSHEET_PATH.read_text(encoding="utf-8").strip()
     except OSError:
         return "(cheat sheet unavailable)"
+    if include_cadence:
+        return text
+    text = re.sub(r"\| `cadence_rules` \|[^\n]+\n", "", text)
+    text = text.replace("`cadence_rule`, ", "").replace(", `cadence_rule`", "")
+    text = re.sub(
+        r"\nMerchants with expense history but no cadence rule:.*?(?=\n## Expense SQL)",
+        "\n",
+        text,
+        flags=re.DOTALL,
+    )
+    return text.strip()
 
 
 def _parse_action(text: str) -> dict[str, Any]:
@@ -113,6 +124,7 @@ def _build_seed_context(
     events: list[dict[str, Any]],
     *,
     lookback_days: int,
+    include_cadence: bool = True,
 ) -> str:
     by_source: Counter[str] = Counter()
     by_action: Counter[str] = Counter()
@@ -155,16 +167,27 @@ def _build_seed_context(
                 )
             )
     else:
-        lines.append("No decision_events in lookback window — prefer cadence gaps or skip low-confidence insights.")
+        empty_hint = (
+            "No decision_events in lookback window — prefer cadence gaps or skip low-confidence insights."
+            if include_cadence
+            else "No decision_events in lookback window — skip low-confidence insights."
+        )
+        lines.append(empty_hint)
 
     return "\n".join(lines)
 
 
-def _normalize_insight(raw: dict[str, Any]) -> dict[str, Any] | None:
+def _normalize_insight(
+    raw: dict[str, Any],
+    *,
+    include_cadence: bool = True,
+) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
     insight_type = str(raw.get("insight_type") or "pattern_insight").strip()
     insight_type = _normalize_insight_type(insight_type)
+    if not include_cadence and insight_type == "cadence_rule":
+        return None
     if insight_type not in _VALID_INSIGHT_TYPES:
         insight_type = "pattern_insight"
     title = str(raw.get("title") or "").strip()
@@ -186,6 +209,11 @@ def _normalize_insight(raw: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(proposal, dict):
         proposal = {}
     proposal = _normalize_proposal_json(proposal, insight_type=insight_type)
+    if not include_cadence and proposal.get("suggested_action") in (
+        "review_cadence",
+        "propose_cadence",
+    ):
+        return None
     return {
         "insight_type": insight_type,
         "title": title,
@@ -197,13 +225,18 @@ def _normalize_insight(raw: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def _parse_insights_payload(parsed: dict[str, Any], *, max_insights: int) -> list[dict[str, Any]]:
+def _parse_insights_payload(
+    parsed: dict[str, Any],
+    *,
+    max_insights: int,
+    include_cadence: bool = True,
+) -> list[dict[str, Any]]:
     raw_list = parsed.get("insights")
     if not isinstance(raw_list, list):
         return []
     out: list[dict[str, Any]] = []
     for item in raw_list:
-        normalized = _normalize_insight(item)
+        normalized = _normalize_insight(item, include_cadence=include_cadence)
         if normalized:
             out.append(normalized)
         if len(out) >= max_insights:
@@ -219,15 +252,21 @@ def run_decision_analyst(
     max_insights: int,
     model: str,
     max_tool_rounds: int | None = None,
+    include_cadence: bool = True,
 ) -> dict[str, Any]:
     """
     Run the LLM Decision Analyst with query_sql tool loop.
     Returns normalized insight proposals and run metadata.
     """
+    from webapp.agent.db_query import learning_agent_allowed_tables
+
     rounds_limit = max_tool_rounds or LEARNING_AGENT_MAX_TOOL_ROUNDS
-    system = LEARNING_AGENT_SYSTEM_PROMPT.format(
-        data_cheatsheet=_load_cheatsheet(),
-        seed_context=_build_seed_context(conn, events, lookback_days=lookback_days),
+    allowed_tables = learning_agent_allowed_tables(include_cadence=include_cadence)
+    system = learning_agent_system_prompt(include_cadence=include_cadence).format(
+        data_cheatsheet=_load_cheatsheet(include_cadence=include_cadence),
+        seed_context=_build_seed_context(
+            conn, events, lookback_days=lookback_days, include_cadence=include_cadence
+        ),
         max_insights=max_insights,
     )
     task = (
@@ -251,7 +290,9 @@ def run_decision_analyst(
         action = _parse_action(raw)
 
         if "insights" in action and not action.get("tool"):
-            insights = _parse_insights_payload(action, max_insights=max_insights)
+            insights = _parse_insights_payload(
+                action, max_insights=max_insights, include_cadence=include_cadence
+            )
             return {
                 "insights": insights,
                 "tool_rounds": len(trace),
@@ -269,7 +310,13 @@ def run_decision_analyst(
 
         args = action.get("args") or {}
         try:
-            result = run_tool(conn, "query_sql", args, learning_agent_mode=True)
+            result = run_tool(
+                conn,
+                "query_sql",
+                args,
+                learning_agent_mode=True,
+                learning_agent_allowed_tables=allowed_tables,
+            )
         except Exception as exc:
             result = {"error": str(exc)}
 
@@ -300,7 +347,9 @@ def run_decision_analyst(
         )
         action = _parse_action(raw)
         if "insights" in action:
-            insights = _parse_insights_payload(action, max_insights=max_insights)
+            insights = _parse_insights_payload(
+                action, max_insights=max_insights, include_cadence=include_cadence
+            )
             return {
                 "insights": insights,
                 "tool_rounds": len(trace),

@@ -23,7 +23,7 @@ This project automates that enrichment:
 | Step | Where |
 |------|--------|
 | Upload & process CSV | **Workspace** import strip (or **Import & Categorize** when legacy UI) — progress bar shows elapsed time and ETA |
-| Pending confirmations | **Workspace** inbox — merchant labels, quality flags, pattern/cadence insights → **Approve** (apply or handoff) / **Reject** / **Cancel** |
+| Pending confirmations | **Workspace** inbox — grouped by type (Labels, Quality flags, Insights, …) with counts; click a row for a human-readable proposal summary → **Approve** / **Reject** / **Cancel** (cadence group when `UI_SHOW_CADENCE=1`) |
 | Classification quality alerts | Inbox (`quality_flag`) or **Import & Categorize** alerts panel → **View in Edit Transactions** |
 | First visit | Guided **quick tour** (once per browser; skipped when data already exists) |
 | Fix uncertain merchants | Inbox (`merchant_label`) or **Confirm Categories** (legacy) |
@@ -71,8 +71,8 @@ See [docs/classification/CONFIRM_CATEGORIES.md](docs/classification/CONFIRM_CATE
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `UI_AGENT_WORKSPACE` | `1` | **Workspace** tab (import + chat + pending inbox). Set `0` for legacy tabs (Chat, Import & Categorize, Confirm Categories, …). |
-| `UI_SHOW_CADENCE` | `0` with workspace | Cadence tab, Edit cadence links, Settings cadence card. Set `1` to show (legacy layout defaults cadence on). |
-| `LEARNING_AGENT_ENABLED` | `0` | Opt-in scheduled pattern analysis → Workspace inbox. Manual run: Settings → **Run analysis now** or `POST /api/learning-agent/run`. |
+| `UI_SHOW_CADENCE` | `0` with workspace | Cadence tab, Edit cadence links, Settings cadence card, and cadence items in Pending/chat proposals. Set `1` to show (legacy layout defaults cadence on). |
+| `LEARNING_AGENT_ENABLED` | `0` | Opt-in scheduled pattern analysis → Workspace inbox (skips cadence analysis when `UI_SHOW_CADENCE=0`). Manual run: Settings → **Run analysis now** or `POST /api/learning-agent/run`. |
 | `LLM_LOG_CALLS` | `1` | Log pipeline/chat LLM requests to console and `data/llm.log`. Set `0` to disable. |
 | `PIPELINE_SECONDS_PER_ROW` | `1.2` | ETA heuristic for Import & Categorize progress bar. |
 | `FINANCE_DB_PATH`, `FINANCE_INBOX_DIR`, `FINANCE_PROCESSED_DIR` | see `.env.example` | Override data paths. |
@@ -312,7 +312,7 @@ After categories are correct, separate **normal monthly run-rate** from **irregu
 | **In Monthly Run-Rate?** | `Y` = core monthly budget; `N` = cash spend excluded from run-rate |
 | **Cadence Source** | `Lookup`, `Detected`, or `Default` |
 
-Manage cadence via **Workspace inbox** proposals (Learning Agent), chat `propose_cadence_rule`, or the **Cadence** tab when `UI_SHOW_CADENCE=1`. Rules live in `cadence_rules` in SQLite. Chat and analytics support **cash**, **core**, and **normalized** views — see [docs/cadence/EXPENSE_CADENCE.md](docs/cadence/EXPENSE_CADENCE.md).
+Manage cadence via chat `propose_cadence_rule` or the **Cadence** tab when `UI_SHOW_CADENCE=1` (including cadence proposals in the Pending inbox). When `UI_SHOW_CADENCE=0`, cadence UI and proposals are hidden. Rules live in `cadence_rules` in SQLite. Chat and analytics support **cash**, **core**, and **normalized** views — see [docs/cadence/EXPENSE_CADENCE.md](docs/cadence/EXPENSE_CADENCE.md).
 
 ## Custom Rules (freeform → AI compile → apply)
 

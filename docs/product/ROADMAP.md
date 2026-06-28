@@ -186,7 +186,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | Unified pending inbox API | `GET /api/pending-confirmations` |
 | [x] | Learning Agent (opt-in scheduler + CLI) | `ai_insights`, `POST /api/learning-agent/run` |
 | [x] | Agent Workspace UI (`UI_AGENT_WORKSPACE`) | Workspace tab + inbox panel; legacy tabs hidden |
-| [x] | Cadence tab hidden; cadence proposals via inbox | `UI_SHOW_CADENCE=0` default with workspace |
+| [x] | Cadence tab hidden; cadence proposals respect `UI_SHOW_CADENCE` | Hidden from inbox/chat proposals when `0` (default with workspace) |
 | [x] | Accepted insights → `review_suggest` context | `recent_user_corrections` in prompt |
 | [x] | LLM Decision Analyst (`LEARNING_AGENT_MODEL`, `query_sql` loop) | DECISION_MEMORY § Learning Agent |
 | [x] | Chat `query_sql` cheat sheet includes decision memory tables | DATA_CHEATSHEET.md |

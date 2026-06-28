@@ -17,6 +17,17 @@ function applyUiFeatureFlags() {
   }
   const cadenceRulesCard = $("#settings-cadence-rules-card");
   if (cadenceRulesCard) cadenceRulesCard.classList.toggle("hidden", !uiShowCadence || uiAgentWorkspace);
+  const cadenceInsightOverlay = $("#cadence-insight-overlay");
+  if (cadenceInsightOverlay && !uiShowCadence) {
+    cadenceInsightOverlay.classList.add("hidden");
+    cadenceInsightOverlay.setAttribute("aria-hidden", "true");
+  }
+  const approveHelp = $("#workspace-confirm-help-approve");
+  if (approveHelp) {
+    approveHelp.innerHTML = uiShowCadence
+      ? "<strong>Approve</strong> — Apply the proposal: confirm labels, fix audit flags, open Custom Rules with preview, review cadence, or open AI Rules for category renames."
+      : "<strong>Approve</strong> — Apply the proposal: confirm labels, fix audit flags, open Custom Rules with preview, or open AI Rules for category renames.";
+  }
 
   document.querySelectorAll(".tab-legacy-workspace").forEach((tab) => {
     tab.classList.toggle("hidden", uiAgentWorkspace);
@@ -33,6 +44,12 @@ function applyUiFeatureFlags() {
   if (chatLayout) chatLayout.classList.toggle("workspace-inbox-open", uiAgentWorkspace);
 
   if (uiAgentWorkspace) {
+    const inboxHint = document.querySelector(".workspace-inbox-hint");
+    if (inboxHint) {
+      inboxHint.textContent = uiShowCadence
+        ? "AI proposals awaiting your review — labels, quality flags, cadence patterns, insights."
+        : "AI proposals awaiting your review — labels, quality flags, insights.";
+    }
     loadWorkspaceInbox().catch(() => {});
   }
 }
@@ -968,7 +985,7 @@ function appendToolTrace(parent, toolTrace) {
 
 function appendCadenceProposalAction(parent, proposal) {
   if (!proposal || !proposal.insight) return;
-  if (!uiShowCadence && !uiAgentWorkspace) return;
+  if (!uiShowCadence) return;
   const wrap = document.createElement("div");
   wrap.className = "chat-cadence-proposal";
   const btn = document.createElement("button");
@@ -983,10 +1000,11 @@ function appendCadenceProposalAction(parent, proposal) {
 }
 
 function appendWorkspaceProposalActions(parent, items) {
-  if (!items?.length) return;
+  const visible = filterWorkspaceCadenceProposals(items);
+  if (!visible.length) return;
   const wrap = document.createElement("div");
   wrap.className = "chat-workspace-proposals";
-  items.forEach((item) => {
+  visible.forEach((item) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "btn-secondary btn-workspace-proposal";
@@ -3879,6 +3897,7 @@ function renderCadenceInsight(proposal) {
 }
 
 function openCadenceInsightModal(proposal) {
+  if (!uiShowCadence) return;
   const overlay = $("#cadence-insight-overlay");
   const body = $("#cadence-insight-body");
   const actions = $("#cadence-insight-actions");
@@ -4899,6 +4918,87 @@ function workspaceTypeLabel(type) {
   return map[type] || type || "Proposal";
 }
 
+const WORKSPACE_INBOX_GROUPS = [
+  { key: "labels", types: ["merchant_label", "merchant_label_hint"], label: "Labels" },
+  { key: "quality", types: ["quality_flag"], label: "Quality flags" },
+  { key: "cadence", types: ["cadence_rule"], label: "Cadence" },
+  { key: "rules", types: ["custom_rule", "custom_rule_hint"], label: "Custom rules" },
+  {
+    key: "taxonomy",
+    types: ["category_rename", "taxonomy_merge", "taxonomy_hint"],
+    label: "Category & taxonomy",
+  },
+  { key: "insights", types: ["pattern_insight"], label: "Insights" },
+  { key: "other", types: [], label: "Other" },
+];
+
+function workspaceInboxGroupKey(confirmationType) {
+  const type = String(confirmationType || "");
+  for (const group of WORKSPACE_INBOX_GROUPS) {
+    if (group.types.includes(type)) return group.key;
+  }
+  return "other";
+}
+
+function isWorkspaceCadenceProposal(item) {
+  const ctype = item?.confirmation_type || "";
+  if (ctype === "cadence_rule") return true;
+  return normalizeWorkspaceSuggestedAction(item) === "review_cadence";
+}
+
+function filterWorkspaceCadenceProposals(items) {
+  if (uiShowCadence) return items || [];
+  return (items || []).filter((item) => !isWorkspaceCadenceProposal(item));
+}
+
+function groupWorkspaceInboxItems(items) {
+  const groupDefs = uiShowCadence
+    ? WORKSPACE_INBOX_GROUPS
+    : WORKSPACE_INBOX_GROUPS.filter((group) => group.key !== "cadence");
+  const buckets = new Map(groupDefs.map((group) => [group.key, []]));
+  for (const item of items) {
+    const key = workspaceInboxGroupKey(item.confirmation_type);
+    buckets.get(key)?.push(item);
+  }
+  return groupDefs
+    .map((group) => ({
+      ...group,
+      items: buckets.get(group.key) || [],
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
+function renderWorkspaceInboxItem(item) {
+  const li = document.createElement("li");
+  li.className = "workspace-inbox-item";
+  li.dataset.confirmationId = item.confirmation_id || "";
+  li.innerHTML = `
+    <div class="workspace-inbox-item-title">${escapeHtml(item.title || "—")}</div>
+    <p class="workspace-inbox-item-summary">${escapeHtml(item.summary || "")}</p>
+  `;
+  li.addEventListener("click", () => openWorkspaceConfirmModal(item));
+  return li;
+}
+
+let workspaceInboxAccordionBound = false;
+
+function bindWorkspaceInboxAccordion(list) {
+  if (!list || workspaceInboxAccordionBound) return;
+  workspaceInboxAccordionBound = true;
+  list.addEventListener(
+    "toggle",
+    (event) => {
+      const details = event.target;
+      if (!(details instanceof HTMLDetailsElement)) return;
+      if (!details.classList.contains("workspace-inbox-group") || !details.open) return;
+      list.querySelectorAll("details.workspace-inbox-group[open]").forEach((el) => {
+        if (el !== details) el.open = false;
+      });
+    },
+    true
+  );
+}
+
 const WORKSPACE_SUGGESTED_ACTION_ALIASES = {
   taxonomy_hint: "rename_category",
   propose_cadence: "review_cadence",
@@ -4963,61 +5063,61 @@ function workspaceCanApprove(item) {
   return false;
 }
 
-function renderWorkspaceProposalAction(item) {
-  const el = $("#workspace-confirm-action");
-  if (!el) return;
+function buildWorkspaceProposalContextFallback(item) {
   const proposal = item?.proposal || {};
   const ctype = item?.confirmation_type || "";
-  const lines = [];
-
+  const paragraphs = [];
+  if (item?.summary) paragraphs.push(item.summary);
   if (ctype === "merchant_label") {
-    lines.push("<p><strong>Proposed labels</strong></p>");
-    lines.push(
-      `<p>${escapeHtml(proposal.ai_category || "—")} / ${escapeHtml(proposal.ai_sub_category || "—")}</p>`
+    paragraphs.push(
+      "These transactions are awaiting your confirmation (needs review or pending status — not yet saved as a confirmed merchant rule)."
     );
-  } else if (ctype === "quality_flag") {
-    lines.push("<p><strong>Suggested fix</strong></p>");
-    lines.push(
-      `<p>${escapeHtml(proposal.suggested_category || "—")} / ${escapeHtml(proposal.suggested_sub || "—")}</p>`
-    );
-    if (proposal.production_category || proposal.production_sub) {
-      lines.push(
-        `<p class="hint">Current: ${escapeHtml(proposal.production_category || "—")} / ${escapeHtml(proposal.production_sub || "—")}</p>`
-      );
-    }
-  } else if (ctype === "custom_rule") {
-    lines.push("<p><strong>Suggested action:</strong> Create a custom rule</p>");
-    if (proposal.rule_text) {
-      lines.push(`<p class="hint">${escapeHtml(proposal.rule_text)}</p>`);
-    }
-  } else if (item?.source === "learning_agent") {
-    const action = normalizeWorkspaceSuggestedAction(item);
-    const label = workspaceSuggestedActionLabel(action);
-    if (label) lines.push(`<p><strong>Suggested action:</strong> ${escapeHtml(label)}</p>`);
-    if (action === "rename_category") {
-      const from = proposal.from_category || proposal.from_label || "";
-      const to = proposal.to_category || proposal.to_label || "";
-      if (from || to) lines.push(`<p>${escapeHtml(from || "—")} → ${escapeHtml(to || "—")}</p>`);
-    } else if (action === "create_rule" && proposal.rule_text) {
-      lines.push(`<p class="hint">${escapeHtml(proposal.rule_text)}</p>`);
-    } else if (action === "review_cadence" || action === "apply_labels") {
-      const mk = item.entity_key || proposal.merchant_key || item.title || "";
-      if (mk) lines.push(`<p>Merchant: ${escapeHtml(mk)}</p>`);
-      if (action === "apply_labels" && proposal.ai_category) {
-        lines.push(
-          `<p>${escapeHtml(proposal.ai_category || "—")} / ${escapeHtml(proposal.ai_sub_category || "—")}</p>`
-        );
-      }
+  }
+  const rationale = proposal.sample_rationale || proposal.rationale;
+  if (rationale) paragraphs.push(`AI analysis: ${rationale}`);
+  let proposalLabels = "";
+  if (ctype === "merchant_label" || ctype === "quality_flag") {
+    if (ctype === "quality_flag") {
+      proposalLabels = formatCustomRuleProposed({
+        ai_category: proposal.suggested_category,
+        ai_sub_category: proposal.suggested_sub,
+      });
+    } else {
+      proposalLabels = formatCustomRuleProposed(proposal);
     }
   }
+  return { paragraphs, proposal_labels: proposalLabels, confidence: proposal.confidence };
+}
 
+function renderWorkspaceProposalBrief(item, context) {
+  const el = $("#workspace-confirm-action");
+  if (!el) return;
+  const ctx = context || buildWorkspaceProposalContextFallback(item);
+  const lines = [];
+  if (ctx.proposal_labels && ctx.proposal_labels !== "—") {
+    lines.push(
+      `<p class="workspace-confirm-labels"><strong>Proposed labels:</strong> ${escapeHtml(ctx.proposal_labels)}</p>`
+    );
+  }
+  for (const paragraph of ctx.paragraphs || []) {
+    const text = String(paragraph || "").trim();
+    if (text) lines.push(`<p>${escapeHtml(text)}</p>`);
+  }
+  const confidence = Number(ctx.confidence);
+  if (Number.isFinite(confidence) && confidence > 0 && confidence < 1) {
+    lines.push(`<p class="hint">AI confidence: ${Math.round(confidence * 100)}%</p>`);
+  }
   if (lines.length) {
-    el.innerHTML = lines.join("");
+    el.innerHTML = `<div class="workspace-confirm-brief">${lines.join("")}</div>`;
     el.classList.remove("hidden");
   } else {
     el.innerHTML = "";
     el.classList.add("hidden");
   }
+}
+
+function renderWorkspaceProposalAction(item) {
+  renderWorkspaceProposalBrief(item, null);
 }
 
 function updateWorkspaceConfirmButtons(item) {
@@ -5108,29 +5208,39 @@ async function loadWorkspaceInbox() {
   const list = $("#workspace-inbox-list");
   const countEl = $("#workspace-inbox-count");
   if (!list || !uiAgentWorkspace) return;
+  bindWorkspaceInboxAccordion(list);
   try {
     const data = await api("/api/pending-confirmations");
-    const items = data.items || [];
+    const items = filterWorkspaceCadenceProposals(data.items || []);
     if (countEl) countEl.textContent = String(data.count ?? items.length);
     if (!items.length) {
-      list.innerHTML = '<li class="hint">No pending AI proposals.</li>';
+      list.innerHTML = '<p class="hint workspace-inbox-empty">No pending AI proposals.</p>';
       return;
     }
+    const groups = groupWorkspaceInboxItems(items);
     list.innerHTML = "";
-    for (const item of items) {
-      const li = document.createElement("li");
-      li.className = "workspace-inbox-item";
-      li.dataset.confirmationId = item.confirmation_id || "";
-      li.innerHTML = `
-        <div class="workspace-inbox-item-type">${escapeHtml(workspaceTypeLabel(item.confirmation_type))}</div>
-        <div class="workspace-inbox-item-title">${escapeHtml(item.title || "—")}</div>
-        <p class="workspace-inbox-item-summary">${escapeHtml(item.summary || "")}</p>
+    groups.forEach((group, index) => {
+      const details = document.createElement("details");
+      details.className = "workspace-inbox-group";
+      details.dataset.groupKey = group.key;
+      if (index === 0) details.open = true;
+
+      const summary = document.createElement("summary");
+      summary.className = "workspace-inbox-group-header";
+      summary.innerHTML = `
+        <span class="workspace-inbox-group-title">${escapeHtml(group.label)}</span>
+        <span class="workspace-inbox-group-count">${group.items.length}</span>
       `;
-      li.addEventListener("click", () => openWorkspaceConfirmModal(item));
-      list.appendChild(li);
-    }
+
+      const groupList = document.createElement("ul");
+      groupList.className = "workspace-inbox-group-list";
+      group.items.forEach((item) => groupList.appendChild(renderWorkspaceInboxItem(item)));
+
+      details.append(summary, groupList);
+      list.appendChild(details);
+    });
   } catch (err) {
-    list.innerHTML = `<li class="hint">Error: ${escapeHtml(err.message)}</li>`;
+    list.innerHTML = `<p class="hint workspace-inbox-empty">Error: ${escapeHtml(err.message)}</p>`;
   }
 }
 
@@ -5173,11 +5283,13 @@ async function loadWorkspaceConfirmPreview(item) {
       if (host) {
         host.innerHTML = `<p class="hint review-confirm-error">${escapeHtml(preview.compile_error)}</p>`;
       }
+      if (preview.context) renderWorkspaceProposalBrief(item, preview.context);
       return;
     }
     if (preview.message && !preview.transactions?.length) {
       if (meta) meta.textContent = "";
       if (host) host.innerHTML = `<p class="hint">${escapeHtml(preview.message)}</p>`;
+      if (preview.context) renderWorkspaceProposalBrief(item, preview.context);
       return;
     }
     const total = preview.total ?? preview.transactions?.length ?? 0;
@@ -5192,6 +5304,9 @@ async function loadWorkspaceConfirmPreview(item) {
       item.confirmation_type === "merchant_label" ||
       item.confirmation_type === "quality_flag";
     renderLabelPreviewTable(host, preview.transactions || [], { showProposed });
+    if (preview.context) {
+      renderWorkspaceProposalBrief(item, preview.context);
+    }
   } catch (err) {
     if (meta) meta.textContent = "";
     if (host) {
@@ -5740,7 +5855,7 @@ function buildTaxonomyPreviewHtml(data) {
     ["Merchant alias transactions", stats.merchant_alias_transactions],
     ["Merchant labels renamed", stats.merchant_labels_renamed],
     ["Merchant labels deleted", stats.merchant_labels_deleted],
-    ["Cadence rules updated", stats.cadence_rules_updated],
+    ...(uiShowCadence ? [["Cadence rules updated", stats.cadence_rules_updated]] : []),
   ].filter(([, v]) => v != null && Number(v) > 0);
 
   let html = `<p>Preview for <strong>${data.proposal_count}</strong> selected rule(s)${stats.dry_run ? " (dry run — nothing saved yet)" : ""}:</p>`;

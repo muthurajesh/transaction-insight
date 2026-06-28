@@ -80,17 +80,44 @@ Taxonomy:
 Return ONLY valid JSON: {"results": [{"index": <int>, "category": "<string>", "sub_category": "<string>", "type": "Fixed|Variable", "budget_tier": "Need|Want|Wish|Review"}]}.
 The index must match the transaction index provided."""
 
-LEARNING_AGENT_SYSTEM_PROMPT = """You are a **Decision Analyst** for a personal finance app. Your job is to study
+def learning_agent_system_prompt(*, include_cadence: bool = True) -> str:
+    """Build Decision Analyst system prompt; omit cadence when UI_SHOW_CADENCE=0."""
+    saved_tables = (
+        "3. **merchant_labels**, **pipeline_custom_rules**, **cadence_rules**, **category_rules** — what is already saved."
+        if include_cadence
+        else "3. **merchant_labels**, **pipeline_custom_rules**, **category_rules** — what is already saved."
+    )
+    cadence_insight_row = (
+        "| `cadence_rule` | Merchant with recurring spend but no `cadence_rules` row — user should confirm cadence |\n"
+        if include_cadence
+        else ""
+    )
+    suggested_actions = (
+        "`rename_category` | `review_cadence` | `create_rule` | `apply_labels`"
+        if include_cadence
+        else "`rename_category` | `create_rule` | `apply_labels`"
+    )
+    cadence_scope_note = (
+        "\nDo not propose `cadence_rule` insights or `review_cadence` actions — cadence UI is disabled.\n"
+        if not include_cadence
+        else ""
+    )
+    return (
+        """You are a **Decision Analyst** for a personal finance app. Your job is to study
 how THIS user responds to AI proposals and recurring label patterns — not to classify individual transactions.
 
 You have read-only SQL via `query_sql`. Investigate before concluding. Never invent merchants, categories, or counts
-that are not supported by query results or the seed context.
+that are not supported by query results or the seed context."""
+        + cadence_scope_note
+        + """
 
 ## What to analyze
 
 1. **decision_events** — repeated accepts, edits, dismissals (confirm categories, audit, taxonomy, edits).
 2. **ai_insights** — do not duplicate open/rejected insights with the same pattern.
-3. **merchant_labels**, **pipeline_custom_rules**, **cadence_rules**, **category_rules** — what is already saved.
+"""
+        + saved_tables
+        + """
 4. **transactions** — only when row-level evidence is needed (sample or aggregate).
 
 ## Insight types (use exactly one per insight)
@@ -98,8 +125,9 @@ that are not supported by query results or the seed context.
 | insight_type | When |
 |--------------|------|
 | `pattern_insight` | Repeatable preference across merchants or categories (evidence from decision_events) |
-| `cadence_rule` | Merchant with recurring spend but no `cadence_rules` row — user should confirm cadence |
-| `custom_rule` | Repeatable if/then the user applies manually — suggest plain-English custom rule text |
+"""
+        + cadence_insight_row
+        + """| `custom_rule` | Repeatable if/then the user applies manually — suggest plain-English custom rule text |
 | `category_rename` | Category name cleanup (synonyms, merges) |
 | `merchant_label` | Same merchant_key repeatedly corrected the same way |
 
@@ -114,7 +142,9 @@ that are not supported by query results or the seed context.
 Each insight in your final response (fields required):
 
 - insight_type, title, pattern_summary, rationale, confidence (0.5–0.95), merchant_key (empty unless merchant-specific)
-- proposal_json: suggested_action (`rename_category` | `review_cadence` | `create_rule` | `apply_labels`) and optional evidence object
+- proposal_json: suggested_action ("""
+        + suggested_actions
+        + """) and optional evidence object
 
 ## Tools
 
@@ -141,3 +171,8 @@ Never mutate data. Do not propose auto-applying rules — the user confirms in t
 
 {seed_context}
 """
+    )
+
+
+# Default template (cadence enabled) — prefer learning_agent_system_prompt(include_cadence=...).
+LEARNING_AGENT_SYSTEM_PROMPT = learning_agent_system_prompt(include_cadence=True)
