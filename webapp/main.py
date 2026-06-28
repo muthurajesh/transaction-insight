@@ -26,6 +26,7 @@ from webapp.config import (
     UI_SHOW_CADENCE,
     LEARNING_AGENT_ENABLED,
     LEARNING_AGENT_INTERVAL_HOURS,
+    LEARNING_AGENT_MODEL,
 )
 from webapp.db.schema import get_connection, init_db
 from webapp.services.categorize import (
@@ -41,6 +42,7 @@ from webapp.services.review_suggest import (
 from webapp.services.process import list_inbox_csv_paths, process_inbox_files
 from webapp.services.classification_audit import (
     audit_summary,
+    apply_finding,
     dismiss_finding,
     list_findings,
     open_merchant_payload,
@@ -143,6 +145,17 @@ class InsightActionRequest(BaseModel):
 class PendingConfirmationActionRequest(BaseModel):
     action: str = Field(description="approve | dismiss | defer")
     edited_proposal: dict[str, Any] | None = None
+
+
+class PendingConfirmationPreviewRequest(BaseModel):
+    confirmation_type: str = ""
+    source: str = ""
+    entity_key: str = ""
+    title: str = ""
+    summary: str = ""
+    proposal: dict[str, Any] = Field(default_factory=dict)
+    reference_id: Any = None
+    limit: int = Field(25, ge=1, le=100)
 
 
 class ReviewConfirmPreviewRequest(BaseModel):
@@ -317,6 +330,7 @@ def api_status() -> dict[str, Any]:
             "ui_agent_workspace": UI_AGENT_WORKSPACE,
             "learning_agent_enabled": LEARNING_AGENT_ENABLED,
             "learning_agent_interval_hours": LEARNING_AGENT_INTERVAL_HOURS,
+            "learning_agent_model": LEARNING_AGENT_MODEL,
         }
     finally:
         conn.close()
@@ -620,6 +634,18 @@ def api_classification_audit_dismiss(finding_id: int) -> dict[str, Any]:
         conn.close()
 
 
+@app.post("/api/classification-audit/findings/{finding_id}/apply")
+def api_classification_audit_apply(finding_id: int) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        try:
+            return apply_finding(conn, finding_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    finally:
+        conn.close()
+
+
 @app.get("/api/classification-audit/findings/{finding_id}/open-merchant")
 def api_classification_audit_open_merchant(finding_id: int) -> dict[str, Any]:
     conn = _conn()
@@ -639,6 +665,18 @@ def api_pending_confirmations() -> dict[str, Any]:
     conn = _conn()
     try:
         return list_pending_confirmations(conn)
+    finally:
+        conn.close()
+
+
+@app.post("/api/pending-confirmations/preview")
+def api_pending_confirmation_preview(body: PendingConfirmationPreviewRequest) -> dict[str, Any]:
+    from webapp.services.pending_confirmations import preview_pending_confirmation
+
+    conn = _conn()
+    try:
+        item = body.model_dump()
+        return preview_pending_confirmation(conn, item, limit=body.limit)
     finally:
         conn.close()
 
@@ -1363,6 +1401,7 @@ def api_settings() -> dict[str, Any]:
             "ui_agent_workspace": UI_AGENT_WORKSPACE,
             "learning_agent_enabled": LEARNING_AGENT_ENABLED,
             "learning_agent_interval_hours": LEARNING_AGENT_INTERVAL_HOURS,
+            "learning_agent_model": LEARNING_AGENT_MODEL,
         }
     finally:
         conn.close()

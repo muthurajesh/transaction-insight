@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from webapp.db.schema import SCHEMA_SQL, _migrate_schema
 from webapp.services.classification_audit import (
+    apply_finding,
     heuristic_finding,
     labels_match,
     list_findings,
@@ -298,6 +299,43 @@ class ClassificationAuditReconcileTests(unittest.TestCase):
         self.assertEqual(payload["target_tab"], "edit")
         self.assertEqual(payload["search_query"], "Taco Bell")
         self.assertEqual(payload["merchant_key"], "Taco Bell")
+
+    def test_apply_finding_updates_labels_and_resolves(self):
+        conn = _conn()
+        tx_id = "tx-apply-audit"
+        _insert_tx(
+            conn,
+            merchant_key="Merchant A",
+            ai_category="Cat Old",
+            ai_sub_category="Sub Old",
+        )
+        conn.execute(
+            "UPDATE transactions SET transaction_id = ? WHERE merchant_key = ?",
+            (tx_id, "Merchant A"),
+        )
+        finding_id = _insert_audit_run_and_finding(
+            conn,
+            merchant_key="Merchant A",
+            production_category="Cat Old",
+            production_sub="Sub Old",
+            suggested_category="Cat New",
+            suggested_sub="Sub New",
+            transaction_id=tx_id,
+        )
+        result = apply_finding(conn, finding_id)
+        self.assertEqual(result["status"], "resolved")
+        row = conn.execute(
+            "SELECT ai_category, ai_sub_category, label_status FROM transactions WHERE transaction_id = ?",
+            (tx_id,),
+        ).fetchone()
+        self.assertEqual(row["ai_category"], "Cat New")
+        self.assertEqual(row["ai_sub_category"], "Sub New")
+        self.assertEqual(row["label_status"], "confirmed")
+        status = conn.execute(
+            "SELECT status FROM classification_audit_findings WHERE id = ?",
+            (finding_id,),
+        ).fetchone()["status"]
+        self.assertEqual(status, "resolved")
 
 
 if __name__ == "__main__":

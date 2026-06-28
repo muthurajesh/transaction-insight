@@ -21,6 +21,15 @@ def _cadence_proposal_from_trace(trace: list[dict[str, Any]]) -> dict[str, Any] 
         return None
 
 
+def _workspace_proposals_from_trace(trace: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    try:
+        from webapp.agent.workspace_proposals import workspace_items_from_trace
+
+        return workspace_items_from_trace(trace)
+    except Exception:
+        return []
+
+
 def _parse_tool_trace(raw: str | None) -> list[dict[str, Any]]:
     if not raw:
         return []
@@ -46,6 +55,9 @@ def row_to_message(row: sqlite3.Row) -> dict[str, Any]:
     proposal = _cadence_proposal_from_trace(trace)
     if proposal:
         item["cadence_proposal"] = proposal
+    workspace = _workspace_proposals_from_trace(trace)
+    if workspace:
+        item["workspace_proposals"] = workspace
     return item
 
 

@@ -19,6 +19,7 @@ from webapp.agent.sql_intent import (
     validate_query_sql,
 )
 from webapp.agent.tools import CHAT_TOOL_DEFINITIONS, available_months, run_tool
+from webapp.agent.workspace_proposals import workspace_items_from_trace
 from webapp.services.cadence_insights import (
     cadence_proposal_from_trace,
     find_merchant_key_from_text,
@@ -83,7 +84,16 @@ GROUP BY budget_month
 
 ## Other tools (special cases only)
 - `propose_cadence_rule` — user explains annual/recurring charge treatment (UI confirm).
+- `propose_custom_rule` — draft plain-English if/then rule; preview matches; user confirms before save.
+- `list_open_insights` — open Learning Agent proposals in the Workspace inbox.
+- `run_decision_analysis` — run Decision Analyst; new insights appear in inbox (user reviews there).
+- `accept_insight` / `reject_insight` — only when the user explicitly asks to accept or dismiss an insight by id.
 - `list_custom_reports` / `run_custom_report` — saved reports (prompt + SQL). Use to rerun or as baseline when tweaking.
+
+## Decision memory (meta-analysis)
+You may query `decision_events`, `ai_insights`, `pipeline_custom_rules`, `category_rules`, `description_lookup` via `query_sql`.
+Use these when the user asks about their correction patterns, pending AI proposals, or saved rules — not for routine spend totals.
+Prefer `list_open_insights` or `run_decision_analysis` over inventing patterns from memory.
 
 ## Custom reports (conversational workflow)
 Users build reports in chat over multiple turns, then save via the **Save as report** button or by asking to save.
@@ -103,8 +113,8 @@ When saving is discussed, summarize: goal, filters, parameters exposed, and whet
 Do **not** guess totals. Call `query_sql` before `{{"answer": "..."}}`.
 
 ## Read-only policy
-- `query_sql` allows SELECT on: transactions, merchant_labels, cadence_rules, custom_reports.
-- Chat cannot write or delete data.
+- `query_sql` allows SELECT on: transactions, merchant_labels, cadence_rules, custom_reports, decision_events, ai_insights, pipeline_custom_rules, category_rules, description_lookup.
+- Chat cannot write transaction data directly — use propose_* tools or accept/reject insight when the user confirms.
 
 ## Data model cheat sheet
 {data_cheatsheet}
@@ -131,6 +141,9 @@ def _chat_payload(answer: str, trace: list[dict[str, Any]] | None = None) -> dic
     proposal = cadence_proposal_from_trace(trace)
     if proposal:
         payload["cadence_proposal"] = proposal
+    workspace_items = workspace_items_from_trace(trace)
+    if workspace_items:
+        payload["workspace_proposals"] = workspace_items
     return payload
 
 
@@ -166,7 +179,63 @@ def _parse_action(text: str) -> dict[str, Any]:
 def _immediate_tool_answer(tool_name: str, result: Any, trace: list[dict[str, Any]]) -> str | None:
     if tool_name == "propose_cadence_rule" and isinstance(result, dict) and result.get("insight"):
         return _format_cadence_proposal(result)
+    if tool_name == "propose_custom_rule" and isinstance(result, dict) and result.get("rule_text"):
+        return _format_custom_rule_proposal(result)
+    if tool_name == "run_decision_analysis" and isinstance(result, dict):
+        return _format_decision_analysis_result(result)
+    if tool_name in ("accept_insight", "reject_insight") and isinstance(result, dict):
+        status = result.get("status") or "updated"
+        return f"Insight #{result.get('id')} marked **{status}**."
     return None
+
+
+def _format_custom_rule_proposal(result: dict[str, Any]) -> str:
+    rule_text = str(result.get("rule_text") or "").strip()
+    preview = result.get("preview") or {}
+    lines = [f"**Custom rule draft:** {rule_text}"]
+    if preview.get("compile_error"):
+        lines.append(f"\nCompile issue: {preview.get('compile_error')}")
+    else:
+        total = int(preview.get("total") or 0)
+        lines.append(f"\nPreview: {total} matching transaction(s).")
+    if result.get("existing_similar_rule"):
+        lines.append(
+            f"\n_Similar rule already exists ({result.get('existing_rule_status') or 'saved'})._"
+        )
+    elif result.get("recommend_save_rule"):
+        lines.append("\n_Use **Review in Workspace** below to save and apply._")
+    return "\n".join(lines)
+
+
+def _format_decision_analysis_result(result: dict[str, Any]) -> str:
+    if result.get("skipped"):
+        return "Decision analysis skipped (Learning Agent disabled in config)."
+    inserted = int(result.get("insights_inserted") or 0)
+    events = int(result.get("events_analyzed") or 0)
+    lines = [
+        f"Analyzed **{events}** decision event(s); **{inserted}** new insight(s) added to the inbox."
+    ]
+    for ins in (result.get("inserted_insights") or [])[:5]:
+        title = ins.get("title") or ins.get("pattern_summary") or "Insight"
+        lines.append(f"- {title}")
+    if inserted:
+        lines.append("\n_Use **Review in Workspace** below or the pending panel to approve._")
+    elif not result.get("error"):
+        lines.append("\n_No new patterns met the evidence threshold._")
+    return "\n".join(lines)
+
+
+def _format_open_insights(result: dict[str, Any]) -> str:
+    insights = result.get("insights") or []
+    if not insights:
+        return "No open AI insights in the inbox."
+    lines = [f"**{len(insights)} open insight(s):**", ""]
+    for ins in insights:
+        lines.append(
+            f"- #{ins.get('id')} **{ins.get('title') or 'Insight'}** — "
+            f"{ins.get('pattern_summary') or ins.get('rationale') or ''}"
+        )
+    return "\n".join(lines)
 
 
 def _format_top_categories(
@@ -351,6 +420,12 @@ def _answer_from_trace(trace: list[dict[str, Any]]) -> str | None:
             return f"**{name}** — {count} row(s). See table below."
         if tool == "propose_cadence_rule" and result.get("insight"):
             return _format_cadence_proposal(result)
+        if tool == "propose_custom_rule" and result.get("rule_text"):
+            return _format_custom_rule_proposal(result)
+        if tool == "run_decision_analysis":
+            return _format_decision_analysis_result(result)
+        if tool == "list_open_insights":
+            return _format_open_insights(result)
         if tool == "list_custom_reports":
             reports = result if isinstance(result, list) else []
             return _format_custom_reports_list(reports)
@@ -536,6 +611,28 @@ def _db_category_context(conn: sqlite3.Connection) -> str:
     return f"Categories in DB (ai_category): {', '.join(cats)}"
 
 
+def _db_decision_context(conn: sqlite3.Connection) -> str:
+    open_n = int(
+        conn.execute(
+            "SELECT COUNT(*) AS c FROM ai_insights WHERE status = 'open'"
+        ).fetchone()["c"]
+    )
+    events_n = int(
+        conn.execute(
+            """
+            SELECT COUNT(*) AS c FROM decision_events
+            WHERE datetime(created_at) >= datetime('now', '-30 days')
+            """
+        ).fetchone()["c"]
+    )
+    if open_n == 0 and events_n == 0:
+        return ""
+    return (
+        f"Decision memory: {open_n} open AI insight(s) in inbox; "
+        f"{events_n} decision event(s) in last 30 days."
+    )
+
+
 def _synthesize_answer_from_trace(
     messages: list[dict[str, str]], trace: list[dict[str, Any]]
 ) -> str | None:
@@ -628,7 +725,12 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
         data_cheatsheet=_load_data_cheatsheet(),
         tools=tools_desc,
     )
-    context_parts = [_inbox_csv_context(), _db_month_context(conn), _db_category_context(conn)]
+    context_parts = [
+        _inbox_csv_context(),
+        _db_month_context(conn),
+        _db_category_context(conn),
+        _db_decision_context(conn),
+    ]
     report_ctx = _report_context_for_message(conn, user_message)
     if report_ctx:
         context_parts.append(report_ctx)

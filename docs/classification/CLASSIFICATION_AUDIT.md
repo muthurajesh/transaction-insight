@@ -46,6 +46,7 @@ If `CLASSIFICATION_AUDIT_MODEL` is unset, the audit uses `PIPELINE_MODEL`.
 | GET | `/api/classification-audit/findings?status=open` | List findings |
 | POST | `/api/classification-audit/run` | Manual deep audit |
 | POST | `/api/classification-audit/findings/{id}/dismiss` | Dismiss false alarm |
+| POST | `/api/classification-audit/findings/{id}/apply` | Apply suggested category/sub to merchant; resolve finding |
 | GET | `/api/classification-audit/findings/{id}/open-merchant` | Merchant key + Edit tab search query |
 
 ## Scheduled audit (macOS launchd example)
@@ -99,7 +100,7 @@ Requires LM Studio / Ollama running if the audit model is local.
 
 ## UI
 
-**Import & Categorize** tab shows a badge and **Classification alerts** panel when open findings exist. Each alert shows **At audit** (snapshot when flagged), **Suggested**, and **Current in DB** (live). **View in Edit Transactions** opens Edit with the merchant pre-searched; **Dismiss** clears a false positive. Open findings auto-resolve when current labels already match the suggestion.
+**Import & Categorize** tab shows a badge and **Classification alerts** panel when open findings exist. Each alert shows **At audit** (snapshot when flagged), **Suggested**, and **Current in DB** (live). **View in Edit Transactions** opens Edit with the merchant pre-searched; **Dismiss** clears a false positive. In the **Workspace** inbox, **Approve** applies the suggestion; **Reject** dismisses. Open findings auto-resolve when current labels already match the suggestion.
 
 ## Storage
 

@@ -142,6 +142,35 @@ Raw `query_sql` cannot apply per-row cadence — use helper tools instead.
 
 Chat tools: `list_custom_reports`, `run_custom_report`. Build/save via Chat **Save as report** or REST `/api/custom-reports`.
 
+## Decision memory (Workspace intelligence)
+
+| Table | Purpose |
+|-------|---------|
+| `decision_events` | Log of user responses to AI proposals (accept, edit, dismiss) |
+| `ai_insights` | Learning Agent proposals (`status`: open, accepted, rejected) |
+
+Chat tools (HITL — user confirms before writes):
+
+| Tool | Use when |
+|------|----------|
+| `list_open_insights` | User asks what is pending in the inbox |
+| `run_decision_analysis` | User asks to analyze correction patterns / run Decision Analyst |
+| `propose_custom_rule` | User wants an if/then rule from conversation |
+| `accept_insight` / `reject_insight` | User explicitly accepts or dismisses insight by id |
+
+Example — category flips on confirm:
+
+```sql
+SELECT json_extract(ai_proposal_json, '$.ai_category') AS from_cat,
+       json_extract(user_outcome_json, '$.ai_category') AS to_cat,
+       COUNT(*) AS n
+FROM decision_events
+WHERE source = 'confirm_categories' AND action IN ('edited', 'accepted')
+GROUP BY 1, 2
+HAVING n >= 2
+ORDER BY n DESC
+```
+
 ## Workflow (user-facing)
 
 1. Drop CSV in `input/` → **Import & Categorize** runs processing

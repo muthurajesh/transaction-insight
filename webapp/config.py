@@ -40,6 +40,7 @@ LEARNING_AGENT_ENABLED = env_bool("LEARNING_AGENT_ENABLED", default=False)
 LEARNING_AGENT_INTERVAL_HOURS = max(
     1, int(os.getenv("LEARNING_AGENT_INTERVAL_HOURS", "3"))
 )
+LEARNING_AGENT_USE_LLM = env_bool("LEARNING_AGENT_USE_LLM", default=True)
 
 
 @dataclass
@@ -69,6 +70,16 @@ _, _, CHAT_MODEL = resolve_provider_config(
     model_arg=None,
     role="chat",
 )
+_learning_agent_model_env = os.getenv("LEARNING_AGENT_MODEL", "").strip()
+if _learning_agent_model_env:
+    _, _, LEARNING_AGENT_MODEL = resolve_provider_config(
+        "auto",
+        base_url_arg=None,
+        model_arg=_learning_agent_model_env,
+        role="learning_agent",
+    )
+else:
+    LEARNING_AGENT_MODEL = CHAT_MODEL
 _, _, CLASSIFICATION_AUDIT_MODEL = resolve_provider_config(
     "auto",
     base_url_arg=None,

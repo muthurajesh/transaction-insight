@@ -101,8 +101,8 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 
 - **`UI_AGENT_WORKSPACE=1` (default):** Workspace tab = import strip + chat + pending inbox; legacy Import / Confirm / AI Rules / Cadence tabs hidden ([AGENT_WORKSPACE.md](AGENT_WORKSPACE.md))
 - **`decision_events`** + **`ai_insights`**; HITL logging on confirm, audit dismiss, taxonomy apply, edit corrections ([DECISION_MEMORY.md](DECISION_MEMORY.md))
-- **Learning Agent:** opt-in (`LEARNING_AGENT_ENABLED=0` default); deterministic pattern scan → inbox; scheduler + `POST /api/learning-agent/run`; accepted insights → `review_suggest` context
-- **Pending:** LLM Decision Analyst (`LEARNING_AGENT_MODEL`, `query_sql` tool loop) — not built yet
+- **Learning Agent:** opt-in (`LEARNING_AGENT_ENABLED=0` default); LLM Decision Analyst (`LEARNING_AGENT_MODEL`, `query_sql` loop) + heuristic fallback → inbox; scheduler + `POST /api/learning-agent/run`; accepted insights → `review_suggest` context
+- **Pending:** Full orchestrator / monthly_close workflow (Steps 4–5 chat+HITL shipped)
 
 ### Chat UI
 
@@ -140,7 +140,7 @@ Per-phase timers in `webapp/pipeline/run.py` + `webapp/processing/timer.py` `Pha
 | Edit | `webapp/services/transaction_edit.py`, `edit_insights.py`, `custom_rules.py` |
 | DB save | `webapp/adapters/dataframe_store.py` |
 | UI | `webapp/static/app.js`, `index.html` |
-| Decision memory | `webapp/services/decision_events.py`, `learning_agent.py`, `pending_confirmations.py` |
+| Decision memory | `webapp/services/decision_events.py`, `learning_agent.py`, `webapp/agent/learning_analyst.py`, `pending_confirmations.py` |
 
 ---
 

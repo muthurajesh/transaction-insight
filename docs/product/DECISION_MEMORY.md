@@ -58,6 +58,14 @@ LEARNING_AGENT_INTERVAL_HOURS=3
 
 Outputs open `ai_insights` rows; accept/reject via inbox or API.
 
+When `LEARNING_AGENT_USE_LLM=1` (default), analysis uses **`LEARNING_AGENT_MODEL`** (falls back to `CHAT_MODEL`) with a **`query_sql` tool loop** — same read-only pattern as Chat, extended to `decision_events`, `ai_insights`, and lookup tables. See `webapp/agent/learning_analyst.py` and `DECISION_MEMORY_CHEATSHEET.md`. On LLM failure or `LEARNING_AGENT_USE_LLM=0`, heuristic fallbacks (category flip counts, cadence merchant candidates) still run.
+
+```env
+LEARNING_AGENT_MODEL=qwen2.5-coder:32b
+LEARNING_AGENT_USE_LLM=1
+LEARNING_AGENT_MAX_TOOL_ROUNDS=8
+```
+
 ## Review suggest feedback loop
 
 Accepted insights are included in `review_suggest` prompt context as `recent_user_corrections`.

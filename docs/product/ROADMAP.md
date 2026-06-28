@@ -188,7 +188,10 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | Agent Workspace UI (`UI_AGENT_WORKSPACE`) | Workspace tab + inbox panel; legacy tabs hidden |
 | [x] | Cadence tab hidden; cadence proposals via inbox | `UI_SHOW_CADENCE=0` default with workspace |
 | [x] | Accepted insights → `review_suggest` context | `recent_user_corrections` in prompt |
-| [ ] | LLM Decision Analyst (`LEARNING_AGENT_MODEL`, `query_sql` loop) | DECISION_MEMORY § Learning Agent |
+| [x] | LLM Decision Analyst (`LEARNING_AGENT_MODEL`, `query_sql` loop) | DECISION_MEMORY § Learning Agent |
+| [x] | Chat `query_sql` cheat sheet includes decision memory tables | DATA_CHEATSHEET.md |
+| [x] | Chat tools: `propose_custom_rule`, insights, `run_decision_analysis` | AGENT_WORKSPACE.md |
+| [x] | Chat + inbox unified HITL (Workspace confirm modal) | AGENT_WORKSPACE.md |
 | [ ] | Full orchestrator + `monthly_close` workflow | AGENTIC_AI_DESIGN Phase 1–2 |
 
 ---

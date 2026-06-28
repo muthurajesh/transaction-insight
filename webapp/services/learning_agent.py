@@ -104,7 +104,7 @@ def _category_correction_patterns(
                 ),
                 "confidence": min(0.95, 0.5 + count * 0.1),
                 "proposal_json": {
-                    "suggested_action": "taxonomy_hint",
+                    "suggested_action": "rename_category",
                     "from_category": from_cat,
                     "to_category": to_cat,
                     "occurrence_count": count,
@@ -146,7 +146,7 @@ def _cadence_candidates(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 "proposal_json": {
                     "merchant_key": mk,
                     "ai_category": m.get("ai_category"),
-                    "suggested_action": "propose_cadence",
+                    "suggested_action": "review_cadence",
                 },
                 "merchant_key": mk,
             }
@@ -154,8 +154,8 @@ def _cadence_candidates(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return proposals
 
 
-def _insert_insight(conn: sqlite3.Connection, proposal: dict[str, Any]) -> bool:
-    """Skip duplicate open insight with same type + merchant + summary."""
+def _insert_insight(conn: sqlite3.Connection, proposal: dict[str, Any]) -> int | None:
+    """Insert open insight unless duplicate. Returns new row id or None."""
     existing = conn.execute(
         """
         SELECT id FROM ai_insights
@@ -172,9 +172,9 @@ def _insert_insight(conn: sqlite3.Connection, proposal: dict[str, Any]) -> bool:
         ),
     ).fetchone()
     if existing:
-        return False
+        return None
     now = _utc_now()
-    conn.execute(
+    cur = conn.execute(
         """
         INSERT INTO ai_insights (
             insight_type, title, pattern_summary, rationale, confidence,
@@ -193,7 +193,7 @@ def _insert_insight(conn: sqlite3.Connection, proposal: dict[str, Any]) -> bool:
             now,
         ),
     )
-    return True
+    return int(cur.lastrowid or 0) or None
 
 
 def run_learning_agent(
@@ -201,6 +201,8 @@ def run_learning_agent(
     *,
     force: bool = False,
 ) -> dict[str, Any]:
+    from webapp.config import LEARNING_AGENT_USE_LLM
+
     if not LEARNING_AGENT_ENABLED and not force:
         return {"enabled": False, "skipped": True}
 
@@ -210,21 +212,73 @@ def run_learning_agent(
     run_id = _start_run(conn)
     conn.commit()
     inserted = 0
+    llm_insights = 0
+    heuristic_insights = 0
+    inserted_insights: list[dict[str, Any]] = []
+    analyst_meta: dict[str, Any] = {}
     try:
         events = list_recent_events(conn, days=LEARNING_AGENT_LOOKBACK_DAYS)
         proposals: list[dict[str, Any]] = []
-        proposals.extend(_category_correction_patterns(events))
+
+        if LEARNING_AGENT_USE_LLM:
+            try:
+                from webapp.agent.learning_analyst import run_decision_analyst
+                from webapp.config import LEARNING_AGENT_MODEL
+
+                analyst_meta = run_decision_analyst(
+                    conn,
+                    events,
+                    lookback_days=LEARNING_AGENT_LOOKBACK_DAYS,
+                    max_insights=LEARNING_AGENT_MAX_INSIGHTS,
+                    model=LEARNING_AGENT_MODEL,
+                )
+                llm_proposals = analyst_meta.get("insights") or []
+                proposals.extend(llm_proposals)
+                llm_insights = len(llm_proposals)
+            except Exception as exc:
+                analyst_meta = {"error": str(exc), "fallback": "heuristic"}
+
         if len(proposals) < LEARNING_AGENT_MAX_INSIGHTS:
-            proposals.extend(_cadence_candidates(conn))
+            remaining = LEARNING_AGENT_MAX_INSIGHTS - len(proposals)
+            heuristic = _category_correction_patterns(events)
+            heuristic.extend(_cadence_candidates(conn))
+            seen_summaries = {p.get("pattern_summary") for p in proposals}
+            for p in heuristic:
+                if len(proposals) >= LEARNING_AGENT_MAX_INSIGHTS:
+                    break
+                if p.get("pattern_summary") in seen_summaries:
+                    continue
+                proposals.append(p)
+                heuristic_insights += 1
+                if heuristic_insights >= remaining:
+                    break
 
         for p in proposals[:LEARNING_AGENT_MAX_INSIGHTS]:
-            if _insert_insight(conn, p):
+            row_id = _insert_insight(conn, p)
+            if row_id:
                 inserted += 1
+                inserted_insights.append(
+                    {
+                        "id": row_id,
+                        "insight_type": p.get("insight_type"),
+                        "title": p.get("title"),
+                        "pattern_summary": p.get("pattern_summary"),
+                        "merchant_key": p.get("merchant_key") or "",
+                    }
+                )
         conn.commit()
         summary = {
             "enabled": True,
             "events_analyzed": len(events),
             "insights_inserted": inserted,
+            "inserted_insights": inserted_insights,
+            "llm_insights": llm_insights,
+            "heuristic_insights": heuristic_insights,
+            "analyst": {
+                k: v
+                for k, v in analyst_meta.items()
+                if k != "trace"
+            },
             "run_id": run_id,
         }
         _finish_run(conn, run_id, status="completed", detail=summary)
@@ -314,6 +368,8 @@ def reject_insight(conn: sqlite3.Connection, insight_id: int) -> dict[str, Any]:
 
 
 def learning_agent_status(conn: sqlite3.Connection) -> dict[str, Any]:
+    from webapp.config import LEARNING_AGENT_MODEL, LEARNING_AGENT_USE_LLM
+
     last = conn.execute(
         """
         SELECT status, detail, started_at, finished_at
@@ -335,6 +391,8 @@ def learning_agent_status(conn: sqlite3.Connection) -> dict[str, Any]:
     return {
         "enabled": LEARNING_AGENT_ENABLED,
         "interval_hours": LEARNING_AGENT_INTERVAL_HOURS,
+        "use_llm": LEARNING_AGENT_USE_LLM,
+        "model": LEARNING_AGENT_MODEL,
         "open_insights": int(open_count),
         "last_run": dict(last) if last else None,
         "last_detail": detail,

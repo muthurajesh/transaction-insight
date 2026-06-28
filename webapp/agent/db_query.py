@@ -19,15 +19,22 @@ _FORBIDDEN = re.compile(
 )
 _END_TRANSACTION = re.compile(r"\bEND\s+TRANSACTION\b", re.I)
 
-# Chat may read finance data only — not chat logs, ingest metadata, or sqlite internals.
+# Chat may read finance + decision-memory tables (read-only query_sql).
 _CHAT_ALLOWED_TABLES = frozenset(
     {
         "transactions",
         "merchant_labels",
         "cadence_rules",
         "custom_reports",
+        "decision_events",
+        "ai_insights",
+        "pipeline_custom_rules",
+        "category_rules",
+        "description_lookup",
     }
 )
+
+LEARNING_AGENT_ALLOWED_TABLES = _CHAT_ALLOWED_TABLES
 
 _FROM_JOIN_TABLE = re.compile(r"\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_]*)", re.I)
 _CTE_NAME = re.compile(r"\b(?:WITH|,)\s+([A-Za-z_][A-Za-z0-9_]*)\s+AS\b", re.I)
@@ -60,18 +67,23 @@ def _referenced_tables(sql: str) -> set[str]:
     return tables - cte_names
 
 
-def _validate_allowed_tables(sql: str) -> None:
+def _validate_allowed_tables(sql: str, *, allowed_tables: frozenset[str]) -> None:
     for table in _referenced_tables(sql):
         if table.startswith("sqlite_"):
             raise ValueError(f"System table not allowed in chat queries: {table}")
-        if table not in _CHAT_ALLOWED_TABLES:
+        if table not in allowed_tables:
             raise ValueError(
                 f"Table not allowed for chat queries: {table}. "
-                f"Allowed: {', '.join(sorted(_CHAT_ALLOWED_TABLES))}"
+                f"Allowed: {', '.join(sorted(allowed_tables))}"
             )
 
 
-def validate_readonly_sql(sql: str, *, enforce_table_allowlist: bool = True) -> str:
+def validate_readonly_sql(
+    sql: str,
+    *,
+    enforce_table_allowlist: bool = True,
+    allowed_tables: frozenset[str] | None = None,
+) -> str:
     """
     Validate SQL for chat / report execution.
     Only single-statement SELECT (optionally WITH … SELECT). No writes or DDL.
@@ -83,7 +95,10 @@ def validate_readonly_sql(sql: str, *, enforce_table_allowlist: bool = True) -> 
     if _FORBIDDEN.search(bare) or _END_TRANSACTION.search(bare):
         raise ValueError("Query contains a forbidden keyword (write/DDL/transaction control).")
     if enforce_table_allowlist:
-        _validate_allowed_tables(text)
+        _validate_allowed_tables(
+            text,
+            allowed_tables=allowed_tables or _CHAT_ALLOWED_TABLES,
+        )
     return text
 
 
@@ -93,6 +108,7 @@ def execute_readonly_sql(
     *,
     max_rows: int = _DEFAULT_MAX_ROWS,
     enforce_table_allowlist: bool = True,
+    allowed_tables: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """
     Run a read-only SELECT against the web app SQLite database.
@@ -101,7 +117,12 @@ def execute_readonly_sql(
     if max_rows < 1 or max_rows > 2000:
         raise ValueError("max_rows must be between 1 and 2000")
 
-    safe_sql = validate_readonly_sql(sql, enforce_table_allowlist=enforce_table_allowlist)
+    table_set = allowed_tables or _CHAT_ALLOWED_TABLES
+    safe_sql = validate_readonly_sql(
+        sql,
+        enforce_table_allowlist=enforce_table_allowlist,
+        allowed_tables=table_set,
+    )
     cur = conn.execute(safe_sql)
     if not cur.description:
         return {

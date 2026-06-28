@@ -6,7 +6,7 @@ import json
 import sqlite3
 from typing import Any
 
-from webapp.services.categorize import list_review_items
+from webapp.services.categorize import list_merchant_transactions, list_review_items
 from webapp.services.classification_audit import list_findings, reconcile_open_findings
 
 
@@ -59,7 +59,13 @@ def list_pending_confirmations(
                 proposal = json.loads(raw)
             except json.JSONDecodeError:
                 proposal = {}
-        ctype = str(insight.get("insight_type") or "pattern_insight")
+        from webapp.agent.learning_analyst import (
+            _normalize_insight_type,
+            _normalize_proposal_json,
+        )
+
+        ctype = _normalize_insight_type(str(insight.get("insight_type") or "pattern_insight"))
+        proposal = _normalize_proposal_json(proposal, insight_type=ctype)
         items.append(
             {
                 "confirmation_id": f"insight-{insight['id']}",
@@ -120,3 +126,91 @@ def _count_by_type(items: list[dict[str, Any]]) -> dict[str, int]:
         t = str(item.get("confirmation_type") or "other")
         counts[t] = counts.get(t, 0) + 1
     return counts
+
+
+def _proposed_labels_for_item(item: dict[str, Any]) -> dict[str, Any] | None:
+    ctype = str(item.get("confirmation_type") or "")
+    proposal = item.get("proposal") or {}
+    if ctype == "merchant_label":
+        return {
+            "ai_category": proposal.get("ai_category"),
+            "ai_sub_category": proposal.get("ai_sub_category"),
+            "expense_type": proposal.get("expense_type"),
+            "flow_type": proposal.get("flow_type"),
+            "classification": proposal.get("classification"),
+        }
+    if ctype == "quality_flag":
+        return {
+            "ai_category": proposal.get("suggested_category"),
+            "ai_sub_category": proposal.get("suggested_sub"),
+        }
+    return None
+
+
+def _tx_preview_row(row: dict[str, Any], proposed: dict[str, Any] | None) -> dict[str, Any]:
+    return {
+        "date": row.get("date"),
+        "amount": row.get("amount"),
+        "merchant_key": row.get("merchant_key") or "",
+        "ai_category": row.get("ai_category"),
+        "ai_sub_category": row.get("ai_sub_category"),
+        "expense_type": row.get("expense_type"),
+        "classification": row.get("classification"),
+        "flow_type": row.get("flow_type"),
+        "proposed": proposed,
+    }
+
+
+def preview_pending_confirmation(
+    conn: sqlite3.Connection,
+    item: dict[str, Any],
+    *,
+    limit: int = 25,
+) -> dict[str, Any]:
+    """Return transaction rows (current vs proposed labels) for inbox modal preview."""
+    limit = max(1, min(100, int(limit)))
+    ctype = str(item.get("confirmation_type") or "")
+    proposal = item.get("proposal") or {}
+
+    if ctype == "custom_rule":
+        from webapp.services.custom_rules import preview_custom_rule
+
+        rule_text = str(proposal.get("rule_text") or item.get("summary") or "").strip()
+        if not rule_text:
+            return {
+                "preview_kind": "rule",
+                "total": 0,
+                "transactions": [],
+                "message": "No rule text to preview.",
+            }
+        prev = preview_custom_rule(conn, rule_text=rule_text, limit=limit, offset=0)
+        return {
+            "preview_kind": "rule",
+            "total": int(prev.get("total") or 0),
+            "transactions": prev.get("transactions") or [],
+            "compile_error": prev.get("compile_error"),
+        }
+
+    merchant_key = str(item.get("entity_key") or item.get("title") or "").strip()
+    if not merchant_key:
+        return {
+            "preview_kind": "none",
+            "total": 0,
+            "transactions": [],
+            "message": "No merchant linked — transaction preview not available for this insight.",
+        }
+
+    proposed = _proposed_labels_for_item(item)
+    review_only = ctype == "merchant_label"
+    rows = list_merchant_transactions(conn, merchant_key, review_only=review_only)
+    if not rows and not review_only:
+        rows = list_merchant_transactions(conn, merchant_key, review_only=False)
+
+    transactions = [_tx_preview_row(dict(r), proposed) for r in rows[:limit]]
+    return {
+        "preview_kind": "merchant",
+        "merchant_key": merchant_key,
+        "total": len(rows),
+        "transactions": transactions,
+        "review_only": review_only,
+    }

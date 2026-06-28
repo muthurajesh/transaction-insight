@@ -472,10 +472,6 @@
         </div>
         <p id="learning-agent-run-result" class="hint hidden"></p>
       </div>
-      <div class="card">
-        <h2>Custom rules</h2>
-        <p class="hint">Manage if/then categorization rules on the <button type="button" class="btn-link tab-jump" data-tab="custom-rules">Custom Rules</button> tab.</p>
-      </div>
       <div class="card settings-rules-card" id="settings-cadence-rules-card">
         <h2>Cadence rules</h2>
         <p class="hint">Saved merchant cadence patterns. Create via Cadence → Review &amp; save.</p>
@@ -728,20 +724,39 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
   <div id="workspace-confirm-overlay" class="modal-overlay hidden" role="presentation" aria-hidden="true">
-    <div id="workspace-confirm-modal" class="modal-card" role="dialog" aria-modal="true" aria-labelledby="workspace-confirm-title">
+    <div id="workspace-confirm-modal" class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-labelledby="workspace-confirm-title">
       <div class="modal-header">
         <h3 id="workspace-confirm-title">Review AI proposal</h3>
-        <button type="button" id="btn-workspace-confirm-close" class="btn-modal-close" aria-label="Close">×</button>
+        <div class="modal-header-actions">
+          <button type="button" id="btn-workspace-confirm-help" class="btn-modal-help" aria-expanded="false" aria-controls="workspace-confirm-help" title="Help">?</button>
+          <button type="button" id="btn-workspace-confirm-close" class="btn-modal-close" aria-label="Close">×</button>
+        </div>
+      </div>
+      <div id="workspace-confirm-help" class="workspace-confirm-help hidden" role="region" aria-label="Proposal actions help">
+        <p><strong>Approve</strong> — Apply the proposal: confirm labels, fix audit flags, open Custom Rules with preview, review cadence, or open AI Rules for category renames.</p>
+        <p><strong>Reject</strong> — Decline this proposal. Audit flags and Learning Agent insights are marked rejected. Custom rule drafts are discarded.</p>
+        <p><strong>Cancel</strong> — Close without deciding. The item stays in Pending proposals for later.</p>
+        <p><strong>Edit in Transactions</strong> — Jump to Edit Transactions with this merchant pre-searched (label and quality proposals only).</p>
+        <p class="hint">For label queue items, Reject and Cancel both keep the merchant in the inbox until you confirm labels.</p>
       </div>
       <div class="modal-body">
         <p id="workspace-confirm-summary" class="workspace-confirm-summary"></p>
-        <pre id="workspace-confirm-detail" class="settings-pre workspace-confirm-detail"></pre>
+        <div id="workspace-confirm-action" class="workspace-confirm-action hidden"></div>
+        <div class="workspace-confirm-preview-header">
+          <h4 class="workspace-confirm-preview-heading">Affected transactions</h4>
+          <span id="workspace-confirm-preview-meta" class="workspace-confirm-preview-meta"></span>
+        </div>
+        <div id="workspace-confirm-preview-results" class="workspace-confirm-preview-results"></div>
+        <details class="workspace-confirm-technical">
+          <summary>Proposal details (JSON)</summary>
+          <pre id="workspace-confirm-detail" class="settings-pre workspace-confirm-detail"></pre>
+        </details>
       </div>
       <div class="modal-actions">
         <p id="workspace-confirm-error" class="review-confirm-error hidden" role="alert"></p>
         <div class="modal-action-row">
-          <button type="button" id="btn-workspace-confirm-dismiss" class="btn-secondary">Dismiss</button>
-          <button type="button" id="btn-workspace-confirm-defer" class="btn-secondary">Defer</button>
+          <button type="button" id="btn-workspace-confirm-reject" class="btn-secondary">Reject</button>
+          <button type="button" id="btn-workspace-confirm-cancel" class="btn-secondary">Cancel</button>
           <button type="button" id="btn-workspace-confirm-edit" class="btn-secondary">Edit in Transactions</button>
           <button type="button" id="btn-workspace-confirm-approve" class="btn-primary">Approve</button>
         </div>

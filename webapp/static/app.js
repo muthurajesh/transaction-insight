@@ -967,7 +967,8 @@ function appendToolTrace(parent, toolTrace) {
 }
 
 function appendCadenceProposalAction(parent, proposal) {
-  if (!uiShowCadence || !proposal || !proposal.insight) return;
+  if (!proposal || !proposal.insight) return;
+  if (!uiShowCadence && !uiAgentWorkspace) return;
   const wrap = document.createElement("div");
   wrap.className = "chat-cadence-proposal";
   const btn = document.createElement("button");
@@ -981,7 +982,23 @@ function appendCadenceProposalAction(parent, proposal) {
   parent.appendChild(wrap);
 }
 
-function appendChat(role, text, toolTrace, display, cadenceProposal) {
+function appendWorkspaceProposalActions(parent, items) {
+  if (!items?.length) return;
+  const wrap = document.createElement("div");
+  wrap.className = "chat-workspace-proposals";
+  items.forEach((item) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn-secondary btn-workspace-proposal";
+    const label = workspaceTypeLabel(item.confirmation_type);
+    btn.textContent = `Review in Workspace (${label})`;
+    btn.addEventListener("click", () => openWorkspaceConfirmModal(item));
+    wrap.appendChild(btn);
+  });
+  parent.appendChild(wrap);
+}
+
+function appendChat(role, text, toolTrace, display, cadenceProposal, workspaceProposals) {
   const log = $("#chat-log");
   const div = document.createElement("div");
   div.className = `msg ${role}`;
@@ -997,6 +1014,7 @@ function appendChat(role, text, toolTrace, display, cadenceProposal) {
     body.innerHTML = renderMarkdown(text);
     if (display) mountDisplay(body, display);
     if (cadenceProposal) appendCadenceProposalAction(body, cadenceProposal);
+    if (workspaceProposals) appendWorkspaceProposalActions(body, workspaceProposals);
     appendReportActions(body, toolTrace, div);
     appendToolTrace(body, toolTrace);
   } else {
@@ -1072,7 +1090,14 @@ async function loadChatHistory() {
       const messages = res.messages || [];
       log.innerHTML = "";
       messages.forEach((m) => {
-        appendChat(m.role, m.content, m.tool_trace, m.display, m.cadence_proposal);
+        appendChat(
+          m.role,
+          m.content,
+          m.tool_trace,
+          m.display,
+          m.cadence_proposal,
+          m.workspace_proposals
+        );
       });
       log.scrollTop = log.scrollHeight;
     } catch (_) {
@@ -1288,6 +1313,21 @@ const CHAT_HELP_COMMANDS = [
     text: "What new merchants or categories appeared in the last 3 months compared to before?",
     description: "Surfaces new spending patterns — useful when refining report exclusions.",
   },
+  {
+    label: "Open AI insights",
+    text: "What AI insights are waiting for me in the inbox?",
+    description: "Lists open Learning Agent proposals pending your review.",
+  },
+  {
+    label: "Analyze my corrections",
+    text: "Analyze my label correction patterns and add insights to the inbox",
+    description: "Runs Decision Analyst over decision_events (same as Settings → Run analysis now).",
+  },
+  {
+    label: "Propose custom rule",
+    text: "Create a custom rule: when merchant is Merchant A and amount is 9.99, set classification to Business",
+    description: "Drafts a rule, previews matches, opens Workspace confirm to save.",
+  },
 ];
 
 function insertChatCommand(text) {
@@ -1396,7 +1436,17 @@ $("#chat-form").addEventListener("submit", async (e) => {
       body: JSON.stringify({ message: msg }),
     });
     removeChatPending();
-    appendChat("assistant", res.answer, res.tool_trace, res.display, res.cadence_proposal);
+    appendChat(
+      "assistant",
+      res.answer,
+      res.tool_trace,
+      res.display,
+      res.cadence_proposal,
+      res.workspace_proposals
+    );
+    if (uiAgentWorkspace && res.workspace_proposals?.length) {
+      loadWorkspaceInbox().catch(() => {});
+    }
   } catch (err) {
     removeChatPending();
     appendChat("assistant", `Error: ${err.message}`);
@@ -1980,24 +2030,29 @@ function renderCustomRuleCompiled(compiled) {
   el.textContent = JSON.stringify(compiled, null, 2);
 }
 
-function renderCustomRulesPreviewTable(transactions) {
-  const host = $("#custom-rules-preview-results");
+function renderLabelPreviewTable(host, transactions, { showProposed = true } = {}) {
   if (!host) return;
   if (!transactions?.length) {
-    host.innerHTML = '<p class="hint">No matching transactions. Run preview after entering a rule.</p>';
+    host.innerHTML = '<p class="hint">No matching transactions to preview.</p>';
     return;
   }
+  const proposedHeader = showProposed
+    ? '<th scope="col">Proposed</th>'
+    : "";
   const rows = transactions
-    .map(
-      (tx) => `
+    .map((tx) => {
+      const proposedCell = showProposed
+        ? `<td class="custom-rules-label-col proposed">${escapeHtml(formatCustomRuleProposed(tx.proposed))}</td>`
+        : "";
+      return `
     <tr>
       <td>${escapeHtml(tx.date || "")}</td>
       <td class="amount">${escapeHtml(formatMoney(tx.amount))}</td>
       <td>${escapeHtml(tx.merchant_key || "")}</td>
       <td class="custom-rules-label-col">${escapeHtml(formatCustomRuleLabels(tx))}</td>
-      <td class="custom-rules-label-col proposed">${escapeHtml(formatCustomRuleProposed(tx.proposed))}</td>
-    </tr>`
-    )
+      ${proposedCell}
+    </tr>`;
+    })
     .join("");
   host.innerHTML = `
     <table class="edit-results-table custom-rules-preview-table">
@@ -2007,11 +2062,15 @@ function renderCustomRulesPreviewTable(transactions) {
           <th scope="col">Amount</th>
           <th scope="col">Merchant</th>
           <th scope="col">Current labels</th>
-          <th scope="col">Proposed</th>
+          ${proposedHeader}
         </tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>`;
+}
+
+function renderCustomRulesPreviewTable(transactions) {
+  renderLabelPreviewTable($("#custom-rules-preview-results"), transactions, { showProposed: true });
 }
 
 function updateCustomRulesPreviewPagination() {
@@ -4805,6 +4864,7 @@ async function loadLearningAgentSettings() {
     const last = st.last_run;
     const lines = [
       `Enabled (env): ${st.enabled ? "yes" : "no"}`,
+      `LLM analyst: ${st.use_llm !== false ? "yes" : "no"} (${st.model || "—"})`,
       `Interval: every ${st.interval_hours} hour(s)`,
       `Open insights: ${st.open_insights}`,
     ];
@@ -4812,6 +4872,9 @@ async function loadLearningAgentSettings() {
       lines.push(`Last run: ${last.started_at} — ${last.status}`);
       if (st.last_detail?.insights_inserted != null) {
         lines.push(`Insights added: ${st.last_detail.insights_inserted}`);
+      }
+      if (st.last_detail?.llm_insights != null) {
+        lines.push(`From LLM: ${st.last_detail.llm_insights}, heuristic: ${st.last_detail.heuristic_insights ?? 0}`);
       }
     }
     el.textContent = lines.join("\n");
@@ -4826,10 +4889,219 @@ function workspaceTypeLabel(type) {
     quality_flag: "Quality",
     taxonomy_merge: "Taxonomy",
     cadence_rule: "Cadence",
-    pattern_insight: "Insight",
-    custom_rule: "Rule",
+    pattern_insight: "Pattern",
+    category_rename: "Category rename",
+    custom_rule: "Custom rule",
+    custom_rule_hint: "Custom rule",
+    merchant_label_hint: "Label",
+    taxonomy_hint: "Category rename",
   };
   return map[type] || type || "Proposal";
+}
+
+const WORKSPACE_SUGGESTED_ACTION_ALIASES = {
+  taxonomy_hint: "rename_category",
+  propose_cadence: "review_cadence",
+  custom_rule: "create_rule",
+  merchant_label: "apply_labels",
+};
+
+const WORKSPACE_SUGGESTED_ACTION_LABELS = {
+  rename_category: "Rename or merge a category",
+  review_cadence: "Review recurring schedule",
+  create_rule: "Create a custom rule",
+  apply_labels: "Apply labels to this merchant",
+};
+
+function normalizeWorkspaceSuggestedAction(item) {
+  const proposal = item?.proposal || {};
+  let action = String(proposal.suggested_action || "").trim();
+  action = WORKSPACE_SUGGESTED_ACTION_ALIASES[action] || action;
+  const ctype = item?.confirmation_type || "";
+  if (!action) {
+    if (ctype === "cadence_rule") action = "review_cadence";
+    else if (ctype === "custom_rule" || ctype === "custom_rule_hint") action = "create_rule";
+    else if (ctype === "merchant_label" || ctype === "merchant_label_hint") action = "apply_labels";
+    else if (ctype === "category_rename" || ctype === "taxonomy_hint") action = "rename_category";
+    else if (ctype === "pattern_insight" && (proposal.from_category || proposal.to_category)) {
+      action = "rename_category";
+    }
+  }
+  return action;
+}
+
+function workspaceSuggestedActionLabel(action) {
+  return WORKSPACE_SUGGESTED_ACTION_LABELS[action] || "";
+}
+
+function workspaceShowsEditButton(item) {
+  const t = item?.confirmation_type || "";
+  return t === "merchant_label" || t === "quality_flag";
+}
+
+function workspaceCanApprove(item) {
+  const t = item?.confirmation_type || "";
+  if (t === "merchant_label" || t === "quality_flag") {
+    if (t === "quality_flag" && !item.proposal?.suggested_category) return false;
+    return true;
+  }
+  if (t === "custom_rule") return !!(item.proposal?.rule_text || item.summary);
+  if (item?.source === "learning_agent") {
+    const action = normalizeWorkspaceSuggestedAction(item);
+    if (!action) return false;
+    const proposal = item.proposal || {};
+    if (action === "apply_labels" && !proposal.ai_category) return false;
+    if (action === "create_rule" && !(proposal.rule_text || item.summary)) return false;
+    if (
+      action === "review_cadence" &&
+      !(item.entity_key || proposal.merchant_key || item.title)
+    ) {
+      return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+function renderWorkspaceProposalAction(item) {
+  const el = $("#workspace-confirm-action");
+  if (!el) return;
+  const proposal = item?.proposal || {};
+  const ctype = item?.confirmation_type || "";
+  const lines = [];
+
+  if (ctype === "merchant_label") {
+    lines.push("<p><strong>Proposed labels</strong></p>");
+    lines.push(
+      `<p>${escapeHtml(proposal.ai_category || "—")} / ${escapeHtml(proposal.ai_sub_category || "—")}</p>`
+    );
+  } else if (ctype === "quality_flag") {
+    lines.push("<p><strong>Suggested fix</strong></p>");
+    lines.push(
+      `<p>${escapeHtml(proposal.suggested_category || "—")} / ${escapeHtml(proposal.suggested_sub || "—")}</p>`
+    );
+    if (proposal.production_category || proposal.production_sub) {
+      lines.push(
+        `<p class="hint">Current: ${escapeHtml(proposal.production_category || "—")} / ${escapeHtml(proposal.production_sub || "—")}</p>`
+      );
+    }
+  } else if (ctype === "custom_rule") {
+    lines.push("<p><strong>Suggested action:</strong> Create a custom rule</p>");
+    if (proposal.rule_text) {
+      lines.push(`<p class="hint">${escapeHtml(proposal.rule_text)}</p>`);
+    }
+  } else if (item?.source === "learning_agent") {
+    const action = normalizeWorkspaceSuggestedAction(item);
+    const label = workspaceSuggestedActionLabel(action);
+    if (label) lines.push(`<p><strong>Suggested action:</strong> ${escapeHtml(label)}</p>`);
+    if (action === "rename_category") {
+      const from = proposal.from_category || proposal.from_label || "";
+      const to = proposal.to_category || proposal.to_label || "";
+      if (from || to) lines.push(`<p>${escapeHtml(from || "—")} → ${escapeHtml(to || "—")}</p>`);
+    } else if (action === "create_rule" && proposal.rule_text) {
+      lines.push(`<p class="hint">${escapeHtml(proposal.rule_text)}</p>`);
+    } else if (action === "review_cadence" || action === "apply_labels") {
+      const mk = item.entity_key || proposal.merchant_key || item.title || "";
+      if (mk) lines.push(`<p>Merchant: ${escapeHtml(mk)}</p>`);
+      if (action === "apply_labels" && proposal.ai_category) {
+        lines.push(
+          `<p>${escapeHtml(proposal.ai_category || "—")} / ${escapeHtml(proposal.ai_sub_category || "—")}</p>`
+        );
+      }
+    }
+  }
+
+  if (lines.length) {
+    el.innerHTML = lines.join("");
+    el.classList.remove("hidden");
+  } else {
+    el.innerHTML = "";
+    el.classList.add("hidden");
+  }
+}
+
+function updateWorkspaceConfirmButtons(item) {
+  const editBtn = $("#btn-workspace-confirm-edit");
+  const approveBtn = $("#btn-workspace-confirm-approve");
+  if (editBtn) editBtn.classList.toggle("hidden", !workspaceShowsEditButton(item));
+  if (approveBtn) {
+    approveBtn.disabled = !workspaceCanApprove(item);
+    approveBtn.title = workspaceCanApprove(item) ? "" : "No apply action for this proposal";
+  }
+}
+
+async function openCustomRuleDraftWithText(ruleText) {
+  setTab("custom-rules");
+  newCustomRuleDraft();
+  const input = $("#custom-rule-input");
+  if (input) input.value = String(ruleText || "").trim();
+  if (input?.value) await runCustomRulesPreview({ resetPage: true });
+}
+
+async function openTaxonomyForCategoryRename(proposal) {
+  const from = String(proposal.from_category || proposal.from_label || "").trim();
+  const to = String(proposal.to_category || proposal.to_label || "").trim();
+  setTab("taxonomy");
+  await loadTaxonomyPanel({ analyzeOnly: false });
+  if (!from && !to) return;
+  const match = taxonomyProposals.find((p) => {
+    if (p.rule_type !== "category_merge") return false;
+    const fromLabel = String(p.from_label || "").trim();
+    return fromLabel.toLowerCase() === from.toLowerCase();
+  });
+  if (match) {
+    taxonomySelected.add(match.id);
+    const cb = document.querySelector(
+      `.taxonomy-proposal-check[data-id="${CSS.escape(match.id)}"]`
+    );
+    if (cb) {
+      cb.checked = true;
+      cb.closest(".taxonomy-proposal")?.classList.add("selected");
+    }
+    updateTaxonomyActionButtons();
+    document.querySelector(`.taxonomy-proposal[data-id="${CSS.escape(match.id)}"]`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+    });
+  }
+}
+
+async function openCadenceInsightForMerchant(merchantKey) {
+  const mk = String(merchantKey || "").trim();
+  if (!mk) throw new Error("Missing merchant for cadence review");
+  const proposal = await api("/api/cadence-rules/propose", {
+    method: "POST",
+    body: JSON.stringify({ merchant_key: mk }),
+  });
+  openCadenceInsightModal(proposal);
+}
+
+async function applyWorkspaceMerchantLabels(item, scope = "pending") {
+  const mk = encodeURIComponent(item.entity_key || item.title || "");
+  const p = item.proposal || {};
+  if (!p.ai_category) throw new Error("Missing proposed category");
+  await api(`/api/review/${mk}/confirm`, {
+    method: "POST",
+    body: JSON.stringify({
+      ai_category: p.ai_category || "",
+      ai_sub_category: p.ai_sub_category || "",
+      expense_type: p.expense_type || "Variable",
+      flow_type: p.flow_type || "Expense",
+      classification: p.classification || "Personal",
+      transaction_id: item.transaction_id || null,
+      scope,
+    }),
+  });
+}
+
+async function acceptLearningAgentInsight(insightId) {
+  if (insightId == null) return;
+  await api(`/api/learning-agent/insights/${insightId}/accept`, { method: "POST" });
+}
+
+async function rejectLearningAgentInsight(insightId) {
+  if (insightId == null) return;
+  await api(`/api/learning-agent/insights/${insightId}/reject`, { method: "POST" });
 }
 
 async function loadWorkspaceInbox() {
@@ -4867,6 +5139,65 @@ function closeWorkspaceConfirmModal() {
   const overlay = $("#workspace-confirm-overlay");
   overlay?.classList.add("hidden");
   overlay?.setAttribute("aria-hidden", "true");
+  const help = $("#workspace-confirm-help");
+  const helpBtn = $("#btn-workspace-confirm-help");
+  help?.classList.add("hidden");
+  if (helpBtn) helpBtn.setAttribute("aria-expanded", "false");
+  const actionEl = $("#workspace-confirm-action");
+  if (actionEl) {
+    actionEl.innerHTML = "";
+    actionEl.classList.add("hidden");
+  }
+}
+
+async function loadWorkspaceConfirmPreview(item) {
+  const meta = $("#workspace-confirm-preview-meta");
+  const host = $("#workspace-confirm-preview-results");
+  if (meta) meta.textContent = "Loading…";
+  if (host) host.innerHTML = '<p class="hint">Loading transactions…</p>';
+  try {
+    const preview = await api("/api/pending-confirmations/preview", {
+      method: "POST",
+      body: JSON.stringify({
+        confirmation_type: item.confirmation_type,
+        source: item.source,
+        entity_key: item.entity_key,
+        title: item.title,
+        summary: item.summary,
+        proposal: item.proposal || {},
+        reference_id: item.reference_id,
+      }),
+    });
+    if (preview.compile_error) {
+      if (meta) meta.textContent = "Compile error";
+      if (host) {
+        host.innerHTML = `<p class="hint review-confirm-error">${escapeHtml(preview.compile_error)}</p>`;
+      }
+      return;
+    }
+    if (preview.message && !preview.transactions?.length) {
+      if (meta) meta.textContent = "";
+      if (host) host.innerHTML = `<p class="hint">${escapeHtml(preview.message)}</p>`;
+      return;
+    }
+    const total = preview.total ?? preview.transactions?.length ?? 0;
+    const shown = preview.transactions?.length ?? 0;
+    if (meta) {
+      meta.textContent = total
+        ? `${total} match${total === 1 ? "" : "es"}${shown < total ? ` (showing ${shown})` : ""}`
+        : "";
+    }
+    const showProposed =
+      item.confirmation_type === "custom_rule" ||
+      item.confirmation_type === "merchant_label" ||
+      item.confirmation_type === "quality_flag";
+    renderLabelPreviewTable(host, preview.transactions || [], { showProposed });
+  } catch (err) {
+    if (meta) meta.textContent = "";
+    if (host) {
+      host.innerHTML = `<p class="hint">Could not load preview: ${escapeHtml(err.message)}</p>`;
+    }
+  }
 }
 
 function openWorkspaceConfirmModal(item) {
@@ -4875,13 +5206,20 @@ function openWorkspaceConfirmModal(item) {
   const summary = $("#workspace-confirm-summary");
   const detail = $("#workspace-confirm-detail");
   const errEl = $("#workspace-confirm-error");
-  if (title) title.textContent = item.title || "Review AI proposal";
+  const typeLabel = workspaceTypeLabel(item.confirmation_type);
+  if (title) {
+    title.textContent = item.title
+      ? `${item.title} (${typeLabel})`
+      : "Review AI proposal";
+  }
   if (summary) {
     summary.textContent = item.summary || "";
   }
   if (detail) {
     detail.textContent = JSON.stringify(item.proposal || {}, null, 2);
   }
+  renderWorkspaceProposalAction(item);
+  updateWorkspaceConfirmButtons(item);
   if (errEl) {
     errEl.textContent = "";
     errEl.classList.add("hidden");
@@ -4889,6 +5227,7 @@ function openWorkspaceConfirmModal(item) {
   const overlay = $("#workspace-confirm-overlay");
   overlay?.classList.remove("hidden");
   overlay?.setAttribute("aria-hidden", "false");
+  loadWorkspaceConfirmPreview(item).catch(() => {});
 }
 
 async function handleWorkspaceConfirmAction(action) {
@@ -4907,40 +5246,78 @@ async function handleWorkspaceConfirmAction(action) {
       }
       return;
     }
-    if (action === "defer") {
+    if (action === "cancel") {
       closeWorkspaceConfirmModal();
       return;
     }
-    if (item.confirmation_type === "quality_flag" && item.reference_id != null) {
-      if (action === "dismiss") {
+    if (action === "reject") {
+      if (item.confirmation_type === "quality_flag" && item.reference_id != null) {
         await api(`/api/classification-audit/findings/${item.reference_id}/dismiss`, {
           method: "POST",
         });
-      } else if (action === "approve") {
-        closeWorkspaceConfirmModal();
-        setTab("edit");
-        const q = $("#edit-search-q");
-        if (q) {
-          q.value = item.entity_key || "";
-          $("#edit-search-form")?.requestSubmit();
-        }
-        return;
+      } else if (item.source === "learning_agent" && item.reference_id != null) {
+        await rejectLearningAgentInsight(item.reference_id);
       }
-    } else if (item.source === "learning_agent" && item.reference_id != null) {
-      const path =
-        action === "approve"
-          ? `/api/learning-agent/insights/${item.reference_id}/accept`
-          : `/api/learning-agent/insights/${item.reference_id}/reject`;
-      await api(path, { method: "POST" });
-    } else if (item.confirmation_type === "merchant_label" && action === "approve") {
       closeWorkspaceConfirmModal();
-      setTab("edit");
-      const q = $("#edit-search-q");
-      if (q) {
-        q.value = item.entity_key || "";
-        $("#edit-search-form")?.requestSubmit();
-      }
+      loadWorkspaceInbox().catch(() => {});
+      loadStatus().catch(() => {});
       return;
+    }
+    if (action !== "approve") return;
+
+    if (item.confirmation_type === "quality_flag" && item.reference_id != null) {
+      await api(`/api/classification-audit/findings/${item.reference_id}/apply`, {
+        method: "POST",
+      });
+    } else if (item.confirmation_type === "merchant_label") {
+      await applyWorkspaceMerchantLabels(item, "pending");
+    } else if (item.confirmation_type === "custom_rule") {
+      const ruleText = item.proposal?.rule_text || item.summary || "";
+      if (!ruleText.trim()) throw new Error("Missing custom rule text");
+      closeWorkspaceConfirmModal();
+      await openCustomRuleDraftWithText(ruleText.trim());
+      loadWorkspaceInbox().catch(() => {});
+      return;
+    } else if (item.source === "learning_agent" && item.reference_id != null) {
+      const proposal = item.proposal || {};
+      const suggested = normalizeWorkspaceSuggestedAction(item);
+      closeWorkspaceConfirmModal();
+      if (suggested === "rename_category") {
+        await openTaxonomyForCategoryRename(proposal);
+        await acceptLearningAgentInsight(item.reference_id);
+      } else if (suggested === "review_cadence") {
+        const mk = item.entity_key || proposal.merchant_key || item.title || "";
+        await openCadenceInsightForMerchant(mk);
+        await acceptLearningAgentInsight(item.reference_id);
+      } else if (suggested === "create_rule") {
+        const ruleText = proposal.rule_text || item.summary || "";
+        if (!ruleText.trim()) throw new Error("Missing custom rule text");
+        await openCustomRuleDraftWithText(ruleText.trim());
+        await acceptLearningAgentInsight(item.reference_id);
+      } else if (suggested === "apply_labels") {
+        await applyWorkspaceMerchantLabels(
+          {
+            ...item,
+            entity_key: item.entity_key || proposal.merchant_key || item.title,
+            proposal: {
+              ai_category: proposal.ai_category,
+              ai_sub_category: proposal.ai_sub_category,
+              expense_type: proposal.expense_type,
+              flow_type: proposal.flow_type,
+              classification: proposal.classification,
+            },
+          },
+          "pending"
+        );
+        await acceptLearningAgentInsight(item.reference_id);
+      } else {
+        throw new Error("No apply action for this insight");
+      }
+      loadWorkspaceInbox().catch(() => {});
+      loadStatus().catch(() => {});
+      return;
+    } else {
+      throw new Error("Nothing to apply for this proposal");
     }
     closeWorkspaceConfirmModal();
     loadWorkspaceInbox().catch(() => {});
@@ -4957,11 +5334,18 @@ $("#btn-workspace-inbox-refresh")?.addEventListener("click", () => {
   loadWorkspaceInbox().catch(() => {});
 });
 $("#btn-workspace-confirm-close")?.addEventListener("click", closeWorkspaceConfirmModal);
-$("#btn-workspace-confirm-dismiss")?.addEventListener("click", () => {
-  handleWorkspaceConfirmAction("dismiss").catch(() => {});
+$("#btn-workspace-confirm-help")?.addEventListener("click", () => {
+  const help = $("#workspace-confirm-help");
+  const btn = $("#btn-workspace-confirm-help");
+  if (!help || !btn) return;
+  const open = help.classList.toggle("hidden");
+  btn.setAttribute("aria-expanded", open ? "false" : "true");
 });
-$("#btn-workspace-confirm-defer")?.addEventListener("click", () => {
-  handleWorkspaceConfirmAction("defer").catch(() => {});
+$("#btn-workspace-confirm-reject")?.addEventListener("click", () => {
+  handleWorkspaceConfirmAction("reject").catch(() => {});
+});
+$("#btn-workspace-confirm-cancel")?.addEventListener("click", () => {
+  handleWorkspaceConfirmAction("cancel").catch(() => {});
 });
 $("#btn-workspace-confirm-edit")?.addEventListener("click", () => {
   handleWorkspaceConfirmAction("edit").catch(() => {});

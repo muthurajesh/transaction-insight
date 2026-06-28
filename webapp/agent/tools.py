@@ -5,7 +5,7 @@ from typing import Any
 
 from webapp import analytics
 
-from webapp.agent.db_query import execute_readonly_sql
+from webapp.agent.db_query import LEARNING_AGENT_ALLOWED_TABLES, execute_readonly_sql
 from webapp.services import custom_reports as saved_reports
 from webapp.services.cadence_insights import propose_cadence
 
@@ -24,18 +24,30 @@ ALL_TOOL_NAMES = frozenset(
         "list_custom_reports",
         "run_custom_report",
         "propose_cadence_rule",
+        "list_open_insights",
+        "propose_custom_rule",
+        "run_decision_analysis",
+        "accept_insight",
+        "reject_insight",
     }
 )
 
-# Chat: query_sql-first. Helpers only for workflows SQL cannot replace.
+# Chat: query_sql-first. Helpers for HITL workspace workflows.
 CHAT_READ_ONLY_TOOLS = frozenset(
     {
         "query_sql",
         "list_custom_reports",
         "run_custom_report",
         "propose_cadence_rule",
+        "list_open_insights",
+        "propose_custom_rule",
+        "run_decision_analysis",
+        "accept_insight",
+        "reject_insight",
     }
 )
+
+LEARNING_AGENT_TOOLS = frozenset({"query_sql"})
 
 month_total = analytics.month_total
 flow_totals_by_month = analytics.flow_totals_by_month
@@ -91,6 +103,43 @@ TOOL_DEFINITIONS = [
             "hint": "optional user words about cadence",
         },
     },
+    {
+        "name": "list_open_insights",
+        "description": (
+            "List open Learning Agent insights awaiting user review in the Workspace inbox. "
+            "Use when user asks about pending AI proposals or decision patterns."
+        ),
+        "parameters": {"limit": "optional int default 20 max 50"},
+    },
+    {
+        "name": "propose_custom_rule",
+        "description": (
+            "Draft a plain-English custom rule and preview matching transactions. "
+            "Does not save until user confirms in Workspace."
+        ),
+        "parameters": {
+            "rule_text": "plain-English if/then rule (required)",
+            "preview_limit": "optional int default 5",
+        },
+    },
+    {
+        "name": "run_decision_analysis",
+        "description": (
+            "Run Decision Analyst over decision_events and related tables. "
+            "Inserts new open insights into the Workspace inbox (same as Settings → Run analysis now)."
+        ),
+        "parameters": {},
+    },
+    {
+        "name": "accept_insight",
+        "description": "Accept an open ai_insights row by id (user explicitly asked to accept).",
+        "parameters": {"insight_id": "integer id from list_open_insights or inbox"},
+    },
+    {
+        "name": "reject_insight",
+        "description": "Reject/dismiss an open ai_insights row by id.",
+        "parameters": {"insight_id": "integer id"},
+    },
 ]
 
 CHAT_TOOL_DEFINITIONS = [t for t in TOOL_DEFINITIONS if t["name"] in CHAT_READ_ONLY_TOOLS]
@@ -102,9 +151,14 @@ def run_tool(
     args: dict[str, Any],
     *,
     chat_mode: bool = False,
+    learning_agent_mode: bool = False,
 ) -> Any:
     if name not in ALL_TOOL_NAMES:
         raise ValueError(f"Unknown tool: {name}")
+    if learning_agent_mode and name not in LEARNING_AGENT_TOOLS:
+        raise ValueError(
+            f"Tool {name!r} is not available for the Learning Agent — use query_sql."
+        )
     if chat_mode and name not in CHAT_READ_ONLY_TOOLS:
         raise ValueError(
             f"Tool {name!r} is not available in chat — use query_sql for data questions."
@@ -114,6 +168,9 @@ def run_tool(
             conn,
             args["sql"],
             max_rows=int(args.get("max_rows", 500)),
+            allowed_tables=(
+                LEARNING_AGENT_ALLOWED_TABLES if learning_agent_mode else None
+            ),
         )
     if name == "month_total":
         return month_total(
@@ -174,4 +231,53 @@ def run_tool(
             transaction_id=args.get("transaction_id"),
             hint=str(args.get("hint") or ""),
         )
+    if name == "list_open_insights":
+        limit = max(1, min(50, int(args.get("limit", 20))))
+        rows = conn.execute(
+            """
+            SELECT id, insight_type, title, pattern_summary, rationale,
+                   confidence, merchant_key, proposal_json, created_at
+            FROM ai_insights
+            WHERE status = 'open'
+            ORDER BY confidence DESC, created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return {"count": len(rows), "insights": [dict(r) for r in rows]}
+    if name == "propose_custom_rule":
+        from webapp.services.custom_rule_similarity import find_similar_custom_rule
+        from webapp.services.custom_rules import preview_custom_rule
+
+        rule_text = str(args.get("rule_text") or "").strip()
+        if not rule_text:
+            raise ValueError("rule_text is required")
+        preview_limit = max(1, min(20, int(args.get("preview_limit", 5))))
+        preview = preview_custom_rule(
+            conn, rule_text=rule_text, limit=preview_limit, offset=0
+        )
+        similar = find_similar_custom_rule(suggested_rule=rule_text, conn=conn)
+        recommend = not preview.get("compile_error") and not similar
+        return {
+            "rule_text": rule_text,
+            "preview": preview,
+            "recommend_save_rule": recommend,
+            "existing_similar_rule": similar.get("rule") if similar else None,
+            "existing_rule_status": similar.get("status") if similar else None,
+        }
+    if name == "run_decision_analysis":
+        from webapp.config import DB_PATH
+        from webapp.services.learning_agent import run_learning_agent
+
+        return run_learning_agent(DB_PATH, force=True)
+    if name == "accept_insight":
+        from webapp.services.learning_agent import accept_insight
+
+        insight_id = int(args["insight_id"])
+        return accept_insight(conn, insight_id)
+    if name == "reject_insight":
+        from webapp.services.learning_agent import reject_insight
+
+        insight_id = int(args["insight_id"])
+        return reject_insight(conn, insight_id)
     raise ValueError(f"Unknown tool: {name}")

@@ -940,6 +940,85 @@ def list_findings(
     return [_enrich_finding(conn, _row_dict(r)) for r in rows if _row_dict(r)]  # type: ignore[misc]
 
 
+def apply_finding(conn: sqlite3.Connection, finding_id: int) -> dict[str, Any]:
+    """Apply audit suggested category/sub to the merchant and resolve the finding."""
+    row = conn.execute(
+        "SELECT * FROM classification_audit_findings WHERE id = ?",
+        (finding_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError("Finding not found")
+    finding = dict(row)
+    if str(finding.get("status") or "") != "open":
+        raise ValueError("Open finding not found")
+
+    merchant_key = str(finding.get("merchant_key") or "").strip()
+    sugg_cat = str(finding.get("suggested_category") or "").strip()
+    sugg_sub = str(finding.get("suggested_sub") or "").strip()
+    if not sugg_cat:
+        raise ValueError("Finding has no suggested category to apply")
+
+    sample = conn.execute(
+        """
+        SELECT expense_type, flow_type, classification
+        FROM transactions
+        WHERE merchant_key = ?
+        LIMIT 1
+        """,
+        (merchant_key,),
+    ).fetchone()
+    expense_type = str(sample["expense_type"] if sample and sample["expense_type"] else "Variable")
+    flow_type = str(sample["flow_type"] if sample and sample["flow_type"] else "Expense")
+    raw_class = str(sample["classification"] if sample and sample["classification"] else "Personal")
+    classification = raw_class if raw_class in ("Personal", "Business") else "Personal"
+
+    from webapp.services.review_confirm import confirm_merchant_group
+
+    result = confirm_merchant_group(
+        conn,
+        merchant_key,
+        ai_category=sugg_cat,
+        ai_sub_category=sugg_sub,
+        expense_type=expense_type,
+        flow_type=flow_type,
+        classification=classification,
+        scope="all",
+    )
+
+    conn.execute(
+        """
+        UPDATE classification_audit_findings
+        SET status = 'resolved'
+        WHERE id = ? AND status = 'open'
+        """,
+        (finding_id,),
+    )
+    from webapp.services.decision_events import log_decision_event
+
+    log_decision_event(
+        conn,
+        source="classification_audit",
+        entity_type="finding",
+        entity_key=str(finding_id),
+        action="accepted",
+        ai_proposal={
+            "suggested_category": sugg_cat,
+            "suggested_sub": sugg_sub,
+            "production_category": finding.get("production_category"),
+            "production_sub": finding.get("production_sub"),
+        },
+        user_outcome={"status": "resolved", "scope": "all"},
+        context={"merchant_key": merchant_key},
+    )
+    conn.commit()
+    return {
+        "id": finding_id,
+        "status": "resolved",
+        "merchant_key": merchant_key,
+        **result,
+    }
+
+
 def dismiss_finding(conn: sqlite3.Connection, finding_id: int) -> bool:
     row = conn.execute(
         "SELECT * FROM classification_audit_findings WHERE id = ?",

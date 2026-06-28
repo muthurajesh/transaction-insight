@@ -23,7 +23,7 @@ This project automates that enrichment:
 | Step | Where |
 |------|--------|
 | Upload & process CSV | **Workspace** import strip (or **Import & Categorize** when legacy UI) — progress bar shows elapsed time and ETA |
-| Pending confirmations | **Workspace** inbox — merchant labels, quality flags, pattern/cadence insights → unified Approve / Dismiss / Defer |
+| Pending confirmations | **Workspace** inbox — merchant labels, quality flags, pattern/cadence insights → **Approve** (apply or handoff) / **Reject** / **Cancel** |
 | Classification quality alerts | Inbox (`quality_flag`) or **Import & Categorize** alerts panel → **View in Edit Transactions** |
 | First visit | Guided **quick tour** (once per browser; skipped when data already exists) |
 | Fix uncertain merchants | Inbox (`merchant_label`) or **Confirm Categories** (legacy) |
@@ -93,7 +93,7 @@ Transaction Insight mixes **deterministic code** (parsing, dedup, SQL, lookup ta
 | **AI judgment** | Ambiguous text, new merchants, taxonomy cleanup | Descriptions, classification, suggestions, chat, **AI Rules** proposals |
 | **You** | Final authority | Confirm Categories, cadence modal, Apply on AI Rules, save Custom Rules |
 
-Models are configured in `config/.env`. You can split **pipeline** vs **chat** models (`PIPELINE_MODEL`, `CHAT_MODEL`) — see [LLM setup](#llm-setup-ollama--common-default) below.
+Models are configured in `config/.env`. Split models by role: **`PIPELINE_MODEL`** (bulk import), **`CHAT_MODEL`** (interactive), optional **`CLASSIFICATION_AUDIT_MODEL`** and **`LEARNING_AGENT_MODEL`** (deeper analysis) — see [LLM setup](#llm-setup-ollama--common-default) below.
 
 ### Where AI runs (by tab / phase)
 
@@ -105,8 +105,7 @@ Models are configured in `config/.env`. You can split **pipeline** vs **chat** m
 | **After an edit** | Edit Transactions → Apply → AI insight modal | Explains the pattern; may suggest a **Custom Rule** (plain English). | No — save rule is optional. |
 | **Cadence** | Cadence tab → ✨ Suggest cadence (AI); Chat | Proposes recurring vs lump vs one-time from merchant history + your hint. | No — Review & save in modal or cadence queue. |
 | **Label cleanup** | **AI Rules** tab | **Analyze** (heuristics only) or **Suggest with AI** — duplicate categories, sub-categories, merchant spellings. | No — you select proposals, preview, then Apply. |
-| **Analytics** | Workspace (Chat) | LLM writes read-only **`query_sql`**; save multi-turn explorations as **custom reports** (prompt + SQL, rerun/tweak/version). Help panel includes report workflows. | Saved reports in `custom_reports` table; see [docs/chat/CHAT_CUSTOM_REPORTS.md](docs/chat/CHAT_CUSTOM_REPORTS.md). |
-| **Learning Agent** | Workspace inbox (opt-in) | Scheduled/heuristic pattern scan over `decision_events` → `ai_insights` proposals (category flips, cadence candidates). | No — accept/reject in inbox; accepted insights feed **review suggest**. |
+| **Analytics & intelligence** | Workspace (Chat) | LLM **`query_sql`** for spend; **`run_decision_analysis`**, **`propose_custom_rule`**, insight accept/reject for decision memory (Workspace confirm modal). Saved custom reports — see [docs/chat/CHAT_CUSTOM_REPORTS.md](docs/chat/CHAT_CUSTOM_REPORTS.md). | Saved reports in `custom_reports`; insights/rules after you confirm. |
 
 **Not AI:** Import upload, inbox archive, table counts, most Edit Transactions field updates (direct SQLite), and cadence **math** (`effective_amount`, cash/core/normalized views).
 
@@ -259,6 +258,17 @@ The pipeline uses LM Studio’s **OpenAI-compatible API** on your LAN.
 | **qwen2.5-coder-32b-instruct** | Best quality for nuanced rules; slower. Good for first-time seeding. |
 | **qwen2.5-14b-instruct-mlx** | Best speed/quality balance on Apple Silicon. |
 | **qwen2.5:7b-instruct** (Ollama) | Fastest for repeat runs once description cache is warm. |
+
+Optional role-specific models in `.env`:
+
+| Variable | Role |
+|----------|------|
+| `PIPELINE_MODEL` | Import descriptions + classification (fast) |
+| `CHAT_MODEL` | Workspace chat, review suggest, edit insights |
+| `CLASSIFICATION_AUDIT_MODEL` | Sampled audit spot-check (defaults to pipeline) |
+| `LEARNING_AGENT_MODEL` | Decision Analyst scheduler (defaults to chat) |
+
+Example: `LEARNING_AGENT_MODEL=qwen2.5-coder:32b` for pattern analysis while keeping `PIPELINE_MODEL` on 14B.
 
 ### Performance tips (Apple Silicon)
 
