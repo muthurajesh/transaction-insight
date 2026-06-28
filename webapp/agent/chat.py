@@ -14,6 +14,7 @@ from webapp.agent.answer_format import (
 )
 from webapp.agent.display import display_from_trace
 from webapp.agent.sql_intent import (
+    merchant_query_hints,
     needs_database_answer,
     trace_has_successful_query,
     validate_query_sql,
@@ -34,6 +35,22 @@ _DATA_CHEATSHEET_PATH = Path(__file__).resolve().parent / "DATA_CHEATSHEET.md"
 CHAT_SYSTEM = """You are a personal finance assistant with read-only SQL access to a local SQLite database.
 **Never invent dollar amounts.** Every number in your answer must come from a tool result.
 
+## Conversation style
+The user speaks in **plain English** (like ChatGPT). They do not know table or column names.
+- **Never** ask them to use SQL jargon (`merchant_key`, `budget_month`, `source_file`, etc.).
+- **Never** show SQL in your answer unless they explicitly ask how you queried.
+- Translate their intent internally, call `query_sql`, then reply conversationally with results.
+- Use **Query hints** in the message context when present — they map natural language to correct filters.
+
+### Natural language → database (internal translation)
+| User says | You query |
+|-----------|-----------|
+| Capital One, Amazon, a merchant/payee name | `merchant_key` (= or LIKE) — **never** `source_file` |
+| last 3 months / recent months | `budget_month IN (...)` from Query hints or Recent full months |
+| spending / expenses / how much did I spend | `flow_type = 'Expense' AND amount < 0` |
+| load/show/list transactions (no "spending") | include all `flow_type` rows for that merchant unless they said expenses only |
+| categories / dining / insurance | `ai_category` (match labels from context) |
+
 ## Primary tool: `query_sql`
 Use **`query_sql`** for almost all questions — spending, categories, merchants, comparisons, averages, trends, lists.
 You may call `query_sql` more than once to refine. Write SELECT against `transactions`.
@@ -45,8 +62,8 @@ If validation rejects your SQL, read the error, fix the query, and call `query_s
 - Expenses: `flow_type = 'Expense' AND amount < 0`; totals use `SUM(-amount)`.
 - Income: `flow_type = 'Income'`.
 - Category filter: `ai_category` — map natural language to values from context.
-- Merchant: `merchant_key = '...'` or `LIKE`.
-- Last N full months: use "Recent full months" from context in `budget_month IN (...)`.
+- Merchant / payee / bank name: `merchant_key = '...'` or `LIKE` — **not** `source_file`.
+- Last N full months: use Query hints or "Recent full months" from context in `budget_month IN (...)`.
 
 ### Compare two months by category (side-by-side — never combine)
 Pivot example (preferred for compare):
@@ -744,6 +761,9 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
         _db_category_context(conn),
         _db_decision_context(conn),
     ]
+    query_hints = merchant_query_hints(conn, user_message)
+    if query_hints:
+        context_parts.append(query_hints)
     report_ctx = _report_context_for_message(conn, user_message)
     if report_ctx:
         context_parts.append(report_ctx)
@@ -810,6 +830,7 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
                 user_message,
                 str(result.get("sql") or args.get("sql") or ""),
                 result,
+                conn=conn,
             )
             if validation_err:
                 result = {
@@ -830,8 +851,13 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
         if result.get("validation_rejected"):
             feedback += (
                 "\n\nFix the SQL and call query_sql again. "
-                "Do not answer until results show each month separately."
+                "Do not answer until the query matches the user's intent."
             )
+            err_text = str(result.get("error") or "")
+            if "month" in err_text.lower() and "separately" in err_text.lower():
+                feedback += " Show each month separately for comparisons."
+            elif "merchant_key" in err_text or "source_file" in err_text:
+                feedback += " Use Query hints in context for merchant_key and budget_month."
         messages.append({"role": "user", "content": feedback})
 
     answer = _finalize_answer(conn, messages, trace, "")

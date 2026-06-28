@@ -72,7 +72,21 @@ For “what months do I have?” or monthly tables, prefer **`full_months`** fro
 
 ## Chat tools (query_sql-first)
 
-Chat uses **`query_sql`** for almost all analysis. The LLM writes read-only SELECT; results are validated (e.g. compare questions must not merge months).
+The user speaks in **plain English**; the model translates to SQL internally. Users should never need column names.
+
+### Natural language → SQL (for the model)
+
+| User says | Filter / column |
+|-----------|-----------------|
+| Merchant, payee, bank name (Capital One, Amazon, …) | `merchant_key` (= or LIKE) — **not** `source_file` |
+| last N months | `budget_month IN (...)` from recent full months in context |
+| spending / expenses | `flow_type = 'Expense' AND amount < 0` |
+| list / load / show transactions (no "spending") | all flow types unless user said expenses only |
+| category name | `ai_category` |
+
+`source_file` is the CSV filename (e.g. `ExportData-April-2025.csv`) — use only when the user asks about imports or file names.
+
+Chat uses **`query_sql`** for almost all analysis. The LLM writes read-only SELECT; results are validated (e.g. compare questions must not merge months; merchant names must not filter `source_file`).
 
 | Tool | Use when |
 |------|----------|

@@ -12,11 +12,12 @@ Use Custom Rules when one merchant needs **different labels by amount or descrip
 
 ## Tab workflow
 
-1. **Rule (plain English)** — multiline composer at the top.
-2. **Run preview** — compiles (LLM) and lists matching transactions with **Current** vs **Proposed** labels.
-3. **Compiled JSON** — read-only view of the compiled rule.
-4. **Saved rules** — click to load; **Apply** one rule, **Disable**, or **Delete**. **New rule** clears selection so **Save** creates a separate rule (editing an existing rule updates it in place).
-5. **Save** — stores as Pending (no DB apply). **Save & apply** — compile + update matching rows. **Apply all rules** — compile pending + apply every Active rule.
+1. **Build a Simple Rule** (optional) — collapsible helper: pick When conditions (Generated Description / Description / Amount), Then set fields, **Insert** or **Replace** into the composer. **What can I use?** expands a cheatsheet with examples, match keys, operators, and settable fields.
+2. **Rule (plain English)** — multiline composer at the top.
+3. **Run preview** — compiles (LLM) and lists matching transactions with **Current** vs **Proposed** labels.
+4. **Compiled JSON** — read-only view of the compiled rule.
+5. **Saved rules** — click to load; **Apply** one rule, **Disable**, or **Delete**. **New rule** clears selection so **Save** creates a separate rule (editing an existing rule updates it in place).
+6. **Save** — stores as Pending (no DB apply). **Save & apply** — compile + update matching rows. **Apply all rules** — compile pending + apply every Active rule.
 
 Composer hint shows **Editing saved rule #N** vs **New rule — not saved yet**.
 

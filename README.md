@@ -105,7 +105,7 @@ Models are configured in `config/.env`. Split models by role: **`PIPELINE_MODEL`
 | **After an edit** | Edit Transactions → Apply → AI insight modal | Explains the pattern; may suggest a **Custom Rule** (plain English). | No — save rule is optional. |
 | **Cadence** | Cadence tab → ✨ Suggest cadence (AI); Chat | Proposes recurring vs lump vs one-time from merchant history + your hint. | No — Review & save in modal or cadence queue. |
 | **Label cleanup** | **AI Rules** tab | **Analyze** (heuristics only) or **Suggest with AI** — duplicate categories, sub-categories, merchant spellings. | No — you select proposals, preview, then Apply. |
-| **Analytics & intelligence** | Workspace (Chat) | LLM **`query_sql`** for spend; **`run_decision_analysis`**, **`propose_custom_rule`**, insight accept/reject for decision memory (Workspace confirm modal). Saved custom reports — see [docs/chat/CHAT_CUSTOM_REPORTS.md](docs/chat/CHAT_CUSTOM_REPORTS.md). | Saved reports in `custom_reports`; insights/rules after you confirm. |
+| **Analytics & intelligence** | Workspace (Chat) | Plain-English questions → LLM **`query_sql`** (merchant names, date ranges, and categories translated internally); **`run_decision_analysis`**, **`propose_custom_rule`**, insight accept/reject. Saved custom reports — see [docs/chat/CHAT_CUSTOM_REPORTS.md](docs/chat/CHAT_CUSTOM_REPORTS.md). | Saved reports in `custom_reports`; insights/rules after you confirm. |
 
 **Not AI:** Import upload, inbox archive, table counts, most Edit Transactions field updates (direct SQLite), and cadence **math** (`effective_amount`, cash/core/normalized views).
 
@@ -316,7 +316,7 @@ Manage cadence via chat `propose_cadence_rule` or the **Cadence** tab when `UI_S
 
 ## Custom Rules (freeform → AI compile → apply)
 
-**Dedicated tab:** **Custom Rules** — compose, preview matches (current vs proposed), view compiled JSON, save, apply one or all.
+**Dedicated tab:** **Custom Rules** — **Build a Simple Rule** helper (optional) or freeform composer, preview matches (current vs proposed), view compiled JSON, save, apply one or all.
 
 **Highest priority at pipeline time:** Active custom rules run after category rules, LLM classification, and cadence lookup.
 

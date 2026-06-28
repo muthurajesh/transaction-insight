@@ -411,6 +411,119 @@
       <p class="hint panel-subtitle">Write plain-English if/then rules. Preview matches, then save and apply.</p>
       <div class="custom-rules-tab-layout">
         <div class="custom-rules-composer card">
+          <details class="custom-rule-cheatsheet" id="custom-rule-cheatsheet">
+            <summary>What can I use?</summary>
+            <div class="custom-rule-cheatsheet-body">
+              <p class="hint">Rules are plain English. The app compiles them once; matching runs on every import or Apply.</p>
+              <h3>When (conditions — all must match)</h3>
+              <ul>
+                <li><strong>Generated Description</strong> — merchant/payee label (recommended)</li>
+                <li><strong>Description</strong> — any description text (Generated, Original, Simple, User)</li>
+                <li><strong>Amount</strong> — exact dollar value only (sign ignored; <code>9.99</code> matches <code>-9.99</code>)</li>
+              </ul>
+              <p class="hint">Text patterns: exact text, <code>*contains*</code>, <code>prefix*</code>, <code>*suffix</code>. Multiple amounts or merchants can be OR’d in hand-written rules.</p>
+              <p class="hint">Not supported as conditions: category, classification, flow type, date, or amount ranges (&gt;, &lt;, between).</p>
+              <h3>Then set (optional fields)</h3>
+              <ul>
+                <li>AI Category, AI Sub-category</li>
+                <li>Classification (Personal / Business)</li>
+                <li>Flow Type (Expense / Income / Transfer / Adjustment)</li>
+                <li>Type (Fixed / Variable), Budget Tier (Need / Want / Wish / Review)</li>
+                <li>Category (bank), Sub-Type</li>
+              </ul>
+              <h3>Examples</h3>
+              <p class="hint"><strong>Simple</strong> (use the builder below or type directly):</p>
+              <p class="custom-rule-example">If Generated Description is Merchant A and Amount is 9.99, set AI Category to Category X, Classification to Business, Flow Type to Expense</p>
+              <p class="hint"><strong>More complex</strong> (type in the composer — builder cannot express OR on original description, parentheses, etc.):</p>
+              <p class="custom-rule-example">If Generated Description contains Vendor A and (original description contains 'ACCT1' OR original description contains 'ACCT2') and Amount is 100, set Flow Type to Transfer, AI Category to Category X, AI Sub-category to Sub Y, Classification to Personal</p>
+              <p class="hint">Complex rules still compile via the LLM; the matcher supports them when the compiled JSON matches the engine (see roadmap for future column-specific and range conditions).</p>
+            </div>
+          </details>
+          <details class="custom-rule-builder" id="custom-rule-builder" open>
+            <summary>Build a Simple Rule</summary>
+            <div class="custom-rule-builder-body">
+              <fieldset class="custom-rule-builder-when">
+                <legend>When</legend>
+                <div class="custom-rule-builder-row">
+                  <select id="crb-match-field" aria-label="Match field">
+                    <option value="generated_description" selected>Generated Description</option>
+                    <option value="description">Description</option>
+                  </select>
+                  <select id="crb-text-op" aria-label="Text match">
+                    <option value="exact">is exactly</option>
+                    <option value="contains" selected>contains</option>
+                    <option value="starts">starts with</option>
+                    <option value="ends">ends with</option>
+                  </select>
+                  <input type="text" id="crb-text-value" list="crb-merchant-list" placeholder="Merchant or text" aria-label="Match value" />
+                </div>
+                <label class="custom-rule-builder-check">
+                  <input type="checkbox" id="crb-use-amount" />
+                  Also match amount
+                </label>
+                <div id="crb-amount-row" class="custom-rule-builder-row custom-rule-builder-amount hidden">
+                  <span class="custom-rule-builder-label">Amount</span>
+                  <select id="crb-amount-op" aria-label="Amount match" disabled>
+                    <option value="exact" selected>is exactly</option>
+                  </select>
+                  <input type="text" id="crb-amount-value" inputmode="decimal" placeholder="9.99" aria-label="Amount value" disabled />
+                </div>
+              </fieldset>
+              <fieldset class="custom-rule-builder-then">
+                <legend>Then set</legend>
+                <div class="custom-rule-set-grid">
+                  <label class="custom-rule-set-row">
+                    <input type="checkbox" id="crb-set-ai-category" checked />
+                    <span>AI Category</span>
+                    <input type="text" id="crb-ai-category" list="crb-category-list" placeholder="Category" />
+                  </label>
+                  <label class="custom-rule-set-row">
+                    <input type="checkbox" id="crb-set-ai-sub" />
+                    <span>AI Sub-category</span>
+                    <input type="text" id="crb-ai-sub" list="crb-subcategory-list" placeholder="Sub-category" disabled />
+                  </label>
+                  <label class="custom-rule-set-row">
+                    <input type="checkbox" id="crb-set-classification" />
+                    <span>Classification</span>
+                    <select id="crb-classification" disabled></select>
+                  </label>
+                  <label class="custom-rule-set-row">
+                    <input type="checkbox" id="crb-set-flow-type" />
+                    <span>Flow Type</span>
+                    <select id="crb-flow-type" disabled></select>
+                  </label>
+                  <label class="custom-rule-set-row">
+                    <input type="checkbox" id="crb-set-type" />
+                    <span>Type</span>
+                    <select id="crb-expense-type" disabled></select>
+                  </label>
+                  <label class="custom-rule-set-row">
+                    <input type="checkbox" id="crb-set-budget-tier" />
+                    <span>Budget Tier</span>
+                    <select id="crb-budget-tier" disabled></select>
+                  </label>
+                  <label class="custom-rule-set-row">
+                    <input type="checkbox" id="crb-set-category" />
+                    <span>Category (bank)</span>
+                    <input type="text" id="crb-category" placeholder="Bank category" disabled />
+                  </label>
+                  <label class="custom-rule-set-row">
+                    <input type="checkbox" id="crb-set-sub-type" />
+                    <span>Sub-Type</span>
+                    <input type="text" id="crb-sub-type" placeholder="Sub-Type" disabled />
+                  </label>
+                </div>
+              </fieldset>
+              <div class="custom-rule-builder-actions">
+                <button type="button" id="btn-crb-insert" class="btn-secondary">Insert into rule</button>
+                <button type="button" id="btn-crb-replace" class="btn-secondary">Replace rule text</button>
+              </div>
+              <p id="crb-build-message" class="custom-rule-builder-msg hint" aria-live="polite"></p>
+            </div>
+          </details>
+          <datalist id="crb-merchant-list"></datalist>
+          <datalist id="crb-category-list"></datalist>
+          <datalist id="crb-subcategory-list"></datalist>
           <label class="custom-rules-add-label" for="custom-rule-input">Rule (plain English)</label>
           <p id="custom-rules-composer-mode" class="custom-rules-composer-mode hint" aria-live="polite"></p>
           <textarea id="custom-rule-input" rows="5" placeholder='If Generated Description is Merchant A and Amount is 9.99, set AI Category to Category X, Classification to Business, Flow Type to Expense'></textarea>

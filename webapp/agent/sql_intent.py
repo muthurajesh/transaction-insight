@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 from typing import Any
 
 _MONTH_NAME_TO_NUM: dict[str, int] = {
@@ -51,7 +52,132 @@ _DATA_WORDS = (
     "transaction",
     "month",
     "budget",
+    "load ",
+    "show ",
+    "list ",
 )
+
+
+def extract_last_n_months(text: str) -> int | None:
+    """Parse 'last 3 months' style phrases."""
+    match = re.search(r"last\s+(\d{1,2})\s+(?:full\s+)?months?\b", (text or "").lower())
+    if not match:
+        return None
+    n = int(match.group(1))
+    return n if 1 <= n <= 24 else None
+
+
+def resolve_budget_months_for_question(
+    conn: sqlite3.Connection, user_message: str
+) -> list[str]:
+    """Map natural-language time range to budget_month values (newest first)."""
+    explicit = extract_budget_months(user_message)
+    if explicit:
+        return explicit
+    n = extract_last_n_months(user_message)
+    if not n:
+        return []
+    from webapp.analytics.queries import available_months
+
+    full = available_months(conn).get("full_months") or []
+    return list(full[:n])
+
+
+def message_asks_for_merchant_activity(user_message: str) -> bool:
+    lower = (user_message or "").lower()
+    if "transaction" in lower or "charges" in lower or "payments" in lower:
+        return True
+    return any(v in lower for v in ("load ", "show ", "list ", "get ", "find ", "from "))
+
+
+def merchant_query_hints(conn: sqlite3.Connection, user_message: str) -> str:
+    """Plain-English hints injected into chat context — not shown to the user directly."""
+    from webapp.services.cadence_insights import find_merchant_key_from_text
+
+    parts: list[str] = []
+    mk = find_merchant_key_from_text(conn, user_message)
+    if mk:
+        parts.append(
+            f'Query hint — user merchant/payee: match `merchant_key` '
+            f'(exact `{mk}` or `LIKE` for related labels). '
+            f'Never use `source_file` for bank or merchant names '
+            f'(source_file is the CSV filename only, e.g. ExportData-April-2025.csv).'
+        )
+        related = conn.execute(
+            """
+            SELECT DISTINCT merchant_key FROM transactions
+            WHERE merchant_key LIKE ? AND merchant_key != ?
+            ORDER BY merchant_key
+            LIMIT 6
+            """,
+            (f"%{mk.split()[0]}%", mk),
+        ).fetchall()
+        if related:
+            labels = ", ".join(f'"{r[0]}"' for r in related if r[0])
+            if labels:
+                parts.append(f"Related merchant_key values: {labels}.")
+
+    months = resolve_budget_months_for_question(conn, user_message)
+    if months:
+        quoted = ", ".join(f"'{m}'" for m in months)
+        parts.append(
+            f'Query hint — time range: `budget_month IN ({quoted})` '
+            f'(newest full months for "last N months").'
+        )
+
+    if mk and message_asks_for_merchant_activity(user_message):
+        lower = user_message.lower()
+        if not any(w in lower for w in ("spend", "spending", "expense", "expenses")):
+            parts.append(
+                "Query hint — user asked to list/load activity, not spending only: "
+                "include Transfers and other flow_type rows unless they said expenses/spending."
+            )
+
+    return "\n".join(parts)
+
+
+def _sql_filters_source_file_like_merchant(sql: str) -> bool:
+    bare = _strip_literals(sql.lower())
+    return "source_file" in bare and "like" in bare
+
+
+def validate_merchant_query_sql(
+    user_message: str,
+    sql: str,
+    result: dict[str, Any],
+    conn: sqlite3.Connection | None,
+) -> str | None:
+    if result.get("error"):
+        return None
+
+    from webapp.services.cadence_insights import find_merchant_key_from_text
+
+    sql_lower = _strip_literals(sql.lower())
+    mk = find_merchant_key_from_text(conn, user_message) if conn else None
+    merchant_question = bool(mk) or message_asks_for_merchant_activity(user_message)
+
+    if merchant_question and _sql_filters_source_file_like_merchant(sql):
+        return (
+            "Merchant or bank name must filter `merchant_key`, not `source_file`. "
+            "`source_file` is only the CSV filename (e.g. ExportData-April-2025.csv) and "
+            "does not contain merchant names. Re-run query_sql using merchant_key "
+            f"(e.g. merchant_key LIKE '%{mk}%' or merchant_key = '{mk}')."
+            if mk
+            else (
+                "Merchant or bank name must filter `merchant_key`, not `source_file`. "
+                "Re-run query_sql using merchant_key LIKE with the payee name from the question."
+            )
+        )
+
+    rows = result.get("rows") or []
+    row_count = int(result.get("row_count") if result.get("row_count") is not None else len(rows))
+    if row_count == 0 and conn and mk and merchant_question and "merchant_key" not in sql_lower:
+        return (
+            f'No rows — question is about "{mk}" but SQL did not filter merchant_key. '
+            f"Re-run query_sql with merchant_key matching that payee."
+        )
+
+    return None
 
 
 def extract_budget_months(text: str) -> list[str]:
@@ -137,11 +263,17 @@ def validate_query_sql(
     user_message: str,
     sql: str,
     result: dict[str, Any],
+    *,
+    conn: sqlite3.Connection | None = None,
 ) -> str | None:
     """
     Return an error string when SQL/results do not match the question.
     None means validation passed.
     """
+    merchant_err = validate_merchant_query_sql(user_message, sql, result, conn)
+    if merchant_err:
+        return merchant_err
+
     if result.get("error"):
         return None
 

@@ -1818,6 +1818,193 @@ let customRulesPreviewOffset = 0;
 let customRulesPreviewTotal = 0;
 let customRulesLastCompiled = null;
 const CUSTOM_RULES_PREVIEW_PAGE = 50;
+let customRulesBuilderOptionsLoaded = false;
+
+const CUSTOM_RULE_BUDGET_TIERS = ["Need", "Want", "Wish", "Review"];
+
+const CUSTOM_RULE_TEXT_PATTERN = {
+  exact: (value) => value,
+  contains: (value) => `*${value}*`,
+  starts: (value) => `${value}*`,
+  ends: (value) => `*${value}`,
+};
+
+function formatCustomRuleAmount(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const num = Number(raw.replace(/[$,]/g, ""));
+  if (Number.isFinite(num)) return num.toFixed(2);
+  return raw;
+}
+
+function buildCustomRuleEnglish() {
+  const matchField = $("#crb-match-field")?.value || "generated_description";
+  const fieldLabel = matchField === "description" ? "Description" : "Generated Description";
+  const textOp = $("#crb-text-op")?.value || "contains";
+  const textRaw = ($("#crb-text-value")?.value || "").trim();
+  if (!textRaw) {
+    return { ok: false, message: "Enter a merchant or description value in When." };
+  }
+  const patternFn = CUSTOM_RULE_TEXT_PATTERN[textOp] || CUSTOM_RULE_TEXT_PATTERN.exact;
+  const pattern = patternFn(textRaw);
+
+  let when = `If ${fieldLabel} is ${pattern}`;
+  if ($("#crb-use-amount")?.checked) {
+    const amountRaw = ($("#crb-amount-value")?.value || "").trim();
+    if (!amountRaw) {
+      return { ok: false, message: "Enter an amount or uncheck Also match amount." };
+    }
+    when += ` and Amount is ${formatCustomRuleAmount(amountRaw)}`;
+  }
+
+  const setClauses = [];
+  const addSet = (enabled, value, label) => {
+    if (!enabled) return;
+    const text = String(value || "").trim();
+    if (!text) return;
+    setClauses.push(`${label} to ${text}`);
+  };
+
+  addSet($("#crb-set-ai-category")?.checked, $("#crb-ai-category")?.value, "AI Category");
+  addSet($("#crb-set-ai-sub")?.checked, $("#crb-ai-sub")?.value, "AI Sub-category");
+  addSet($("#crb-set-classification")?.checked, $("#crb-classification")?.value, "Classification");
+  addSet($("#crb-set-flow-type")?.checked, $("#crb-flow-type")?.value, "Flow Type");
+  addSet($("#crb-set-type")?.checked, $("#crb-expense-type")?.value, "Type");
+  addSet($("#crb-set-budget-tier")?.checked, $("#crb-budget-tier")?.value, "Budget Tier");
+  addSet($("#crb-set-category")?.checked, $("#crb-category")?.value, "Category");
+  addSet($("#crb-set-sub-type")?.checked, $("#crb-sub-type")?.value, "Sub-Type");
+
+  if (!setClauses.length) {
+    return { ok: false, message: "Check at least one Then set field and enter a value." };
+  }
+
+  return { ok: true, text: `${when}, set ${setClauses.join(", ")}` };
+}
+
+function showCustomRuleBuilderMessage(message, { isErr = false } = {}) {
+  const el = $("#crb-build-message");
+  if (!el) return;
+  el.textContent = message || "";
+  el.classList.toggle("err", Boolean(isErr));
+}
+
+function applyCustomRuleBuilderText(mode) {
+  const built = buildCustomRuleEnglish();
+  if (!built.ok) {
+    showCustomRuleBuilderMessage(built.message, { isErr: true });
+    return;
+  }
+  const input = $("#custom-rule-input");
+  if (!input) return;
+  if (mode === "insert" && input.value.trim()) {
+    input.value = `${input.value.trim()}\n${built.text}`;
+  } else {
+    input.value = built.text;
+  }
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  showCustomRuleBuilderMessage("Rule text updated — click Run preview to test.");
+}
+
+function fillCustomRuleBuilderSelect(selectEl, values, placeholder = "") {
+  if (!selectEl) return;
+  const opts = [];
+  if (placeholder) {
+    opts.push(`<option value="">${escapeHtml(placeholder)}</option>`);
+  }
+  for (const value of values || []) {
+    opts.push(`<option value="${escapeAttr(value)}">${escapeHtml(value)}</option>`);
+  }
+  selectEl.innerHTML = opts.join("");
+}
+
+function syncCustomRuleSetFieldEnabled(checkboxId, fieldId) {
+  const check = $(checkboxId);
+  const field = $(fieldId);
+  if (!check || !field) return;
+  const enabled = check.checked;
+  field.disabled = !enabled;
+  field.dataset.builderDisabled = enabled ? "0" : "1";
+}
+
+function syncCustomRuleBuilderAmountRow() {
+  const useAmount = Boolean($("#crb-use-amount")?.checked);
+  const row = $("#crb-amount-row");
+  const amountInput = $("#crb-amount-value");
+  const amountOp = $("#crb-amount-op");
+  if (row) row.classList.toggle("hidden", !useAmount);
+  if (amountInput) {
+    amountInput.disabled = !useAmount;
+    amountInput.dataset.builderDisabled = useAmount ? "0" : "1";
+  }
+  if (amountOp) {
+    amountOp.disabled = !useAmount;
+    amountOp.dataset.builderDisabled = useAmount ? "0" : "1";
+  }
+}
+
+function updateCustomRuleBuilderSubcategories() {
+  const options = reviewOptionsCache;
+  if (!options) return;
+  const category = ($("#crb-ai-category")?.value || "").trim();
+  const subs = orderedSubCategories(category, options);
+  renderDatalistOptions($("#crb-subcategory-list"), subs);
+}
+
+async function ensureCustomRuleBuilderOptions() {
+  if (customRulesBuilderOptionsLoaded && reviewOptionsCache) return reviewOptionsCache;
+  try {
+    const options = reviewOptionsCache || (await api("/api/review/options"));
+    reviewOptionsCache = options;
+    customRulesBuilderOptionsLoaded = true;
+
+    renderDatalistOptions($("#crb-merchant-list"), options.merchant_keys || []);
+    renderDatalistOptions($("#crb-category-list"), options.categories || []);
+    updateCustomRuleBuilderSubcategories();
+
+    fillCustomRuleBuilderSelect(
+      $("#crb-classification"),
+      options.classifications || ["Personal", "Business"]
+    );
+    fillCustomRuleBuilderSelect($("#crb-flow-type"), options.flow_types || []);
+    fillCustomRuleBuilderSelect($("#crb-expense-type"), options.expense_types || []);
+    fillCustomRuleBuilderSelect($("#crb-budget-tier"), CUSTOM_RULE_BUDGET_TIERS);
+    return options;
+  } catch (err) {
+    showCustomRuleBuilderMessage(err.message || "Could not load label options.", { isErr: true });
+    return null;
+  }
+}
+
+function wireCustomRuleBuilder() {
+  $("#crb-use-amount")?.addEventListener("change", syncCustomRuleBuilderAmountRow);
+
+  const setPairs = [
+    ["#crb-set-ai-category", "#crb-ai-category"],
+    ["#crb-set-ai-sub", "#crb-ai-sub"],
+    ["#crb-set-classification", "#crb-classification"],
+    ["#crb-set-flow-type", "#crb-flow-type"],
+    ["#crb-set-type", "#crb-expense-type"],
+    ["#crb-set-budget-tier", "#crb-budget-tier"],
+    ["#crb-set-category", "#crb-category"],
+    ["#crb-set-sub-type", "#crb-sub-type"],
+  ];
+  for (const [checkId, fieldId] of setPairs) {
+    $(checkId)?.addEventListener("change", () => syncCustomRuleSetFieldEnabled(checkId, fieldId));
+  }
+
+  $("#crb-ai-category")?.addEventListener("input", updateCustomRuleBuilderSubcategories);
+  $("#crb-ai-category")?.addEventListener("change", updateCustomRuleBuilderSubcategories);
+
+  $("#btn-crb-insert")?.addEventListener("click", () => applyCustomRuleBuilderText("insert"));
+  $("#btn-crb-replace")?.addEventListener("click", () => applyCustomRuleBuilderText("replace"));
+
+  syncCustomRuleBuilderAmountRow();
+  for (const [checkId, fieldId] of setPairs) {
+    syncCustomRuleSetFieldEnabled(checkId, fieldId);
+  }
+}
+
+wireCustomRuleBuilder();
 let reviewSuggestBusy = false;
 
 function setReviewPanelBusy(busy, { title, hint } = {}) {
@@ -1860,12 +2047,30 @@ function setCustomRulesBusy(busy, { title, hint } = {}) {
     "#btn-custom-rule-new",
     "#btn-custom-rules-preview-prev",
     "#btn-custom-rules-preview-next",
+    "#btn-crb-insert",
+    "#btn-crb-replace",
   ].forEach((sel) => {
     const el = $(sel);
     if (el) el.disabled = busy;
   });
   const input = $("#custom-rule-input");
   if (input) input.disabled = busy;
+  document.querySelectorAll(".custom-rule-builder-body input, .custom-rule-builder-body select").forEach((el) => {
+    el.disabled = busy || el.dataset.builderDisabled === "1";
+  });
+  if (!busy) {
+    syncCustomRuleBuilderAmountRow();
+    [
+      ["#crb-set-ai-category", "#crb-ai-category"],
+      ["#crb-set-ai-sub", "#crb-ai-sub"],
+      ["#crb-set-classification", "#crb-classification"],
+      ["#crb-set-flow-type", "#crb-flow-type"],
+      ["#crb-set-type", "#crb-expense-type"],
+      ["#crb-set-budget-tier", "#crb-budget-tier"],
+      ["#crb-set-category", "#crb-category"],
+      ["#crb-set-sub-type", "#crb-sub-type"],
+    ].forEach(([checkId, fieldId]) => syncCustomRuleSetFieldEnabled(checkId, fieldId));
+  }
 }
 
 function setReviewSuggestBusy(busy, { title, hint } = {}) {
@@ -2423,6 +2628,7 @@ async function loadCustomRules() {
 }
 
 async function loadCustomRulesPanel() {
+  await ensureCustomRuleBuilderOptions();
   await loadCustomRules();
   updateCustomRulesComposerMode();
 }

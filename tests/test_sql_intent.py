@@ -5,7 +5,9 @@ from webapp.agent.db_query import execute_readonly_sql
 from webapp.agent.sql_intent import (
     detect_compare_intent,
     extract_budget_months,
+    extract_last_n_months,
     needs_database_answer,
+    resolve_budget_months_for_question,
     validate_query_sql,
 )
 from webapp.db.schema import SCHEMA_SQL, _migrate_schema
@@ -21,10 +23,11 @@ def _conn() -> sqlite3.Connection:
         """
         INSERT INTO transactions (
             transaction_id, date, budget_month, amount, merchant_key,
-            ai_category, flow_type, imported_at
+            ai_category, flow_type, imported_at, source_file
         ) VALUES
-        ('t1', '2026-04-01', '2026-04', -100, 'Cafe', 'Dining', 'Expense', 'now'),
-        ('t2', '2026-05-01', '2026-05', -200, 'Cafe', 'Dining', 'Expense', 'now')
+        ('t1', '2026-04-01', '2026-04', -100, 'Cafe', 'Dining', 'Expense', 'now', 'ExportData-April-2025.csv'),
+        ('t2', '2026-05-01', '2026-05', -200, 'Cafe', 'Dining', 'Expense', 'now', 'ExportData-May-2025.csv'),
+        ('t3', '2026-05-15', '2026-05', -50, 'Capital One', 'Savings', 'Transfer', 'now', 'ExportData-May-2025.csv')
         """
     )
     conn.commit()
@@ -99,6 +102,44 @@ class SqlIntentTests(unittest.TestCase):
         stripped = strip_markdown_tables(answer)
         self.assertNotIn("| Date |", stripped)
         self.assertIn("smallest amounts", stripped)
+
+    def test_extract_last_n_months(self):
+        self.assertEqual(extract_last_n_months("load capital one for last 3 months"), 3)
+        self.assertIsNone(extract_last_n_months("how much in March?"))
+
+    def test_resolve_budget_months_explicit(self):
+        conn = _conn()
+        months = resolve_budget_months_for_question(
+            conn, "capital one transactions in April and May 2026"
+        )
+        self.assertEqual(months, ["2026-04", "2026-05"])
+
+    def test_rejects_source_file_for_merchant_query(self):
+        conn = _conn()
+        bad_sql = """
+            SELECT date, amount, merchant_key FROM transactions
+            WHERE source_file LIKE '%Capital One%'
+              AND budget_month IN ('2026-04','2026-05')
+        """
+        result = execute_readonly_sql(conn, bad_sql)
+        msg = "load capital one transactions for last 3 months"
+        err = validate_query_sql(msg, bad_sql, result, conn=conn)
+        self.assertIsNotNone(err)
+        self.assertIn("merchant_key", err)
+        self.assertIn("source_file", err)
+
+    def test_accepts_merchant_key_for_merchant_query(self):
+        conn = _conn()
+        good_sql = """
+            SELECT date, amount, merchant_key FROM transactions
+            WHERE merchant_key LIKE '%Capital One%'
+              AND budget_month IN ('2026-04','2026-05')
+        """
+        result = execute_readonly_sql(conn, good_sql)
+        msg = "load capital one transactions for last 2 months"
+        err = validate_query_sql(msg, good_sql, result, conn=conn)
+        self.assertIsNone(err)
+        self.assertEqual(result["row_count"], 1)
 
     def test_coalesce_keeps_prose_drops_table(self):
         display = {"type": "table", "title": "Query results", "rows": [{}], "summary": "5 row(s)"}

@@ -362,6 +362,21 @@ main { padding: 1rem 1.5rem 2rem; max-width: none; width: 100%; }
 
 .chat-main { min-width: 0; }
 
+/* Workspace chat: fixed log area — scroll inside, height does not grow with messages */
+.chat-layout-workspace .chat-main {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 11rem);
+  max-height: calc(100vh - 11rem);
+}
+
+.chat-layout-workspace #chat-log {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+}
+
 .chat-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -1380,6 +1395,168 @@ button:hover { background: var(--accent-hover); }
 .custom-rules-composer-mode {
   margin: 0 0 0.5rem;
   font-size: 0.85rem;
+}
+
+.custom-rule-cheatsheet,
+.custom-rule-builder {
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.custom-rule-cheatsheet > summary,
+.custom-rule-builder > summary {
+  cursor: pointer;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  user-select: none;
+}
+
+.custom-rule-cheatsheet-body,
+.custom-rule-builder-body {
+  padding: 0 0.65rem 0.65rem;
+  font-size: 0.82rem;
+}
+
+.custom-rule-cheatsheet-body h3 {
+  margin: 0.65rem 0 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.custom-rule-cheatsheet-body ul {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.custom-rule-cheatsheet-body li {
+  margin-bottom: 0.2rem;
+}
+
+.custom-rule-example {
+  margin: 0.35rem 0 0.65rem;
+  padding: 0.45rem 0.55rem;
+  border-left: 3px solid var(--border);
+  background: var(--surface);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  word-break: break-word;
+  color: var(--text);
+}
+
+.custom-rule-builder fieldset {
+  border: none;
+  margin: 0 0 0.65rem;
+  padding: 0;
+}
+
+.custom-rule-builder legend {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+}
+
+.custom-rule-builder-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.45rem;
+}
+
+.custom-rule-builder-row select,
+.custom-rule-builder-row input[type="text"] {
+  flex: 1 1 8rem;
+  min-width: 0;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.custom-rule-builder-label {
+  font-size: 0.82rem;
+  color: var(--muted);
+  min-width: 3.5rem;
+}
+
+.custom-rule-builder-check {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  margin-bottom: 0.35rem;
+  cursor: pointer;
+}
+
+.custom-rule-builder-amount.hidden {
+  display: none;
+}
+
+.custom-rule-set-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.custom-rule-set-row {
+  display: grid;
+  grid-template-columns: auto 7.5rem 1fr;
+  gap: 0.4rem;
+  align-items: center;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.custom-rule-set-row > span {
+  color: var(--muted);
+}
+
+.custom-rule-set-row input[type="text"],
+.custom-rule-set-row select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.custom-rule-set-row input:disabled,
+.custom-rule-set-row select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.custom-rule-builder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.custom-rule-builder-actions button {
+  width: auto;
+}
+
+.custom-rule-builder-msg {
+  margin: 0.45rem 0 0;
+  min-height: 1.1em;
+}
+
+.custom-rule-builder-msg.err {
+  color: #f87171;
 }
 
 .custom-rules-composer textarea {
