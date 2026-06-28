@@ -176,6 +176,23 @@ Single index for planned and completed work. Use this file to pick **what to do 
 
 ---
 
+## 8. Decision memory & Agent Workspace
+
+**Detail:** [DECISION_MEMORY.md](DECISION_MEMORY.md) · [AGENT_WORKSPACE.md](AGENT_WORKSPACE.md)
+
+| Status | Item | Detail |
+|--------|------|--------|
+| [x] | `decision_events` schema + HITL instrumentation | Confirm, audit dismiss, taxonomy apply, edit corrections |
+| [x] | Unified pending inbox API | `GET /api/pending-confirmations` |
+| [x] | Learning Agent (opt-in scheduler + CLI) | `ai_insights`, `POST /api/learning-agent/run` |
+| [x] | Agent Workspace UI (`UI_AGENT_WORKSPACE`) | Workspace tab + inbox panel; legacy tabs hidden |
+| [x] | Cadence tab hidden; cadence proposals via inbox | `UI_SHOW_CADENCE=0` default with workspace |
+| [x] | Accepted insights → `review_suggest` context | `recent_user_corrections` in prompt |
+| [ ] | LLM Decision Analyst (`LEARNING_AGENT_MODEL`, `query_sql` loop) | DECISION_MEMORY § Learning Agent |
+| [ ] | Full orchestrator + `monthly_close` workflow | AGENTIC_AI_DESIGN Phase 1–2 |
+
+---
+
 ## Suggested order (next work)
 
 1. **Pipeline lookup save hardening** — pure in-memory merge on save; keep confirmed user/web merchant labels authoritative ([PIPELINE_DB_LOOKUPS.md](../pipeline/PIPELINE_DB_LOOKUPS.md))
@@ -194,6 +211,8 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [PRODUCT_CHARTER.md](PRODUCT_CHARTER.md) | **Master product reference** — vision, core design, decision gate |
 | [AI_SESSION_CONTEXT.md](AI_SESSION_CONTEXT.md) | **New chat bootstrap** — product direction, pitfalls, workflows |
 | [ROADMAP.md](ROADMAP.md) | This file — master checklist |
+| [DECISION_MEMORY.md](DECISION_MEMORY.md) | Decision event log + Learning Agent |
+| [AGENT_WORKSPACE.md](AGENT_WORKSPACE.md) | Unified Workspace UI + inbox |
 | [EXPENSE_CADENCE.md](../cadence/EXPENSE_CADENCE.md) | Phase A — schema, normalization, APIs |
 | [EXPENSE_CADENCE_PHASE_B.md](../cadence/EXPENSE_CADENCE_PHASE_B.md) | Analytics + chat views (`expense_view`) |
 | [EXPENSE_CADENCE_PHASE_C.md](../cadence/EXPENSE_CADENCE_PHASE_C.md) | Edit UI for cadence |

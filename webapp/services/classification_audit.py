@@ -941,6 +941,13 @@ def list_findings(
 
 
 def dismiss_finding(conn: sqlite3.Connection, finding_id: int) -> bool:
+    row = conn.execute(
+        "SELECT * FROM classification_audit_findings WHERE id = ?",
+        (finding_id,),
+    ).fetchone()
+    if row is None:
+        return False
+    finding = dict(row)
     cur = conn.execute(
         """
         UPDATE classification_audit_findings
@@ -949,6 +956,24 @@ def dismiss_finding(conn: sqlite3.Connection, finding_id: int) -> bool:
         """,
         (finding_id,),
     )
+    if cur.rowcount:
+        from webapp.services.decision_events import log_decision_event
+
+        log_decision_event(
+            conn,
+            source="classification_audit",
+            entity_type="finding",
+            entity_key=str(finding_id),
+            action="dismissed",
+            ai_proposal={
+                "suggested_category": finding.get("suggested_category"),
+                "suggested_sub": finding.get("suggested_sub"),
+                "production_category": finding.get("production_category"),
+                "production_sub": finding.get("production_sub"),
+            },
+            user_outcome={"status": "dismissed"},
+            context={"merchant_key": finding.get("merchant_key")},
+        )
     conn.commit()
     return cur.rowcount > 0
 

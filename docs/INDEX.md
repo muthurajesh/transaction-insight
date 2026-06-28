@@ -14,6 +14,8 @@ Start here to find the right doc. **Product decisions** always defer to the char
 | [product/PRODUCT_CHARTER.md](./product/PRODUCT_CHARTER.md) | **Master reference** — vision, core design, AI capabilities, decision gate | Active |
 | [product/ROADMAP.md](./product/ROADMAP.md) | Shipped vs planned work; checkboxes and links to detail docs | Active |
 | [product/AI_SESSION_CONTEXT.md](./product/AI_SESSION_CONTEXT.md) | Bootstrap for new AI coding sessions (stack, pitfalls, file map) | Active |
+| [product/DECISION_MEMORY.md](./product/DECISION_MEMORY.md) | Decision event log + Learning Agent | Shipped |
+| [product/AGENT_WORKSPACE.md](./product/AGENT_WORKSPACE.md) | Unified Workspace UI + pending inbox | Shipped |
 | [product/AGENTIC_AI_DESIGN.md](./product/AGENTIC_AI_DESIGN.md) | Future agent-native architecture proposal | Design only — not committed scope |
 
 ---

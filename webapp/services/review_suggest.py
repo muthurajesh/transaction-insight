@@ -47,6 +47,7 @@ Return ONLY valid JSON:
 
 Guidelines:
 - Prefer lookup_rules and similar_confirmed_merchants when they clearly match.
+- When recent_user_corrections is non-empty, use those accepted patterns to steer ambiguous merchants.
 - flow_type: Expense for normal spending; Income for payroll/interest; Transfer for account moves;
   Adjustment for refunds/credits.
 - expense_type: Fixed for recurring charges; Variable for discretionary spend.
@@ -348,6 +349,10 @@ def _gather_item_context(
         """,
     ).fetchall()
     ctx["recently_confirmed"] = [dict(r) for r in recent]
+
+    from webapp.services.decision_events import list_accepted_insights_for_prompt
+
+    ctx["recent_user_corrections"] = list_accepted_insights_for_prompt(conn, limit=12)
 
     lookup = _merchant_row_from_db(conn, merchant_key)
     if lookup:

@@ -31,9 +31,15 @@ def env_bool(name: str, *, default: bool = True) -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
-UI_SHOW_CADENCE = env_bool("UI_SHOW_CADENCE", default=True)
+UI_AGENT_WORKSPACE = env_bool("UI_AGENT_WORKSPACE", default=True)
+UI_SHOW_CADENCE = env_bool("UI_SHOW_CADENCE", default=not UI_AGENT_WORKSPACE)
 
 CLASSIFICATION_AUDIT_ENABLED = env_bool("CLASSIFICATION_AUDIT_ENABLED", default=True)
+
+LEARNING_AGENT_ENABLED = env_bool("LEARNING_AGENT_ENABLED", default=False)
+LEARNING_AGENT_INTERVAL_HOURS = max(
+    1, int(os.getenv("LEARNING_AGENT_INTERVAL_HOURS", "3"))
+)
 
 
 @dataclass

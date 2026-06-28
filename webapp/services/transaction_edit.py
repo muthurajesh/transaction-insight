@@ -439,6 +439,25 @@ def bulk_update_labels(
     if not ids:
         raise ValueError("At least one transaction_id is required")
 
+    before_row = conn.execute(
+        """
+        SELECT ai_category, ai_sub_category, expense_type, classification, flow_type
+        FROM transactions WHERE transaction_id = ?
+        """,
+        (ids[0],),
+    ).fetchone()
+    before_labels = (
+        {
+            "ai_category": str(before_row["ai_category"] or ""),
+            "ai_sub_category": str(before_row["ai_sub_category"] or ""),
+            "expense_type": str(before_row["expense_type"] or ""),
+            "classification": str(before_row["classification"] or ""),
+            "flow_type": str(before_row["flow_type"] or ""),
+        }
+        if before_row
+        else {}
+    )
+
     sub = (ai_sub_category or "").strip()
     placeholders = ",".join("?" * len(ids))
 
@@ -556,6 +575,31 @@ def bulk_update_labels(
         cadence_rule_saved = True
 
     conn.commit()
+    after_labels = {
+        "ai_category": category,
+        "ai_sub_category": sub,
+        "expense_type": expense_type or before_labels.get("expense_type") or "Variable",
+        "classification": classification or before_labels.get("classification") or "Personal",
+        "flow_type": flow_type or before_labels.get("flow_type") or "Expense",
+    }
+    if before_labels and any(
+        str(before_labels.get(k) or "").strip().lower()
+        != str(after_labels.get(k) or "").strip().lower()
+        for k in ("ai_category", "ai_sub_category", "expense_type", "classification")
+    ):
+        from webapp.services.decision_events import log_decision_event
+
+        log_decision_event(
+            conn,
+            source="edit_transactions",
+            entity_type="merchant",
+            entity_key=label_merchant,
+            action="edited",
+            ai_proposal=before_labels,
+            user_outcome=after_labels,
+            context={"transaction_ids": ids, "rows_updated": cur.rowcount},
+        )
+        conn.commit()
     result: dict[str, Any] = {
         "rows_updated": cur.rowcount,
         "transaction_ids": ids,

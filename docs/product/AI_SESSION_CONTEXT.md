@@ -97,6 +97,13 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 - Post-edit AI insight + CustomRule suggest; duplicate rule suppression ([EDIT_INSIGHTS.md](../rules/EDIT_INSIGHTS.md), `custom_rule_similarity.py`)
 - **Custom Rules tab** — preview matches (current vs proposed), read-only compiled JSON, `flow_type` in rules, apply one/all ([CUSTOM_RULES.md](../rules/CUSTOM_RULES.md))
 
+### Agent Workspace & decision memory
+
+- **`UI_AGENT_WORKSPACE=1` (default):** Workspace tab = import strip + chat + pending inbox; legacy Import / Confirm / AI Rules / Cadence tabs hidden ([AGENT_WORKSPACE.md](AGENT_WORKSPACE.md))
+- **`decision_events`** + **`ai_insights`**; HITL logging on confirm, audit dismiss, taxonomy apply, edit corrections ([DECISION_MEMORY.md](DECISION_MEMORY.md))
+- **Learning Agent:** opt-in (`LEARNING_AGENT_ENABLED=0` default); deterministic pattern scan → inbox; scheduler + `POST /api/learning-agent/run`; accepted insights → `review_suggest` context
+- **Pending:** LLM Decision Analyst (`LEARNING_AGENT_MODEL`, `query_sql` tool loop) — not built yet
+
 ### Chat UI
 
 - Tiers 1–2 done; routing fix for top categories ([CHAT_RICH_UI.md](../chat/CHAT_RICH_UI.md), [CHAT_ROUTING.md](../chat/CHAT_ROUTING.md))
@@ -133,6 +140,7 @@ Per-phase timers in `webapp/pipeline/run.py` + `webapp/processing/timer.py` `Pha
 | Edit | `webapp/services/transaction_edit.py`, `edit_insights.py`, `custom_rules.py` |
 | DB save | `webapp/adapters/dataframe_store.py` |
 | UI | `webapp/static/app.js`, `index.html` |
+| Decision memory | `webapp/services/decision_events.py`, `learning_agent.py`, `pending_confirmations.py` |
 
 ---
 

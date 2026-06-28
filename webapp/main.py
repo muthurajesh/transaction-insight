@@ -22,7 +22,10 @@ from webapp.config import (
     LLM_PROVIDER,
     PIPELINE_MODEL,
     STATIC_DIR,
+    UI_AGENT_WORKSPACE,
     UI_SHOW_CADENCE,
+    LEARNING_AGENT_ENABLED,
+    LEARNING_AGENT_INTERVAL_HOURS,
 )
 from webapp.db.schema import get_connection, init_db
 from webapp.services.categorize import (
@@ -93,11 +96,16 @@ from webapp.services import custom_reports as custom_report_service
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from webapp.llm.request_log import setup_llm_logging
+    from webapp.services.learning_agent_scheduler import LearningAgentScheduler
 
     setup_llm_logging()
     init_db(DB_PATH)
     INBOX_DIR.mkdir(parents=True, exist_ok=True)
+    scheduler = LearningAgentScheduler()
+    scheduler.start()
+    app.state.learning_agent_scheduler = scheduler
     yield
+    scheduler.stop()
 
 
 app = FastAPI(title="Transaction Insight", lifespan=lifespan)
@@ -120,6 +128,21 @@ class ReviewConfirmRequest(BaseModel):
     transaction_id: str | None = None
     scope: str = "pending"
     replace_conflicting_rule: bool = False
+    suggested_labels: dict[str, str] | None = None
+
+
+class LearningAgentSettingsRequest(BaseModel):
+    enabled: bool | None = None
+    interval_hours: int | None = Field(default=None, ge=1, le=168)
+
+
+class InsightActionRequest(BaseModel):
+    confirm: str = ""
+
+
+class PendingConfirmationActionRequest(BaseModel):
+    action: str = Field(description="approve | dismiss | defer")
+    edited_proposal: dict[str, Any] | None = None
 
 
 class ReviewConfirmPreviewRequest(BaseModel):
@@ -291,6 +314,9 @@ def api_status() -> dict[str, Any]:
             "months": [r["budget_month"] for r in months],
             "table_counts": counts,
             "ui_show_cadence": UI_SHOW_CADENCE,
+            "ui_agent_workspace": UI_AGENT_WORKSPACE,
+            "learning_agent_enabled": LEARNING_AGENT_ENABLED,
+            "learning_agent_interval_hours": LEARNING_AGENT_INTERVAL_HOURS,
         }
     finally:
         conn.close()
@@ -600,6 +626,66 @@ def api_classification_audit_open_merchant(finding_id: int) -> dict[str, Any]:
     try:
         try:
             return open_merchant_payload(conn, finding_id)
+        except ValueError as exc:
+            raise HTTPException(404, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.get("/api/pending-confirmations")
+def api_pending_confirmations() -> dict[str, Any]:
+    from webapp.services.pending_confirmations import list_pending_confirmations
+
+    conn = _conn()
+    try:
+        return list_pending_confirmations(conn)
+    finally:
+        conn.close()
+
+
+@app.get("/api/learning-agent/status")
+def api_learning_agent_status() -> dict[str, Any]:
+    from webapp.services.learning_agent import learning_agent_status
+
+    conn = _conn()
+    try:
+        return learning_agent_status(conn)
+    finally:
+        conn.close()
+
+
+@app.post("/api/learning-agent/run")
+def api_learning_agent_run() -> dict[str, Any]:
+    from webapp.services.learning_agent import run_learning_agent
+
+    try:
+        return run_learning_agent(DB_PATH, force=True)
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+
+@app.post("/api/learning-agent/insights/{insight_id}/accept")
+def api_learning_agent_accept_insight(insight_id: int) -> dict[str, Any]:
+    from webapp.services.learning_agent import accept_insight
+
+    conn = _conn()
+    try:
+        try:
+            return accept_insight(conn, insight_id)
+        except ValueError as exc:
+            raise HTTPException(404, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.post("/api/learning-agent/insights/{insight_id}/reject")
+def api_learning_agent_reject_insight(insight_id: int) -> dict[str, Any]:
+    from webapp.services.learning_agent import reject_insight
+
+    conn = _conn()
+    try:
+        try:
+            return reject_insight(conn, insight_id)
         except ValueError as exc:
             raise HTTPException(404, str(exc)) from exc
     finally:
@@ -1197,6 +1283,7 @@ def api_review_confirm(merchant_key: str, body: ReviewConfirmRequest) -> dict[st
                 transaction_id=body.transaction_id,
                 scope=body.scope,
                 replace_conflicting_rule=body.replace_conflicting_rule,
+                suggested_labels=body.suggested_labels,
             )
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
@@ -1273,6 +1360,9 @@ def api_settings() -> dict[str, Any]:
             "lookup_source": "sqlite",
             "table_counts": table_counts(conn),
             "ui_show_cadence": UI_SHOW_CADENCE,
+            "ui_agent_workspace": UI_AGENT_WORKSPACE,
+            "learning_agent_enabled": LEARNING_AGENT_ENABLED,
+            "learning_agent_interval_hours": LEARNING_AGENT_INTERVAL_HOURS,
         }
     finally:
         conn.close()

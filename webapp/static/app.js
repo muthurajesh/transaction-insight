@@ -1,19 +1,40 @@
 const $ = (sel) => document.querySelector(sel);
 
 let uiShowCadence = true;
+let uiAgentWorkspace = true;
+let workspaceInboxItem = null;
+const reviewSuggestedLabels = new Map();
 
 function applyUiFeatureFlags() {
   const cadenceTab = $("#tab-cadence");
   const cadencePanel = $("#panel-cadence");
-  if (cadenceTab) cadenceTab.classList.toggle("hidden", !uiShowCadence);
+  if (cadenceTab) cadenceTab.classList.toggle("hidden", !uiShowCadence || uiAgentWorkspace);
   if (cadencePanel) {
-    cadencePanel.classList.toggle("hidden", !uiShowCadence);
-    if (!uiShowCadence && cadencePanel.classList.contains("active")) {
+    cadencePanel.classList.toggle("hidden", !uiShowCadence || uiAgentWorkspace);
+    if ((!uiShowCadence || uiAgentWorkspace) && cadencePanel.classList.contains("active")) {
       setTab("chat", { skipCadenceGuard: true });
     }
   }
   const cadenceRulesCard = $("#settings-cadence-rules-card");
-  if (cadenceRulesCard) cadenceRulesCard.classList.toggle("hidden", !uiShowCadence);
+  if (cadenceRulesCard) cadenceRulesCard.classList.toggle("hidden", !uiShowCadence || uiAgentWorkspace);
+
+  document.querySelectorAll(".tab-legacy-workspace").forEach((tab) => {
+    tab.classList.toggle("hidden", uiAgentWorkspace);
+  });
+
+  const chatTab = $("#tab-chat");
+  if (chatTab) chatTab.textContent = uiAgentWorkspace ? "Workspace" : "Chat";
+
+  const importStrip = $("#workspace-import-strip");
+  const inboxPanel = $("#workspace-inbox-panel");
+  const chatLayout = $("#chat-layout");
+  if (importStrip) importStrip.classList.toggle("hidden", !uiAgentWorkspace);
+  if (inboxPanel) inboxPanel.classList.toggle("hidden", !uiAgentWorkspace);
+  if (chatLayout) chatLayout.classList.toggle("workspace-inbox-open", uiAgentWorkspace);
+
+  if (uiAgentWorkspace) {
+    loadWorkspaceInbox().catch(() => {});
+  }
 }
 
 async function api(path, options = {}) {
@@ -40,7 +61,10 @@ function setTab(name, options = {}) {
     loadSettings();
     if (uiShowCadence) loadCadenceRulesList();
   }
-  if (name === "chat") loadChatHistory();
+  if (name === "chat") {
+    loadChatHistory();
+    if (uiAgentWorkspace) loadWorkspaceInbox().catch(() => {});
+  }
   if (name === "edit") loadTransactionEditor();
   if (name === "custom-rules") loadCustomRulesPanel();
   if (name === "cadence" && uiShowCadence) loadCadencePanel();
@@ -442,6 +466,7 @@ function focusReviewMerchantIfRequested() {
 async function loadStatus() {
   const s = await api("/api/status");
   uiShowCadence = s.ui_show_cadence !== false;
+  uiAgentWorkspace = s.ui_agent_workspace !== false;
   applyUiFeatureFlags();
   const provider = s.llm_provider ? `${s.llm_provider} · ` : "";
   let modelLabel = s.chat_model || s.llm_model || "";
@@ -1788,6 +1813,10 @@ function setReviewSuggestBusy(busy, { title, hint } = {}) {
 function applyReviewSuggestionToCard(card, suggestion) {
   if (!card || !suggestion) return;
   const labels = suggestion.labels || {};
+  const key = card.dataset.merchantKey || card.dataset.transactionId || "";
+  if (key && labels.ai_category) {
+    reviewSuggestedLabels.set(key, { ...labels });
+  }
   const idx = card.dataset.reviewIdx;
   const setVal = (id, val) => {
     const el = card.querySelector(`#review-${idx}-${id}`);
@@ -4209,14 +4238,17 @@ async function submitReviewConfirm(scope) {
   }
   try {
     const mk = encodeURIComponent(item.merchant_key);
+    const suggestKey = item.transaction_id || item.merchant_key;
     const res = await api(`/api/review/${mk}/confirm`, {
       method: "POST",
       body: JSON.stringify({
         ...payload,
         scope,
         replace_conflicting_rule: replaceRule,
+        suggested_labels: reviewSuggestedLabels.get(suggestKey) || null,
       }),
     });
+    if (suggestKey) reviewSuggestedLabels.delete(suggestKey);
     if (cardEl) cardEl.remove();
     updateReviewBulkCount();
     closeReviewConfirmModal();
@@ -4713,6 +4745,7 @@ async function runCategorizeStream() {
       loadStatus();
       reviewOptionsCache = null;
       onboardingAfterProcessingDone();
+      if (uiAgentWorkspace) loadWorkspaceInbox().catch(() => {});
       setTimeout(() => loadClassificationAudit().catch(() => {}), 10000);
       setTimeout(() => loadClassificationAudit().catch(() => {}), 45000);
     } else if (data.type === "error") {
@@ -4758,10 +4791,238 @@ async function loadSettings() {
       ([k, v]) => `${k}: ${v}`
     );
     $("#settings-counts").textContent = lines.join("\n") || "Empty";
+    await loadLearningAgentSettings();
   } catch (err) {
     $("#settings-counts").textContent = `Error: ${err.message}`;
   }
 }
+
+async function loadLearningAgentSettings() {
+  const el = $("#learning-agent-status");
+  if (!el) return;
+  try {
+    const st = await api("/api/learning-agent/status");
+    const last = st.last_run;
+    const lines = [
+      `Enabled (env): ${st.enabled ? "yes" : "no"}`,
+      `Interval: every ${st.interval_hours} hour(s)`,
+      `Open insights: ${st.open_insights}`,
+    ];
+    if (last) {
+      lines.push(`Last run: ${last.started_at} — ${last.status}`);
+      if (st.last_detail?.insights_inserted != null) {
+        lines.push(`Insights added: ${st.last_detail.insights_inserted}`);
+      }
+    }
+    el.textContent = lines.join("\n");
+  } catch (err) {
+    el.textContent = `Error: ${err.message}`;
+  }
+}
+
+function workspaceTypeLabel(type) {
+  const map = {
+    merchant_label: "Label",
+    quality_flag: "Quality",
+    taxonomy_merge: "Taxonomy",
+    cadence_rule: "Cadence",
+    pattern_insight: "Insight",
+    custom_rule: "Rule",
+  };
+  return map[type] || type || "Proposal";
+}
+
+async function loadWorkspaceInbox() {
+  const list = $("#workspace-inbox-list");
+  const countEl = $("#workspace-inbox-count");
+  if (!list || !uiAgentWorkspace) return;
+  try {
+    const data = await api("/api/pending-confirmations");
+    const items = data.items || [];
+    if (countEl) countEl.textContent = String(data.count ?? items.length);
+    if (!items.length) {
+      list.innerHTML = '<li class="hint">No pending AI proposals.</li>';
+      return;
+    }
+    list.innerHTML = "";
+    for (const item of items) {
+      const li = document.createElement("li");
+      li.className = "workspace-inbox-item";
+      li.dataset.confirmationId = item.confirmation_id || "";
+      li.innerHTML = `
+        <div class="workspace-inbox-item-type">${escapeHtml(workspaceTypeLabel(item.confirmation_type))}</div>
+        <div class="workspace-inbox-item-title">${escapeHtml(item.title || "—")}</div>
+        <p class="workspace-inbox-item-summary">${escapeHtml(item.summary || "")}</p>
+      `;
+      li.addEventListener("click", () => openWorkspaceConfirmModal(item));
+      list.appendChild(li);
+    }
+  } catch (err) {
+    list.innerHTML = `<li class="hint">Error: ${escapeHtml(err.message)}</li>`;
+  }
+}
+
+function closeWorkspaceConfirmModal() {
+  workspaceInboxItem = null;
+  const overlay = $("#workspace-confirm-overlay");
+  overlay?.classList.add("hidden");
+  overlay?.setAttribute("aria-hidden", "true");
+}
+
+function openWorkspaceConfirmModal(item) {
+  workspaceInboxItem = item;
+  const title = $("#workspace-confirm-title");
+  const summary = $("#workspace-confirm-summary");
+  const detail = $("#workspace-confirm-detail");
+  const errEl = $("#workspace-confirm-error");
+  if (title) title.textContent = item.title || "Review AI proposal";
+  if (summary) {
+    summary.textContent = item.summary || "";
+  }
+  if (detail) {
+    detail.textContent = JSON.stringify(item.proposal || {}, null, 2);
+  }
+  if (errEl) {
+    errEl.textContent = "";
+    errEl.classList.add("hidden");
+  }
+  const overlay = $("#workspace-confirm-overlay");
+  overlay?.classList.remove("hidden");
+  overlay?.setAttribute("aria-hidden", "false");
+}
+
+async function handleWorkspaceConfirmAction(action) {
+  if (!workspaceInboxItem) return;
+  const errEl = $("#workspace-confirm-error");
+  const item = workspaceInboxItem;
+  try {
+    if (action === "edit") {
+      const mk = item.entity_key || item.title || "";
+      closeWorkspaceConfirmModal();
+      setTab("edit");
+      const q = $("#edit-search-q");
+      if (q && mk) {
+        q.value = mk;
+        $("#edit-search-form")?.requestSubmit();
+      }
+      return;
+    }
+    if (action === "defer") {
+      closeWorkspaceConfirmModal();
+      return;
+    }
+    if (item.confirmation_type === "quality_flag" && item.reference_id != null) {
+      if (action === "dismiss") {
+        await api(`/api/classification-audit/findings/${item.reference_id}/dismiss`, {
+          method: "POST",
+        });
+      } else if (action === "approve") {
+        closeWorkspaceConfirmModal();
+        setTab("edit");
+        const q = $("#edit-search-q");
+        if (q) {
+          q.value = item.entity_key || "";
+          $("#edit-search-form")?.requestSubmit();
+        }
+        return;
+      }
+    } else if (item.source === "learning_agent" && item.reference_id != null) {
+      const path =
+        action === "approve"
+          ? `/api/learning-agent/insights/${item.reference_id}/accept`
+          : `/api/learning-agent/insights/${item.reference_id}/reject`;
+      await api(path, { method: "POST" });
+    } else if (item.confirmation_type === "merchant_label" && action === "approve") {
+      closeWorkspaceConfirmModal();
+      setTab("edit");
+      const q = $("#edit-search-q");
+      if (q) {
+        q.value = item.entity_key || "";
+        $("#edit-search-form")?.requestSubmit();
+      }
+      return;
+    }
+    closeWorkspaceConfirmModal();
+    loadWorkspaceInbox().catch(() => {});
+    loadStatus().catch(() => {});
+  } catch (err) {
+    if (errEl) {
+      errEl.textContent = err.message;
+      errEl.classList.remove("hidden");
+    }
+  }
+}
+
+$("#btn-workspace-inbox-refresh")?.addEventListener("click", () => {
+  loadWorkspaceInbox().catch(() => {});
+});
+$("#btn-workspace-confirm-close")?.addEventListener("click", closeWorkspaceConfirmModal);
+$("#btn-workspace-confirm-dismiss")?.addEventListener("click", () => {
+  handleWorkspaceConfirmAction("dismiss").catch(() => {});
+});
+$("#btn-workspace-confirm-defer")?.addEventListener("click", () => {
+  handleWorkspaceConfirmAction("defer").catch(() => {});
+});
+$("#btn-workspace-confirm-edit")?.addEventListener("click", () => {
+  handleWorkspaceConfirmAction("edit").catch(() => {});
+});
+$("#btn-workspace-confirm-approve")?.addEventListener("click", () => {
+  handleWorkspaceConfirmAction("approve").catch(() => {});
+});
+$("#workspace-confirm-overlay")?.addEventListener("click", (e) => {
+  if (e.target?.id === "workspace-confirm-overlay") closeWorkspaceConfirmModal();
+});
+
+$("#btn-learning-agent-run")?.addEventListener("click", async () => {
+  const resultEl = $("#learning-agent-run-result");
+  const btn = $("#btn-learning-agent-run");
+  if (btn) btn.disabled = true;
+  if (resultEl) {
+    resultEl.classList.remove("hidden");
+    resultEl.textContent = "Running…";
+  }
+  try {
+    const res = await api("/api/learning-agent/run", { method: "POST" });
+    if (resultEl) {
+      resultEl.textContent = res.skipped
+        ? "Skipped — set LEARNING_AGENT_ENABLED=1 in config/.env"
+        : `Done — ${res.insights_inserted ?? 0} insight(s) added`;
+    }
+    loadLearningAgentSettings().catch(() => {});
+    loadWorkspaceInbox().catch(() => {});
+  } catch (err) {
+    if (resultEl) resultEl.textContent = err.message;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+});
+
+function setWorkspaceSelectedFiles(files) {
+  const el = $("#workspace-selected-files");
+  if (!el) return;
+  if (!files?.length) {
+    el.textContent = "";
+    el.classList.add("hidden");
+    return;
+  }
+  el.textContent = [...files].map((f) => f.name).join(", ");
+  el.classList.remove("hidden");
+}
+
+$("#btn-workspace-choose-upload")?.addEventListener("click", () => {
+  $("#workspace-file-input")?.click();
+});
+
+$("#btn-workspace-categorize")?.addEventListener("click", () => {
+  runCategorizeStream().catch(() => {});
+});
+
+$("#workspace-file-input")?.addEventListener("change", (e) => {
+  const files = e.target.files;
+  if (!files?.length) return;
+  setWorkspaceSelectedFiles(files);
+  uploadCsvFiles(files).catch(() => {});
+});
 
 $("#btn-clear-data").addEventListener("click", async () => {
   const ok = window.confirm(

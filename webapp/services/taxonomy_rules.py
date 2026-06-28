@@ -1103,6 +1103,20 @@ def apply_taxonomy_proposals(
     stats = _apply_all_proposals(
         conn, proposals, reconcile=reconcile, dry_run=False
     )
+    from webapp.services.decision_events import log_decision_event
+
+    for p in proposals:
+        log_decision_event(
+            conn,
+            source="taxonomy_rules",
+            entity_type="taxonomy",
+            entity_key=str(p.get("id") or p.get("kind") or ""),
+            action="accepted",
+            ai_proposal=p,
+            user_outcome={"applied": True},
+            context={"reconcile": reconcile},
+        )
+    conn.commit()
     return {
         "proposal_count": len(proposals),
         "applied_proposal_ids": [p.get("id") for p in proposals],

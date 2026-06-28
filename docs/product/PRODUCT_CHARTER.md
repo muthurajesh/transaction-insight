@@ -72,6 +72,33 @@ User action (confirm / edit / rule / cadence save)
 | Chat & analytics | LLM + SQL tools over live DB | Yes, grounded in data |
 | Optional future: semantic retrieval (RAG) | Fuzzy “similar past decisions” | Yes, when keys are weak |
 
+### Tier D — Decision memory (meta-learning)
+
+Distinct from **outcome memory** (confirmed labels in SQLite). Decision memory captures how the user responds to **AI proposals**:
+
+```text
+AI proposal → user accept | edit | reject | defer
+        │
+        ▼
+  decision_events (append-only log)
+        │
+        ▼
+  Learning Agent (scheduled, opt-in) → ai_insights → Workspace inbox
+        │
+        ▼
+  Accepted insights → prompt context for review_suggest (still HITL)
+```
+
+| Action surface | Logged when |
+|----------------|-------------|
+| Confirm Categories | User confirms with optional AI suggestion snapshot |
+| Classification audit | User dismisses a finding |
+| AI Rules | User applies taxonomy proposals |
+| Edit Transactions | User changes labels (correction vs prior row) |
+| Learning Agent inbox | User accepts or rejects an insight |
+
+Implementation: [product/DECISION_MEMORY.md](DECISION_MEMORY.md), [product/AGENT_WORKSPACE.md](AGENT_WORKSPACE.md).
+
 **Goal:** suggestions become **more accurate and faster** because known truth is reused — not because we grow keyword `if` statements in code.
 
 RAG (vector retrieval over text chunks) is one industry pattern for combining a fixed LLM with external knowledge. This project’s primary pattern is **structured memory in SQLite** plus prompt context — better suited to repeat merchants, exact rules, and SQL-grounded chat. Semantic retrieval may help later for fuzzy merchant matching or decision notes; it is not the core design for “always categorize Merchant A as Category X.”

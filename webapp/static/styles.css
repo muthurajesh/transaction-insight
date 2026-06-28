@@ -93,6 +93,105 @@ main { padding: 1rem 1.5rem 2rem; max-width: none; width: 100%; }
   grid-template-columns: minmax(0, 1fr) 300px;
 }
 
+.chat-layout.workspace-inbox-open {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+}
+
+.chat-layout.workspace-inbox-open.help-open {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+}
+
+.workspace-import-strip {
+  margin-bottom: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.03));
+}
+
+.workspace-import-hint { margin: 0 0 0.5rem; font-size: 0.88rem; }
+
+.workspace-inbox-panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem;
+  max-height: calc(100vh - 12rem);
+  overflow: auto;
+  background: var(--surface-2, rgba(255, 255, 255, 0.02));
+}
+
+.workspace-inbox-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.workspace-inbox-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  flex: 1;
+}
+
+.workspace-inbox-count {
+  font-size: 0.82rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: var(--accent-dim, rgba(100, 149, 237, 0.2));
+}
+
+.workspace-inbox-hint { font-size: 0.8rem; margin: 0 0 0.65rem; }
+
+.workspace-inbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.workspace-inbox-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.workspace-inbox-item:hover { border-color: var(--accent, #6495ed); }
+
+.workspace-inbox-item-type {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.workspace-inbox-item-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin: 0.15rem 0;
+}
+
+.workspace-inbox-item-summary {
+  font-size: 0.8rem;
+  opacity: 0.9;
+  margin: 0;
+}
+
+.workspace-confirm-summary { margin: 0 0 0.5rem; }
+
+.workspace-confirm-detail {
+  max-height: 12rem;
+  overflow: auto;
+  font-size: 0.78rem;
+}
+
+.learning-agent-actions { margin-top: 0.5rem; }
+
+.tab.hidden { display: none; }
+
 .chat-main { min-width: 0; }
 
 .chat-toolbar {

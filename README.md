@@ -18,15 +18,18 @@ This project automates that enrichment:
 
 ## Web app workflow
 
+**Default (`UI_AGENT_WORKSPACE=1`):** **Workspace** — import strip, chat/analytics, and a **pending inbox** (review queue, audit flags, Learning Agent insights). Tabs: Workspace, Edit Transactions, Custom Rules, Settings. Legacy **Import & Categorize**, **Confirm Categories**, **AI Rules**, and **Cadence** are hidden (`UI_AGENT_WORKSPACE=0` restores them). See [docs/product/AGENT_WORKSPACE.md](docs/product/AGENT_WORKSPACE.md).
+
 | Step | Where |
 |------|--------|
-| Upload & process CSV | **Import & Categorize** → choose CSV (upload + run processing); progress bar shows elapsed time and ETA |
-| Classification quality alerts | **Import & Categorize** → alerts panel → **View in Edit Transactions** (merchant pre-searched; stale alerts auto-clear) |
+| Upload & process CSV | **Workspace** import strip (or **Import & Categorize** when legacy UI) — progress bar shows elapsed time and ETA |
+| Pending confirmations | **Workspace** inbox — merchant labels, quality flags, pattern/cadence insights → unified Approve / Dismiss / Defer |
+| Classification quality alerts | Inbox (`quality_flag`) or **Import & Categorize** alerts panel → **View in Edit Transactions** |
 | First visit | Guided **quick tour** (once per browser; skipped when data already exists) |
-| Fix uncertain merchants | **Confirm Categories** |
-| Clean duplicate labels | **AI Rules** — merge synonyms (user confirms before apply) |
-| Edit rows, cadence, custom rules | **Edit Transactions**, **Custom Rules**, **Cadence** |
-| Ask questions | **Chat** — type or use **Mic** (Chrome/Edge); voice stops after 3s silence or 30s max and sends automatically |
+| Fix uncertain merchants | Inbox (`merchant_label`) or **Confirm Categories** (legacy) |
+| Clean duplicate labels | **AI Rules** (legacy tab) — merge synonyms (user confirms before apply) |
+| Edit rows, custom rules | **Edit Transactions**, **Custom Rules** |
+| Ask questions | **Workspace** chat — type or **Mic** (Chrome/Edge); voice stops after 3s silence or 30s max and sends automatically |
 
 **Processing core:** [`webapp/pipeline/`](webapp/pipeline/) orchestrates [`webapp/processing/`](webapp/processing/) (LLM, rules, cadence). Pipeline lookups load and save from **SQLite** (`finance.db`).
 
@@ -67,7 +70,9 @@ See [docs/classification/CONFIRM_CATEGORIES.md](docs/classification/CONFIRM_CATE
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `UI_SHOW_CADENCE` | `1` (show) | Cadence tab, Edit Transactions cadence links, Settings → Cadence rules, chat cadence actions. Set `0` to hide. |
+| `UI_AGENT_WORKSPACE` | `1` | **Workspace** tab (import + chat + pending inbox). Set `0` for legacy tabs (Chat, Import & Categorize, Confirm Categories, …). |
+| `UI_SHOW_CADENCE` | `0` with workspace | Cadence tab, Edit cadence links, Settings cadence card. Set `1` to show (legacy layout defaults cadence on). |
+| `LEARNING_AGENT_ENABLED` | `0` | Opt-in scheduled pattern analysis → Workspace inbox. Manual run: Settings → **Run analysis now** or `POST /api/learning-agent/run`. |
 | `LLM_LOG_CALLS` | `1` | Log pipeline/chat LLM requests to console and `data/llm.log`. Set `0` to disable. |
 | `PIPELINE_SECONDS_PER_ROW` | `1.2` | ETA heuristic for Import & Categorize progress bar. |
 | `FINANCE_DB_PATH`, `FINANCE_INBOX_DIR`, `FINANCE_PROCESSED_DIR` | see `.env.example` | Override data paths. |
@@ -100,7 +105,8 @@ Models are configured in `config/.env`. You can split **pipeline** vs **chat** m
 | **After an edit** | Edit Transactions → Apply → AI insight modal | Explains the pattern; may suggest a **Custom Rule** (plain English). | No — save rule is optional. |
 | **Cadence** | Cadence tab → ✨ Suggest cadence (AI); Chat | Proposes recurring vs lump vs one-time from merchant history + your hint. | No — Review & save in modal or cadence queue. |
 | **Label cleanup** | **AI Rules** tab | **Analyze** (heuristics only) or **Suggest with AI** — duplicate categories, sub-categories, merchant spellings. | No — you select proposals, preview, then Apply. |
-| **Analytics** | Chat | LLM writes read-only **`query_sql`**; save multi-turn explorations as **custom reports** (prompt + SQL, rerun/tweak/version). Help panel includes report workflows. | Saved reports in `custom_reports` table; see [docs/chat/CHAT_CUSTOM_REPORTS.md](docs/chat/CHAT_CUSTOM_REPORTS.md). |
+| **Analytics** | Workspace (Chat) | LLM writes read-only **`query_sql`**; save multi-turn explorations as **custom reports** (prompt + SQL, rerun/tweak/version). Help panel includes report workflows. | Saved reports in `custom_reports` table; see [docs/chat/CHAT_CUSTOM_REPORTS.md](docs/chat/CHAT_CUSTOM_REPORTS.md). |
+| **Learning Agent** | Workspace inbox (opt-in) | Scheduled/heuristic pattern scan over `decision_events` → `ai_insights` proposals (category flips, cadence candidates). | No — accept/reject in inbox; accepted insights feed **review suggest**. |
 
 **Not AI:** Import upload, inbox archive, table counts, most Edit Transactions field updates (direct SQLite), and cadence **math** (`effective_amount`, cash/core/normalized views).
 
@@ -150,12 +156,13 @@ Detail: [docs/classification/AI_TAXONOMY_RULES.md](docs/classification/AI_TAXONO
 
 ### Suggested workflow (monthly)
 
-1. **Import & Categorize** — process new CSV(s); let lookups + LLM handle bulk labeling.  
-2. **Confirm Categories** — confirm or ✨ suggest labels for uncertain merchants.  
-3. **AI Rules** — periodically merge duplicate categories/subs/merchant names.  
-4. **Cadence** — set run-rate rules for irregular merchants (insurance, annual fees).  
-5. **Edit Transactions** — fix one-offs; save **Custom Rules** when the same pattern will repeat.  
-6. **Chat** — explore spend; use cadence keywords + merchant name to open cadence proposals. **Mic** transcribes in the input (3s silence or 30s cap) and auto-sends when listening ends; click **Listening…** to stop without sending.
+**Workspace (default):**
+
+1. **Workspace** — upload/process CSV(s); work the **pending inbox** (labels, audit flags, Learning Agent insights).  
+2. **Edit Transactions** / **Custom Rules** — fix one-offs; save rules when a pattern repeats.  
+3. **Workspace chat** — explore spend; cadence keywords + merchant name still open cadence proposals. **Mic** transcribes (3s silence or 30s cap) and auto-sends.
+
+**Legacy tabs (`UI_AGENT_WORKSPACE=0`):** Import & Categorize → Confirm Categories → AI Rules → Cadence → Edit → Chat (same order as before).
 
 ### Further reading
 
@@ -174,6 +181,8 @@ Detail: [docs/classification/AI_TAXONOMY_RULES.md](docs/classification/AI_TAXONO
 | [docs/classification/CLASSIFICATION_TAXONOMY.md](docs/classification/CLASSIFICATION_TAXONOMY.md) | Classify LLM payload and category vocabulary goals |
 | [docs/classification/CLASSIFICATION_AUDIT.md](docs/classification/CLASSIFICATION_AUDIT.md) | Sampled classification quality audit (14b vs audit model) |
 | [docs/product/ROADMAP.md](docs/product/ROADMAP.md) | What’s shipped vs planned (e.g. auto-apply taxonomy at confidence threshold) |
+| [docs/product/AGENT_WORKSPACE.md](docs/product/AGENT_WORKSPACE.md) | Workspace UI, pending inbox, hidden legacy tabs |
+| [docs/product/DECISION_MEMORY.md](docs/product/DECISION_MEMORY.md) | Decision event log, Learning Agent, review-suggest feedback |
 
 ## Where files live
 
@@ -293,7 +302,7 @@ After categories are correct, separate **normal monthly run-rate** from **irregu
 | **In Monthly Run-Rate?** | `Y` = core monthly budget; `N` = cash spend excluded from run-rate |
 | **Cadence Source** | `Lookup`, `Detected`, or `Default` |
 
-Manage cadence in the **Cadence** tab (`UI_SHOW_CADENCE=1`, default) and `cadence_rules` in SQLite. Chat and analytics support **cash**, **core**, and **normalized** views — see [docs/cadence/EXPENSE_CADENCE.md](docs/cadence/EXPENSE_CADENCE.md).
+Manage cadence via **Workspace inbox** proposals (Learning Agent), chat `propose_cadence_rule`, or the **Cadence** tab when `UI_SHOW_CADENCE=1`. Rules live in `cadence_rules` in SQLite. Chat and analytics support **cash**, **core**, and **normalized** views — see [docs/cadence/EXPENSE_CADENCE.md](docs/cadence/EXPENSE_CADENCE.md).
 
 ## Custom Rules (freeform → AI compile → apply)
 

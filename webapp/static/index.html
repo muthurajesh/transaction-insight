@@ -14,20 +14,29 @@
   </header>
 
   <nav class="tabs">
-    <button type="button" class="tab active" data-tab="chat">Chat</button>
-    <button type="button" class="tab" data-tab="review">Confirm Categories</button>
+    <button type="button" class="tab active" data-tab="chat" id="tab-chat">Chat</button>
+    <button type="button" class="tab tab-legacy-workspace" data-tab="review">Confirm Categories</button>
     <button type="button" class="tab" data-tab="edit">Edit Transactions</button>
     <button type="button" class="tab" data-tab="custom-rules">Custom Rules</button>
-    <button type="button" class="tab" id="tab-cadence" data-tab="cadence">Cadence</button>
-    <button type="button" class="tab" data-tab="taxonomy">AI Rules</button>
-    <button type="button" class="tab" data-tab="actions">Import &amp; Categorize<span id="tab-actions-badge" class="tab-badge hidden" aria-label="Classification alerts"></span></button>
+    <button type="button" class="tab tab-legacy-workspace" id="tab-cadence" data-tab="cadence">Cadence</button>
+    <button type="button" class="tab tab-legacy-workspace" data-tab="taxonomy">AI Rules</button>
+    <button type="button" class="tab tab-legacy-workspace" data-tab="actions">Import &amp; Categorize<span id="tab-actions-badge" class="tab-badge hidden" aria-label="Classification alerts"></span></button>
     <button type="button" class="tab" data-tab="settings">Settings</button>
   </nav>
 
   <main>
     <section id="panel-chat" class="panel active">
-      <div id="chat-layout" class="chat-layout">
+      <div id="chat-layout" class="chat-layout chat-layout-workspace">
         <div class="chat-main">
+          <div id="workspace-import-strip" class="workspace-import-strip hidden">
+            <p class="hint workspace-import-hint">Import bank CSV → run AI processing</p>
+            <div class="inbox-upload-row">
+              <input type="file" id="workspace-file-input" accept=".csv,text/csv" multiple hidden />
+              <button type="button" id="btn-workspace-choose-upload" class="btn-secondary btn-sm">Choose CSV</button>
+              <button type="button" id="btn-workspace-categorize" class="btn-primary btn-sm">Run processing</button>
+            </div>
+            <p id="workspace-selected-files" class="hint inbox-selected-files hidden"></p>
+          </div>
           <div class="chat-toolbar">
             <button type="button" id="btn-chat-clear" class="btn-secondary btn-chat-toolbar">Clear screen</button>
             <button type="button" id="btn-chat-history" class="btn-secondary btn-chat-toolbar">View history</button>
@@ -58,6 +67,15 @@
           </div>
           <p class="hint chat-help-hint">Click a command for details. Use <strong>+</strong> to insert into the chat box.</p>
           <ul id="chat-help-list" class="chat-help-list"></ul>
+        </aside>
+        <aside id="workspace-inbox-panel" class="workspace-inbox-panel hidden" aria-label="Pending AI confirmations">
+          <div class="workspace-inbox-header">
+            <h2>Pending</h2>
+            <span id="workspace-inbox-count" class="workspace-inbox-count">0</span>
+            <button type="button" id="btn-workspace-inbox-refresh" class="btn-secondary btn-sm">Refresh</button>
+          </div>
+          <p class="hint workspace-inbox-hint">AI proposals awaiting your review — labels, quality flags, cadence patterns, insights.</p>
+          <ul id="workspace-inbox-list" class="workspace-inbox-list"></ul>
         </aside>
       </div>
     </section>
@@ -446,6 +464,15 @@
         <pre id="clear-result"></pre>
       </div>
       <div class="card">
+        <h2>Learning Agent</h2>
+        <p class="hint">Analyzes your responses to AI proposals and surfaces patterns in the Workspace inbox. Configure via <code>config/.env</code>.</p>
+        <pre id="learning-agent-status" class="settings-pre">Loading…</pre>
+        <div class="learning-agent-actions">
+          <button type="button" id="btn-learning-agent-run" class="btn-secondary">Run analysis now</button>
+        </div>
+        <p id="learning-agent-run-result" class="hint hidden"></p>
+      </div>
+      <div class="card">
         <h2>Custom rules</h2>
         <p class="hint">Manage if/then categorization rules on the <button type="button" class="btn-link tab-jump" data-tab="custom-rules">Custom Rules</button> tab.</p>
       </div>
@@ -700,6 +727,28 @@
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
+  <div id="workspace-confirm-overlay" class="modal-overlay hidden" role="presentation" aria-hidden="true">
+    <div id="workspace-confirm-modal" class="modal-card" role="dialog" aria-modal="true" aria-labelledby="workspace-confirm-title">
+      <div class="modal-header">
+        <h3 id="workspace-confirm-title">Review AI proposal</h3>
+        <button type="button" id="btn-workspace-confirm-close" class="btn-modal-close" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <p id="workspace-confirm-summary" class="workspace-confirm-summary"></p>
+        <pre id="workspace-confirm-detail" class="settings-pre workspace-confirm-detail"></pre>
+      </div>
+      <div class="modal-actions">
+        <p id="workspace-confirm-error" class="review-confirm-error hidden" role="alert"></p>
+        <div class="modal-action-row">
+          <button type="button" id="btn-workspace-confirm-dismiss" class="btn-secondary">Dismiss</button>
+          <button type="button" id="btn-workspace-confirm-defer" class="btn-secondary">Defer</button>
+          <button type="button" id="btn-workspace-confirm-edit" class="btn-secondary">Edit in Transactions</button>
+          <button type="button" id="btn-workspace-confirm-approve" class="btn-primary">Approve</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
   <script src="/static/app.js"></script>

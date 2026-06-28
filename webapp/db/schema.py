@@ -178,6 +178,40 @@ CREATE INDEX IF NOT EXISTS idx_classification_audit_findings_status
     ON classification_audit_findings(status);
 CREATE INDEX IF NOT EXISTS idx_classification_audit_findings_merchant
     ON classification_audit_findings(merchant_key);
+
+CREATE TABLE IF NOT EXISTS decision_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_key TEXT NOT NULL,
+    action TEXT NOT NULL,
+    ai_proposal_json TEXT NOT NULL DEFAULT '{}',
+    user_outcome_json TEXT NOT NULL DEFAULT '{}',
+    context_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_decision_events_created
+    ON decision_events(created_at);
+CREATE INDEX IF NOT EXISTS idx_decision_events_source
+    ON decision_events(source);
+
+CREATE TABLE IF NOT EXISTS ai_insights (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    insight_type TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    pattern_summary TEXT NOT NULL DEFAULT '',
+    rationale TEXT NOT NULL DEFAULT '',
+    confidence REAL NOT NULL DEFAULT 0.5,
+    merchant_key TEXT NOT NULL DEFAULT '',
+    proposal_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_insights_status
+    ON ai_insights(status);
 """
 
 _TRANSACTION_CADENCE_COLUMNS = (
@@ -273,6 +307,34 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
             ON classification_audit_findings(status);
         CREATE INDEX IF NOT EXISTS idx_classification_audit_findings_merchant
             ON classification_audit_findings(merchant_key);
+        CREATE TABLE IF NOT EXISTS decision_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_key TEXT NOT NULL,
+            action TEXT NOT NULL,
+            ai_proposal_json TEXT NOT NULL DEFAULT '{}',
+            user_outcome_json TEXT NOT NULL DEFAULT '{}',
+            context_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_decision_events_created
+            ON decision_events(created_at);
+        CREATE TABLE IF NOT EXISTS ai_insights (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            insight_type TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            pattern_summary TEXT NOT NULL DEFAULT '',
+            rationale TEXT NOT NULL DEFAULT '',
+            confidence REAL NOT NULL DEFAULT 0.5,
+            merchant_key TEXT NOT NULL DEFAULT '',
+            proposal_json TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'open',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_insights_status
+            ON ai_insights(status);
         """
     )
 

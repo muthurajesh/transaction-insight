@@ -466,31 +466,57 @@ def confirm_merchant_or_transaction(
     transaction_id: str | None = None,
     scope: str = "pending",
     replace_conflicting_rule: bool = False,
+    suggested_labels: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    final = {
+        "ai_category": ai_category,
+        "ai_sub_category": ai_sub_category,
+        "expense_type": expense_type,
+        "flow_type": flow_type,
+        "classification": classification,
+    }
     if transaction_id:
-        updated = confirm_transaction(
+        result = {
+            "merchant_key": merchant_key,
+            "transaction_id": transaction_id,
+            "rows_updated": confirm_transaction(
+                conn,
+                transaction_id,
+                ai_category=ai_category,
+                ai_sub_category=ai_sub_category,
+                expense_type=expense_type,
+                flow_type=flow_type,
+                classification=classification,
+            ),
+            "lookup_synced": False,
+        }
+    else:
+        result = confirm_merchant_group(
             conn,
-            transaction_id,
+            merchant_key,
             ai_category=ai_category,
             ai_sub_category=ai_sub_category,
             expense_type=expense_type,
             flow_type=flow_type,
             classification=classification,
+            scope=scope,
+            replace_conflicting_rule=replace_conflicting_rule,
         )
-        return {
-            "merchant_key": merchant_key,
-            "transaction_id": transaction_id,
-            "rows_updated": updated,
-            "lookup_synced": False,
-        }
-    return confirm_merchant_group(
-        conn,
-        merchant_key,
-        ai_category=ai_category,
-        ai_sub_category=ai_sub_category,
-        expense_type=expense_type,
-        flow_type=flow_type,
-        classification=classification,
-        scope=scope,
-        replace_conflicting_rule=replace_conflicting_rule,
+
+    from webapp.services.decision_events import (
+        infer_confirm_action,
+        log_decision_event,
     )
+
+    log_decision_event(
+        conn,
+        source="confirm_categories",
+        entity_type="transaction" if transaction_id else "merchant",
+        entity_key=transaction_id or merchant_key.strip(),
+        action=infer_confirm_action(suggested_labels, final),
+        ai_proposal=suggested_labels,
+        user_outcome=final,
+        context={"merchant_key": merchant_key, "scope": scope},
+    )
+    conn.commit()
+    return result
