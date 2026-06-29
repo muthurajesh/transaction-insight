@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from webapp.agent.display import display_from_trace
+from webapp.agent.chat_context import get_chat_context_after_id
 
 
 def _cadence_proposal_from_trace(trace: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -61,11 +62,50 @@ def row_to_message(row: sqlite3.Row) -> dict[str, Any]:
     return item
 
 
-def list_chat_history(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+def list_chat_history(
+    conn: sqlite3.Connection,
+    *,
+    active_only: bool = False,
+) -> list[dict[str, Any]]:
+    after_id = get_chat_context_after_id(conn) if active_only else 0
     rows = conn.execute(
-        "SELECT id, role, content, tool_trace, created_at FROM chat_messages ORDER BY id ASC"
+        """
+        SELECT id, role, content, tool_trace, created_at
+        FROM chat_messages
+        WHERE id > ?
+        ORDER BY id ASC
+        """,
+        (after_id,),
     ).fetchall()
     return [row_to_message(row) for row in rows]
+
+
+def list_llm_chat_context(
+    conn: sqlite3.Connection,
+    *,
+    limit: int = 20,
+) -> list[dict[str, str]]:
+    """Recent user/assistant text for multi-turn chat (oldest first, content only)."""
+    limit = max(0, min(int(limit), 100))
+    if limit == 0:
+        return []
+    after_id = get_chat_context_after_id(conn)
+    rows = conn.execute(
+        """
+        SELECT role, content
+        FROM chat_messages
+        WHERE id > ?
+          AND role IN ('user', 'assistant')
+          AND content IS NOT NULL AND TRIM(content) != ''
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (after_id, limit),
+    ).fetchall()
+    return [
+        {"role": str(r["role"]), "content": str(r["content"]).strip()}
+        for r in reversed(rows)
+    ]
 
 
 def list_chat_history_page(

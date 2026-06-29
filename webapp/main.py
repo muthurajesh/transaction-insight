@@ -11,7 +11,8 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from webapp.agent.chat import chat
+from webapp.agent.chat import chat, estimate_chat_context_usage
+from webapp.agent.chat_context import clear_chat_context
 from webapp.agent.chat_history import export_chat_history, list_chat_history, list_chat_history_page
 from webapp.config import (
     CHAT_MODEL,
@@ -1173,6 +1174,7 @@ def api_transactions_search(
     sub_category: str = "",
     expense_type: str = "",
     classification: str = "",
+    label_status: str = "",
     cadence_kind: str = "",
     cadence_period: str = "",
     include_in_run_rate: str = "",
@@ -1192,6 +1194,7 @@ def api_transactions_search(
                 sub_category=sub_category,
                 expense_type=expense_type,
                 classification=classification,
+                label_status=label_status,
                 cadence_kind=cadence_kind,
                 cadence_period=cadence_period,
                 include_in_run_rate=include_in_run_rate,
@@ -1581,12 +1584,33 @@ def api_chat_history(
     page: int | None = None,
     limit: int = 10,
     order: str = "desc",
+    active_only: bool = False,
 ) -> dict[str, Any]:
     conn = _conn()
     try:
         if page is not None:
             return list_chat_history_page(conn, page=page, limit=limit, order=order)
-        return {"messages": list_chat_history(conn)}
+        return {"messages": list_chat_history(conn, active_only=active_only)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/chat/context-usage")
+def api_chat_context_usage(message: str = "") -> dict[str, Any]:
+    conn = _conn()
+    try:
+        return estimate_chat_context_usage(conn, user_message=message.strip())
+    finally:
+        conn.close()
+
+
+@app.post("/api/chat/clear-context")
+def api_chat_clear_context() -> dict[str, Any]:
+    conn = _conn()
+    try:
+        cleared = clear_chat_context(conn)
+        usage = estimate_chat_context_usage(conn, user_message="")
+        return {**cleared, "context_usage": usage}
     finally:
         conn.close()
 

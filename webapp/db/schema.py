@@ -367,6 +367,10 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         """
     )
 
+    from webapp.agent.chat_context import ensure_app_meta_table
+
+    ensure_app_meta_table(conn)
+
     cr_cols = _existing_columns(conn, "custom_reports")
     for name, col_type in (
         ("report_prompt", "TEXT NOT NULL DEFAULT ''"),

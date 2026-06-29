@@ -7,13 +7,13 @@
   <link rel="stylesheet" href="/static/styles.css" />
   <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator_midnight.min.css" />
 </head>
-<body>
-  <header>
+<body class="body-legacy-mode">
+  <header class="legacy-chrome">
     <h1>Transaction Insight</h1>
     <p id="status-line">Loading…</p>
   </header>
 
-  <nav class="tabs">
+  <nav class="tabs legacy-chrome">
     <button type="button" class="tab active" data-tab="chat" id="tab-chat">Chat</button>
     <button type="button" class="tab tab-legacy-workspace" data-tab="review">Confirm Categories</button>
     <button type="button" class="tab" data-tab="edit">Edit Transactions</button>
@@ -24,22 +24,111 @@
     <button type="button" class="tab" data-tab="settings">Settings</button>
   </nav>
 
-  <main>
+  <div id="app-shell" class="app-shell">
+    <aside id="app-sidebar" class="app-sidebar" aria-label="Main navigation">
+      <div class="sidebar-brand">
+        <span class="sidebar-brand-mark" aria-hidden="true">TI</span>
+        <div class="sidebar-brand-text">
+          Transaction Insight
+          <small>Personal finance workspace</small>
+        </div>
+        <button type="button" id="btn-sidebar-toggle" class="btn-sidebar-toggle" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">
+          <svg class="icon-collapse" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          <svg class="icon-expand" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+      <div class="nav-group-label">Workspace</div>
+      <button type="button" class="nav-item" data-nav="import" title="Import">
+        <span class="nav-icon" aria-hidden="true">In</span>
+        <span class="nav-label">Import</span>
+      </button>
+      <button type="button" class="nav-item" data-nav="chat" title="Chat">
+        <span class="nav-icon" aria-hidden="true">Ch</span>
+        <span class="nav-label">Chat</span>
+      </button>
+      <button type="button" class="nav-item" data-nav="review" title="Review">
+        <span class="nav-icon" aria-hidden="true">Rv</span>
+        <span class="nav-label">Review</span>
+        <span id="nav-review-badge" class="nav-badge hidden" aria-label="Pending proposals">0</span>
+      </button>
+      <div class="nav-group-label">Data</div>
+      <button type="button" class="nav-item" data-nav="edit" title="Transactions">
+        <span class="nav-icon" aria-hidden="true">Tx</span>
+        <span class="nav-label">Transactions</span>
+      </button>
+      <button type="button" class="nav-item" data-nav="custom-rules" title="Custom Rules">
+        <span class="nav-icon" aria-hidden="true">Ru</span>
+        <span class="nav-label">Custom Rules</span>
+      </button>
+      <div class="sidebar-footer">
+        <button type="button" class="nav-item" data-nav="settings" title="Settings">
+          <span class="nav-icon" aria-hidden="true">Se</span>
+          <span class="nav-label">Settings</span>
+        </button>
+      </div>
+    </aside>
+    <div class="main-col">
+      <div class="top-bar sidebar-chrome">
+        <button type="button" id="btn-sidebar-expand-top" class="btn-sidebar-expand-top hidden" aria-label="Expand sidebar" title="Expand sidebar">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <div class="top-bar-titles">
+          <div id="page-breadcrumb" class="breadcrumb"></div>
+          <h1 id="page-title" class="page-title">Chat</h1>
+        </div>
+        <p id="status-line-compact" class="status-line-compact">Loading…</p>
+      </div>
+      <main id="app-main" class="content-area">
+    <section id="panel-import" class="panel">
+      <p class="hint panel-subtitle">Upload bank CSV exports and run AI processing.</p>
+      <div class="card">
+        <h2>Import &amp; process</h2>
+        <p class="hint">CSV files land in <code id="inbox-path"></code>; after processing they move to <code id="processed-path">processed/</code>.</p>
+        <div class="inbox-upload-row">
+          <input type="file" id="workspace-file-input" accept=".csv,text/csv" multiple hidden />
+          <button type="button" id="btn-workspace-choose-upload" class="btn-primary">Choose CSV files</button>
+          <button type="button" id="btn-workspace-categorize" class="btn-secondary">Run processing</button>
+        </div>
+        <p id="workspace-selected-files" class="hint inbox-selected-files hidden"></p>
+        <pre id="upload-result"></pre>
+        <div id="categorize-progress" class="progress-panel hidden" aria-live="polite">
+          <div class="progress-bar-track">
+            <div id="categorize-progress-fill" class="progress-bar-fill" style="width: 0%"></div>
+          </div>
+          <p id="categorize-progress-text" class="progress-text">Starting…</p>
+          <div id="categorize-progress-timing" class="progress-timing hidden">
+            <span id="categorize-progress-rows" class="progress-timing-item"></span>
+            <span id="categorize-progress-elapsed" class="progress-timing-item"></span>
+            <span id="categorize-progress-eta" class="progress-timing-item"></span>
+          </div>
+          <ul id="categorize-progress-log" class="progress-log"></ul>
+        </div>
+        <pre id="categorize-result"></pre>
+      </div>
+    </section>
+
     <section id="panel-chat" class="panel active">
       <div id="chat-layout" class="chat-layout chat-layout-workspace">
         <div class="chat-main">
-          <div id="workspace-import-strip" class="workspace-import-strip hidden">
-            <p class="hint workspace-import-hint">Import bank CSV → run AI processing</p>
-            <div class="inbox-upload-row">
-              <input type="file" id="workspace-file-input" accept=".csv,text/csv" multiple hidden />
-              <button type="button" id="btn-workspace-choose-upload" class="btn-secondary btn-sm">Choose CSV</button>
-              <button type="button" id="btn-workspace-categorize" class="btn-primary btn-sm">Run processing</button>
-            </div>
-            <p id="workspace-selected-files" class="hint inbox-selected-files hidden"></p>
+          <div id="chat-pending-banner" class="chat-pending-banner hidden" aria-live="polite">
+            <span id="chat-pending-banner-text"></span>
+            <button type="button" id="btn-chat-jump-review" class="btn-secondary btn-sm">Open Review</button>
           </div>
           <div class="chat-toolbar">
             <button type="button" id="btn-chat-clear" class="btn-secondary btn-chat-toolbar">Clear screen</button>
             <button type="button" id="btn-chat-history" class="btn-secondary btn-chat-toolbar">View history</button>
+            <div
+              id="chat-context-meter"
+              class="chat-context-meter"
+              role="status"
+              aria-live="polite"
+              aria-label="Estimated chat context usage"
+            >
+              <div class="chat-context-meter-track" aria-hidden="true">
+                <div class="chat-context-meter-fill"></div>
+              </div>
+              <span class="chat-context-meter-label">—</span>
+            </div>
             <div class="chat-download-wrap">
               <label for="chat-download-format" class="sr-only">Export format</label>
               <select id="chat-download-format" class="chat-download-format" aria-label="Export format">
@@ -68,15 +157,18 @@
           <p class="hint chat-help-hint">Click a command for details. Use <strong>+</strong> to insert into the chat box.</p>
           <ul id="chat-help-list" class="chat-help-list"></ul>
         </aside>
-        <aside id="workspace-inbox-panel" class="workspace-inbox-panel hidden" aria-label="Pending AI confirmations">
-          <div class="workspace-inbox-header">
-            <h2>Pending</h2>
-            <span id="workspace-inbox-count" class="workspace-inbox-count">0</span>
-            <button type="button" id="btn-workspace-inbox-refresh" class="btn-secondary btn-sm">Refresh</button>
-          </div>
-          <p class="hint workspace-inbox-hint">AI proposals awaiting your review — labels, quality flags, cadence patterns, insights.</p>
-          <div id="workspace-inbox-list" class="workspace-inbox-list" role="list"></div>
-        </aside>
+      </div>
+    </section>
+
+    <section id="panel-workspace-review" class="panel">
+      <p class="hint panel-subtitle">AI proposals awaiting your review — labels, quality flags, cadence patterns, insights.</p>
+      <div class="workspace-inbox-panel workspace-inbox-panel-full" aria-label="Pending AI confirmations">
+        <div class="workspace-inbox-header">
+          <h2>Pending</h2>
+          <span id="workspace-inbox-count" class="workspace-inbox-count">0</span>
+          <button type="button" id="btn-workspace-inbox-refresh" class="btn-secondary btn-sm">Refresh</button>
+        </div>
+        <div id="workspace-inbox-list" class="workspace-inbox-list" role="list"></div>
       </div>
     </section>
 
@@ -115,6 +207,13 @@
 
     <section id="panel-edit" class="panel">
       <p class="hint panel-subtitle">Search and edit transaction labels.</p>
+      <div id="edit-needs-attention-banner" class="edit-needs-attention-banner hidden" aria-live="polite">
+        <span id="edit-needs-attention-text"></span>
+        <div class="edit-needs-attention-actions">
+          <button type="button" id="btn-edit-filter-needs-attention" class="btn-secondary btn-sm">Show needing attention</button>
+          <button type="button" id="btn-edit-go-review" class="btn-link">Open Review inbox</button>
+        </div>
+      </div>
       <div class="edit-layout">
         <div class="edit-main">
           <form id="edit-search-form" class="edit-search-form">
@@ -124,6 +223,13 @@
             </select>
             <select id="edit-search-category" aria-label="Category filter">
               <option value="">All categories</option>
+            </select>
+            <select id="edit-search-label-status" aria-label="Label status filter">
+              <option value="">All label statuses</option>
+              <option value="needs_attention">Needs attention</option>
+              <option value="needs_review">Needs review</option>
+              <option value="pending">Pending</option>
+              <option value="confirmed">Confirmed</option>
             </select>
             <button type="submit">Search</button>
           </form>
@@ -383,27 +489,27 @@
           <p class="hint">Sampled quality check at audit time. <strong>At audit</strong> is the label on one transaction when the audit ran; <strong>Current in DB</strong> is live. Use Edit Transactions to verify or fix.</p>
           <ul id="classification-audit-list" class="classification-audit-list"></ul>
         </div>
-        <p class="hint">CSV files land in <code id="inbox-path"></code>; after processing they move to <code id="processed-path">processed/</code>.</p>
+        <p class="hint">CSV files land in <code id="inbox-path-legacy"></code>; after processing they move to <code id="processed-path-legacy">processed/</code>.</p>
         <div class="inbox-upload-row">
           <input type="file" id="inbox-file-input" accept=".csv,text/csv" multiple hidden />
           <button type="button" id="btn-choose-upload" class="btn-primary">Choose CSV files</button>
           <button type="button" id="btn-categorize" class="btn-secondary">Run processing</button>
         </div>
         <p id="inbox-selected-files" class="hint inbox-selected-files hidden"></p>
-        <pre id="upload-result"></pre>
-        <div id="categorize-progress" class="progress-panel hidden" aria-live="polite">
+        <pre id="upload-result-legacy"></pre>
+        <div id="categorize-progress-legacy" class="progress-panel hidden" aria-live="polite">
           <div class="progress-bar-track">
-            <div id="categorize-progress-fill" class="progress-bar-fill" style="width: 0%"></div>
+            <div id="categorize-progress-fill-legacy" class="progress-bar-fill" style="width: 0%"></div>
           </div>
-          <p id="categorize-progress-text" class="progress-text">Starting…</p>
-          <div id="categorize-progress-timing" class="progress-timing hidden">
-            <span id="categorize-progress-rows" class="progress-timing-item"></span>
-            <span id="categorize-progress-elapsed" class="progress-timing-item"></span>
-            <span id="categorize-progress-eta" class="progress-timing-item"></span>
+          <p id="categorize-progress-text-legacy" class="progress-text">Starting…</p>
+          <div id="categorize-progress-timing-legacy" class="progress-timing hidden">
+            <span id="categorize-progress-rows-legacy" class="progress-timing-item"></span>
+            <span id="categorize-progress-elapsed-legacy" class="progress-timing-item"></span>
+            <span id="categorize-progress-eta-legacy" class="progress-timing-item"></span>
           </div>
-          <ul id="categorize-progress-log" class="progress-log"></ul>
+          <ul id="categorize-progress-log-legacy" class="progress-log"></ul>
         </div>
-        <pre id="categorize-result"></pre>
+        <pre id="categorize-result-legacy"></pre>
       </div>
     </section>
 
@@ -596,7 +702,9 @@
         <p id="cadence-rule-note" class="hint">Plain-English compile and Save &amp; apply is planned; use the Cadence tab queue for now.</p>
       </div>
     </section>
-  </main>
+      </main>
+    </div>
+  </div>
 
   <div id="onboarding-overlay" class="onboarding-overlay hidden" role="presentation" aria-hidden="true">
     <div class="onboarding-backdrop" aria-hidden="true"></div>

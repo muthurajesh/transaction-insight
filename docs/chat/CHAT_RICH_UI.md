@@ -48,6 +48,8 @@ User → Chat UI (app.js) → POST /api/chat → chat.py (agent + tools) → SQL
 | Summary chips | CSS | Pill badges for month · category · total · row count | **Skipped** — markdown summary above widgets |
 | Export CSV | Tabulator built-in | Download visible table rows | **Done** |
 | Chat history on load | `GET /api/chat/history` | Restore thread on refresh; `display` rebuilt from `tool_trace` | **Done** |
+| Multi-turn LLM context | `CHAT_HISTORY_MESSAGES` | Prior turns sent on each `/api/chat` so follow-ups work | **Done** |
+| Context usage meter | `CHAT_CONTEXT_TOKEN_LIMIT` | Toolbar estimate; Clear screen resets LLM context anchor | **Done** |
 
 **Backend:** `display.type === "chart"` with `{ labels, datasets, chartType }`.
 

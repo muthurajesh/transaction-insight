@@ -61,9 +61,9 @@ Or use `./start.sh` if present. Open http://127.0.0.1:8000.
 
 After the app loads:
 
-1. **Workspace** — upload a CSV and run processing (import strip at the top).
-2. **Pending inbox** — approve or reject AI proposals (labels, quality flags, insights).
-3. **Chat** — ask questions about your spend; optional **Mic** in Chrome/Edge (3s silence or 30s max, then auto-send).
+1. **Import** — upload a CSV and run processing (sidebar → Import).
+2. **Review** — approve or reject AI proposals (labels, quality flags, insights).
+3. **Chat** — ask questions about your spend; optional **Mic** in Chrome/Edge (3s silence or 30s max, then auto-send). Toolbar shows conversation context usage; **Clear screen** starts a fresh LLM thread.
 
 Tab layout, inbox types, and monthly rhythm → [docs/product/AGENT_WORKSPACE.md](docs/product/AGENT_WORKSPACE.md).
 
@@ -87,6 +87,8 @@ Copy from `config/.env.example` or a preset (`config/.env.ollama`, `config/.env.
 | `UI_AGENT_WORKSPACE` | `1` | Set `0` for legacy tabs (Import & Categorize, Confirm Categories, …) |
 | `UI_SHOW_CADENCE` | `0` | Set `1` to show Cadence tab and cadence proposals in Pending/chat |
 | `LEARNING_AGENT_ENABLED` | `0` | Set `1` for scheduled pattern analysis → Workspace inbox |
+| `CHAT_HISTORY_MESSAGES` | `20` | Prior chat turns sent to LLM (`0` = single-turn only) |
+| `CHAT_CONTEXT_TOKEN_LIMIT` | `32768` | Context meter scale — match your chat model window |
 | `LLM_PROVIDER` | see preset | `ollama`, `lmstudio`, or `openai` |
 
 Full variable reference → comments in [config/.env.example](config/.env.example). Restart uvicorn after changes.

@@ -99,7 +99,7 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 
 ### Agent Workspace & decision memory
 
-- **`UI_AGENT_WORKSPACE=1` (default):** Workspace tab = import strip + chat + pending inbox; legacy Import / Confirm / AI Rules / Cadence tabs hidden ([AGENT_WORKSPACE.md](AGENT_WORKSPACE.md))
+- **`UI_AGENT_WORKSPACE=1` (default):** Sidebar shell — **Import**, **Chat**, **Review** + Transactions, Custom Rules, Settings; legacy Import / Confirm / AI Rules / Cadence tabs hidden ([AGENT_WORKSPACE.md](AGENT_WORKSPACE.md))
 - **`decision_events`** + **`ai_insights`**; HITL logging on confirm, audit dismiss, taxonomy apply, edit corrections ([DECISION_MEMORY.md](DECISION_MEMORY.md))
 - **Learning Agent:** opt-in (`LEARNING_AGENT_ENABLED=0` default); LLM Decision Analyst (`LEARNING_AGENT_MODEL`, `query_sql` loop) + heuristic fallback → inbox; scheduler + `POST /api/learning-agent/run`; accepted insights → `review_suggest` context
 - **Pending:** Full orchestrator / monthly_close workflow (Steps 4–5 chat+HITL shipped)
@@ -107,6 +107,8 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 ### Chat UI
 
 - Tiers 1–2 done; routing fix for top categories ([CHAT_RICH_UI.md](../chat/CHAT_RICH_UI.md), [CHAT_ROUTING.md](../chat/CHAT_ROUTING.md))
+- **Multi-turn memory** — last `CHAT_HISTORY_MESSAGES` user/assistant turns sent on each `/api/chat` (short follow-ups work)
+- **Context meter** — toolbar estimates conversation tokens; **Clear screen** resets LLM context anchor (export/history modal still has full log)
 - **Mic** — continuous listen, 3s silence / 30s cap, auto-send when listening ends (CHAT_RICH_UI § Voice input)
 - Tier 3: **save-as-report** shipped in chat ([CHAT_CUSTOM_REPORTS.md](../chat/CHAT_CUSTOM_REPORTS.md)); multiline composer still pending
 - First-visit onboarding tour + Import progress ETA (`PIPELINE_SECONDS_PER_ROW`)
@@ -191,7 +193,7 @@ Constraints: AI-first; minimal diff; read linked docs before coding.
 | **[ROADMAP.md](ROADMAP.md)** | What's done / next; checkboxes |
 | **Phase docs** (`EXPENSE_CADENCE_*.md`, etc.) | How to implement a feature |
 | **Cursor rules** (`.cursor/rules/`) | Always-on constraints (browser MCP, commit policy) |
-| **Long chat threads** | Short follow-ups only; summaries compress detail |
+| **Long chat threads** | Meter tracks conversation only; use **Clear screen** for a fresh thread; raise `CHAT_HISTORY_MESSAGES` if needed |
 
 **Best practice:** New window + `@AI_SESSION_CONTEXT.md` + `@ROADMAP.md` + one-line task. Update this file when a major arc completes (don't paste 50 chat turns).
 

@@ -1,7 +1,7 @@
 # Import & Categorize — upload and process
 
 **Status:** Shipped  
-**UI:** **Workspace** import strip (default, `UI_AGENT_WORKSPACE=1`) or **Import & Categorize** tab (legacy)
+**UI:** **Import** view in sidebar (default, `UI_AGENT_WORKSPACE=1`) or **Import & Categorize** tab (legacy)
 
 ## Flow
 

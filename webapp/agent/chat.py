@@ -21,12 +21,18 @@ from webapp.agent.sql_intent import (
 )
 from webapp.agent.tools import chat_tool_definitions, available_months, run_tool
 from webapp.agent.workspace_proposals import workspace_items_from_trace
+from webapp.agent.chat_history import list_llm_chat_context
+from webapp.agent.chat_context import (
+    estimate_messages_tokens,
+    estimate_tokens,
+    get_context_token_limit,
+)
 from webapp.services.cadence_insights import (
     cadence_proposal_from_trace,
     find_merchant_key_from_text,
     propose_cadence,
 )
-from webapp.config import INBOX_DIR, UI_SHOW_CADENCE
+from webapp.config import CHAT_HISTORY_MESSAGES, INBOX_DIR, UI_SHOW_CADENCE
 from webapp.services.llm import chat_completion, extract_json
 from webapp.services.pending_confirmations import filter_cadence_confirmations
 
@@ -41,6 +47,7 @@ The user speaks in **plain English** (like ChatGPT). They do not know table or c
 - **Never** show SQL in your answer unless they explicitly ask how you queried.
 - Translate their intent internally, call `query_sql`, then reply conversationally with results.
 - Use **Query hints** in the message context when present — they map natural language to correct filters.
+- **Prior turns** in the thread are real conversation history. Short follow-ups ("yes", "do that", "draft it") refer to the preceding exchange — continue that task without asking the user to repeat themselves.
 
 ### Natural language → database (internal translation)
 | User says | You query |
@@ -147,7 +154,12 @@ When query results are validated and sufficient, respond with ONLY:
 """
 
 
-def _chat_payload(answer: str, trace: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def _chat_payload(
+    answer: str,
+    trace: list[dict[str, Any]] | None = None,
+    *,
+    context_usage: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     trace = trace or []
     display = display_from_trace(trace)
     if display:
@@ -164,6 +176,8 @@ def _chat_payload(answer: str, trace: list[dict[str, Any]] | None = None) -> dic
     )
     if workspace_items:
         payload["workspace_proposals"] = workspace_items
+    if context_usage:
+        payload["context_usage"] = context_usage
     return payload
 
 
@@ -572,6 +586,91 @@ def _report_context_for_message(
     return "\n".join(lines)
 
 
+def _assemble_chat_system(conn: sqlite3.Connection) -> str:
+    tools_desc = json.dumps(chat_tool_definitions(include_cadence=UI_SHOW_CADENCE), indent=2)
+    cadence_tool_line = (
+        "- `propose_cadence_rule` — user explains annual/recurring charge treatment (UI confirm).\n"
+        if UI_SHOW_CADENCE
+        else ""
+    )
+    cadence_tables_clause = ", cadence_rules" if UI_SHOW_CADENCE else ""
+    return CHAT_SYSTEM.format(
+        data_cheatsheet=_load_data_cheatsheet(),
+        tools=tools_desc,
+        cadence_tool_line=cadence_tool_line,
+        cadence_tables_clause=cadence_tables_clause,
+    )
+
+
+def _assemble_chat_db_context(conn: sqlite3.Connection, user_message: str) -> str:
+    context_parts = [
+        _inbox_csv_context(),
+        _db_month_context(conn),
+        _db_category_context(conn),
+        _db_decision_context(conn),
+    ]
+    query_hints = merchant_query_hints(conn, user_message)
+    if query_hints:
+        context_parts.append(query_hints)
+    report_ctx = _report_context_for_message(conn, user_message)
+    if report_ctx:
+        context_parts.append(report_ctx)
+    return "\n".join(context_parts)
+
+
+def build_chat_llm_messages(
+    conn: sqlite3.Connection,
+    user_message: str,
+) -> list[dict[str, str]]:
+    system = _assemble_chat_system(conn)
+    context = _assemble_chat_db_context(conn, user_message)
+    prior_turns = list_llm_chat_context(conn, limit=CHAT_HISTORY_MESSAGES)
+    messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+    messages.extend(prior_turns)
+    if user_message.strip():
+        messages.append({"role": "user", "content": f"{context}\n\nUser: {user_message}"})
+    return messages
+
+
+def estimate_chat_context_usage(
+    conn: sqlite3.Connection,
+    user_message: str = "",
+) -> dict[str, Any]:
+    """Estimate tokens for the next chat request (approximate; no model tokenizer)."""
+    system = _assemble_chat_system(conn)
+    context = _assemble_chat_db_context(conn, user_message)
+    prior_turns = list_llm_chat_context(conn, limit=CHAT_HISTORY_MESSAGES)
+    system_tokens = estimate_messages_tokens([{"role": "system", "content": system}])
+    history_tokens = estimate_messages_tokens(prior_turns)
+    context_tokens = estimate_tokens(context)
+    next_user_tokens = 0
+    if user_message.strip():
+        next_user_tokens = estimate_message_tokens(
+            {"role": "user", "content": f"{context}\n\nUser: {user_message}"}
+        )
+    total = system_tokens + history_tokens + next_user_tokens
+    limit = get_context_token_limit()
+    meter_tokens = history_tokens + next_user_tokens
+    meter_limit = max(1024, limit - system_tokens)
+    usage_percent = round(100.0 * meter_tokens / meter_limit, 1) if meter_limit else 0.0
+    return {
+        "total_tokens": total,
+        "meter_tokens": meter_tokens,
+        "meter_limit": meter_limit,
+        "system_tokens": system_tokens,
+        "history_tokens": history_tokens,
+        "context_tokens": context_tokens,
+        "next_user_tokens": next_user_tokens,
+        "history_message_count": len(prior_turns),
+        "context_token_limit": limit,
+        "usage_percent": usage_percent,
+    }
+
+
+def _usage_after_turn(conn: sqlite3.Connection) -> dict[str, Any]:
+    return estimate_chat_context_usage(conn, user_message="")
+
+
 def _maybe_direct_answer(conn: sqlite3.Connection, user_message: str) -> dict[str, Any] | None:
     """Bypass the LLM only for UI workflow actions (cadence modal, report list)."""
     cadence = _maybe_cadence_propose_answer(conn, user_message)
@@ -740,41 +839,15 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
             direct["answer"],
             json.dumps(direct["tool_trace"]) if direct.get("tool_trace") else None,
         )
-        return direct
+        return _chat_payload(
+            direct["answer"],
+            direct.get("tool_trace"),
+            context_usage=_usage_after_turn(conn),
+        )
 
-    tools_desc = json.dumps(chat_tool_definitions(include_cadence=UI_SHOW_CADENCE), indent=2)
-    cadence_tool_line = (
-        "- `propose_cadence_rule` — user explains annual/recurring charge treatment (UI confirm).\n"
-        if UI_SHOW_CADENCE
-        else ""
-    )
-    cadence_tables_clause = ", cadence_rules" if UI_SHOW_CADENCE else ""
-    system = CHAT_SYSTEM.format(
-        data_cheatsheet=_load_data_cheatsheet(),
-        tools=tools_desc,
-        cadence_tool_line=cadence_tool_line,
-        cadence_tables_clause=cadence_tables_clause,
-    )
-    context_parts = [
-        _inbox_csv_context(),
-        _db_month_context(conn),
-        _db_category_context(conn),
-        _db_decision_context(conn),
-    ]
-    query_hints = merchant_query_hints(conn, user_message)
-    if query_hints:
-        context_parts.append(query_hints)
-    report_ctx = _report_context_for_message(conn, user_message)
-    if report_ctx:
-        context_parts.append(report_ctx)
-    context = "\n".join(context_parts)
-
+    messages = build_chat_llm_messages(conn, user_message)
     _save_message(conn, "user", user_message)
     trace: list[dict[str, Any]] = []
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": f"{context}\n\nUser: {user_message}"},
-    ]
 
     for _ in range(max_tool_rounds + 1):
         raw = chat_completion(messages, caller="chat.turn")
@@ -795,13 +868,13 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
                 continue
             answer = str(action["answer"])
             _save_message(conn, "assistant", answer, json.dumps(trace) if trace else None)
-            return _chat_payload(answer, trace)
+            return _chat_payload(answer, trace, context_usage=_usage_after_turn(conn))
 
         tool_name = action.get("tool")
         if not tool_name:
             answer = _finalize_answer(conn, messages, trace, raw)
             _save_message(conn, "assistant", answer, json.dumps(trace) if trace else None)
-            return _chat_payload(answer, trace)
+            return _chat_payload(answer, trace, context_usage=_usage_after_turn(conn))
 
         args = action.get("args") or {}
         signature = _tool_call_signature(tool_name, args)
@@ -818,7 +891,7 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
             )
             answer = _finalize_answer(conn, messages, trace, "")
             _save_message(conn, "assistant", answer, json.dumps(trace))
-            return _chat_payload(answer, trace)
+            return _chat_payload(answer, trace, context_usage=_usage_after_turn(conn))
 
         try:
             result = run_tool(conn, tool_name, args, chat_mode=True)
@@ -844,7 +917,7 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
         immediate = _immediate_tool_answer(tool_name, result, trace)
         if immediate is not None:
             _save_message(conn, "assistant", immediate, json.dumps(trace))
-            return _chat_payload(immediate, trace)
+            return _chat_payload(immediate, trace, context_usage=_usage_after_turn(conn))
 
         messages.append({"role": "assistant", "content": json.dumps(action)})
         feedback = f"Tool result for {tool_name}:\n{json.dumps(result, indent=2)}"
@@ -862,4 +935,4 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
 
     answer = _finalize_answer(conn, messages, trace, "")
     _save_message(conn, "assistant", answer, json.dumps(trace))
-    return _chat_payload(answer, trace)
+    return _chat_payload(answer, trace, context_usage=_usage_after_turn(conn))

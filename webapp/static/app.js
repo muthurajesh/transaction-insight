@@ -3,7 +3,131 @@ const $ = (sel) => document.querySelector(sel);
 let uiShowCadence = true;
 let uiAgentWorkspace = true;
 let workspaceInboxItem = null;
+let initialRouteSet = false;
+let sidebarNavBound = false;
+let sidebarToggleBound = false;
+const SIDEBAR_COLLAPSED_KEY = "ti_sidebar_collapsed";
 const reviewSuggestedLabels = new Map();
+
+const PAGE_CHROME = {
+  import: { title: "Import & process", crumb: "Workspace", leaf: "Import" },
+  chat: { title: "Chat & analytics", crumb: "Workspace", leaf: "Chat" },
+  review: { title: "Review AI proposals", crumb: "Workspace", leaf: "Review" },
+  edit: { title: "Edit Transactions", crumb: null, leaf: "Transactions" },
+  "custom-rules": { title: "Custom Rules", crumb: null, leaf: "Custom Rules" },
+  settings: { title: "Settings", crumb: null, leaf: "Settings" },
+  actions: { title: "Import & Categorize", crumb: null, leaf: "Import & Categorize" },
+  cadence: { title: "Cadence", crumb: null, leaf: "Cadence" },
+  taxonomy: { title: "AI Rules", crumb: null, leaf: "AI Rules" },
+};
+
+function panelIdForTab(name) {
+  if (uiAgentWorkspace) {
+    if (name === "review") return "panel-workspace-review";
+    if (name === "import") return "panel-import";
+  }
+  return `panel-${name}`;
+}
+
+function updateSidebarNav(name) {
+  if (!uiAgentWorkspace) return;
+  document.querySelectorAll("#app-sidebar .nav-item[data-nav]").forEach((item) => {
+    item.classList.toggle("active", item.dataset.nav === name);
+  });
+}
+
+function updatePageChrome(name) {
+  if (!uiAgentWorkspace) return;
+  const meta = PAGE_CHROME[name] || { title: name, crumb: null, leaf: name };
+  const bc = $("#page-breadcrumb");
+  const title = $("#page-title");
+  if (bc) {
+    bc.innerHTML = meta.crumb
+      ? `${escapeHtml(meta.crumb)} › <span>${escapeHtml(meta.leaf)}</span>`
+      : `<span>${escapeHtml(meta.leaf)}</span>`;
+  }
+  if (title) title.textContent = meta.title;
+}
+
+function bindSidebarNav() {
+  if (sidebarNavBound) return;
+  const sidebar = $("#app-sidebar");
+  if (!sidebar) return;
+  sidebarNavBound = true;
+  sidebar.addEventListener("click", (e) => {
+    if (e.target.closest(".btn-sidebar-toggle")) return;
+    const item = e.target.closest(".nav-item[data-nav]");
+    if (!item) return;
+    setTab(item.dataset.nav);
+  });
+}
+
+function setSidebarCollapsed(collapsed) {
+  const sidebar = $("#app-sidebar");
+  const toggle = $("#btn-sidebar-toggle");
+  const expandTop = $("#btn-sidebar-expand-top");
+  if (!sidebar) return;
+  sidebar.classList.toggle("is-collapsed", collapsed);
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    const label = collapsed ? "Expand sidebar" : "Collapse sidebar";
+    toggle.setAttribute("aria-label", label);
+    toggle.title = label;
+  }
+  if (expandTop) expandTop.classList.toggle("hidden", !collapsed);
+}
+
+function applySidebarCollapsedState() {
+  if (!uiAgentWorkspace) return;
+  let collapsed = false;
+  try {
+    collapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    collapsed = false;
+  }
+  setSidebarCollapsed(collapsed);
+}
+
+function bindSidebarToggle() {
+  if (sidebarToggleBound) return;
+  sidebarToggleBound = true;
+  $("#btn-sidebar-toggle")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const sidebar = $("#app-sidebar");
+    if (!sidebar) return;
+    setSidebarCollapsed(!sidebar.classList.contains("is-collapsed"));
+  });
+  $("#btn-sidebar-expand-top")?.addEventListener("click", () => {
+    setSidebarCollapsed(false);
+  });
+}
+
+function syncWorkspacePendingChrome(total) {
+  const navBadge = $("#nav-review-badge");
+  if (navBadge) {
+    if (total > 0) {
+      navBadge.textContent = String(total);
+      navBadge.classList.remove("hidden");
+    } else {
+      navBadge.classList.add("hidden");
+    }
+  }
+  const banner = $("#chat-pending-banner");
+  const bannerText = $("#chat-pending-banner-text");
+  if (banner && bannerText) {
+    if (total > 0) {
+      bannerText.textContent = `${total} AI proposal${total === 1 ? "" : "s"} waiting for your review`;
+      banner.classList.remove("hidden");
+    } else {
+      banner.classList.add("hidden");
+    }
+  }
+}
 
 function applyUiFeatureFlags() {
   const cadenceTab = $("#tab-cadence");
@@ -12,7 +136,7 @@ function applyUiFeatureFlags() {
   if (cadencePanel) {
     cadencePanel.classList.toggle("hidden", !uiShowCadence || uiAgentWorkspace);
     if ((!uiShowCadence || uiAgentWorkspace) && cadencePanel.classList.contains("active")) {
-      setTab("chat", { skipCadenceGuard: true });
+      setTab(uiAgentWorkspace ? "chat" : "chat", { skipCadenceGuard: true });
     }
   }
   const cadenceRulesCard = $("#settings-cadence-rules-card");
@@ -33,23 +157,13 @@ function applyUiFeatureFlags() {
     tab.classList.toggle("hidden", uiAgentWorkspace);
   });
 
-  const chatTab = $("#tab-chat");
-  if (chatTab) chatTab.textContent = uiAgentWorkspace ? "Workspace" : "Chat";
-
-  const importStrip = $("#workspace-import-strip");
-  const inboxPanel = $("#workspace-inbox-panel");
-  const chatLayout = $("#chat-layout");
-  if (importStrip) importStrip.classList.toggle("hidden", !uiAgentWorkspace);
-  if (inboxPanel) inboxPanel.classList.toggle("hidden", !uiAgentWorkspace);
-  if (chatLayout) chatLayout.classList.toggle("workspace-inbox-open", uiAgentWorkspace);
+  document.body.classList.toggle("body-sidebar-mode", uiAgentWorkspace);
+  document.body.classList.toggle("body-legacy-mode", !uiAgentWorkspace);
+  bindSidebarNav();
+  bindSidebarToggle();
+  applySidebarCollapsedState();
 
   if (uiAgentWorkspace) {
-    const inboxHint = document.querySelector(".workspace-inbox-hint");
-    if (inboxHint) {
-      inboxHint.textContent = uiShowCadence
-        ? "AI proposals awaiting your review — labels, quality flags, cadence patterns, insights."
-        : "AI proposals awaiting your review — labels, quality flags, insights.";
-    }
     loadWorkspaceInbox().catch(() => {});
   }
 }
@@ -67,20 +181,29 @@ async function api(path, options = {}) {
 function setTab(name, options = {}) {
   if (customRulesBusy) return;
   if (name === "cadence" && !uiShowCadence && !options.skipCadenceGuard) return;
+  if (uiAgentWorkspace && name === "actions") name = "import";
+
   document.querySelectorAll(".tab").forEach((t) => {
     t.classList.toggle("active", t.dataset.tab === name);
   });
+  const activePanelId = panelIdForTab(name);
   document.querySelectorAll(".panel").forEach((p) => {
-    p.classList.toggle("active", p.id === `panel-${name}`);
+    p.classList.toggle("active", p.id === activePanelId);
   });
-  if (name === "review") loadReview();
+  updateSidebarNav(name);
+  updatePageChrome(name);
+
+  if (name === "review") {
+    if (uiAgentWorkspace) loadWorkspaceInbox().catch(() => {});
+    else loadReview();
+  }
   if (name === "settings") {
     loadSettings();
     if (uiShowCadence) loadCadenceRulesList();
   }
   if (name === "chat") {
     loadChatHistory();
-    if (uiAgentWorkspace) loadWorkspaceInbox().catch(() => {});
+    refreshChatContextMeter("").catch(() => {});
   }
   if (name === "edit") loadTransactionEditor();
   if (name === "custom-rules") loadCustomRulesPanel();
@@ -91,10 +214,13 @@ function setTab(name, options = {}) {
 
 document.querySelectorAll(".tab-jump").forEach((btn) => {
   btn.addEventListener("click", () => {
-    const tab = btn.dataset.tab;
+    let tab = btn.dataset.tab;
+    if (uiAgentWorkspace && tab === "actions") tab = "import";
     if (tab) setTab(tab);
   });
 });
+
+$("#btn-chat-jump-review")?.addEventListener("click", () => setTab("review"));
 
 function setWorkflowStepper(stepperEl, step) {
   if (!stepperEl) return;
@@ -169,6 +295,71 @@ const ONBOARDING_STEPS = [
   },
 ];
 
+const ONBOARDING_STEPS_WORKSPACE = [
+  {
+    title: "Welcome to Transaction Insight",
+    body:
+      "This quick tour walks you through importing a bank CSV, running AI processing, and reviewing AI proposals. It only appears once for new users.",
+    target: null,
+    kicker: "Quick tour",
+  },
+  {
+    title: "Import",
+    body: "Upload bank CSV exports and run AI processing from the Import view in the sidebar.",
+    target: '.nav-item[data-nav="import"]',
+    tab: "import",
+    kicker: "Step 1 of 5",
+  },
+  {
+    title: "Upload your CSV",
+    body:
+      'Click <strong>Choose CSV files</strong> and select your bank export. The file lands in <code>input/</code> and processing can start from here.',
+    target: "#btn-workspace-choose-upload",
+    tab: "import",
+    kicker: "Step 2 of 5",
+  },
+  {
+    title: "AI processing",
+    body:
+      "Watch the progress bar for percent complete, elapsed time, and a rough ETA. Local LLMs vary — often ~1–2 minutes per 50 transactions on a desktop GPU; a full year may take longer.",
+    target: "#categorize-progress",
+    tab: "import",
+    kicker: "Step 3 of 5",
+    demoProgress: true,
+  },
+  {
+    title: "Review AI proposals",
+    body:
+      "After processing, work the Review inbox — confirm labels, fix quality flags, and accept or reject insights.",
+    target: '.nav-item[data-nav="review"]',
+    tab: "review",
+    kicker: "Step 4 of 5",
+  },
+  {
+    title: "Ask questions in Chat",
+    body:
+      'Once data is loaded, use Chat to ask things like "How much did I spend last month?" or "Compare spending by category."',
+    target: '.nav-item[data-nav="chat"]',
+    tab: "chat",
+    kicker: "Step 5 of 5",
+  },
+  {
+    title: "You're ready",
+    body: "Upload a CSV on Import to get started. Use Custom Rules for if/then patterns.",
+    target: null,
+    kicker: "Done",
+    finish: true,
+  },
+];
+
+function getOnboardingSteps() {
+  return uiAgentWorkspace ? ONBOARDING_STEPS_WORKSPACE : ONBOARDING_STEPS;
+}
+
+function activeProgressPanel() {
+  return uiAgentWorkspace ? $("#categorize-progress") : $("#categorize-progress-legacy");
+}
+
 function isOnboardingActive() {
   const overlay = $("#onboarding-overlay");
   return overlay && !overlay.classList.contains("hidden");
@@ -182,7 +373,7 @@ function clearOnboardingSpotlight() {
 }
 
 function hideOnboardingProgressDemo() {
-  const panel = $("#categorize-progress");
+  const panel = activeProgressPanel();
   if (panel?.dataset.onboardingDemo === "1") {
     panel.classList.add("hidden");
     delete panel.dataset.onboardingDemo;
@@ -190,7 +381,7 @@ function hideOnboardingProgressDemo() {
 }
 
 function showOnboardingProgressDemo() {
-  const panel = $("#categorize-progress");
+  const panel = activeProgressPanel();
   if (!panel) return;
   panel.classList.remove("hidden");
   panel.dataset.onboardingDemo = "1";
@@ -232,14 +423,16 @@ function positionOnboardingCard(targetEl) {
 function renderOnboardingDots() {
   const dots = $("#onboarding-dots");
   if (!dots) return;
-  dots.innerHTML = ONBOARDING_STEPS.map((_, i) => {
+  const steps = getOnboardingSteps();
+  dots.innerHTML = steps.map((_, i) => {
     const cls = i === onboardingStepIndex ? "onboarding-dot active" : "onboarding-dot";
     return `<span class="${cls}"></span>`;
   }).join("");
 }
 
 function renderOnboardingStep(index) {
-  const step = ONBOARDING_STEPS[index];
+  const steps = getOnboardingSteps();
+  const step = steps[index];
   if (!step) return;
   onboardingStepIndex = index;
   const title = $("#onboarding-title");
@@ -325,13 +518,14 @@ $("#btn-onboarding-back")?.addEventListener("click", () => {
   if (onboardingStepIndex > 0) renderOnboardingStep(onboardingStepIndex - 1);
 });
 $("#btn-onboarding-next")?.addEventListener("click", () => {
-  const step = ONBOARDING_STEPS[onboardingStepIndex];
+  const steps = getOnboardingSteps();
+  const step = steps[onboardingStepIndex];
   if (step?.finish) {
     finishOnboarding();
-    setTab("actions");
+    setTab(uiAgentWorkspace ? "import" : "actions");
     return;
   }
-  if (onboardingStepIndex < ONBOARDING_STEPS.length - 1) {
+  if (onboardingStepIndex < steps.length - 1) {
     renderOnboardingStep(onboardingStepIndex + 1);
   } else {
     finishOnboarding();
@@ -465,6 +659,55 @@ function focusEditSearchIfRequested() {
   }
 }
 
+function focusEditLabelStatusIfRequested() {
+  const status = sessionStorage.getItem("editFilterLabelStatus");
+  if (!status) return;
+  sessionStorage.removeItem("editFilterLabelStatus");
+  const sel = $("#edit-search-label-status");
+  if (sel) {
+    sel.value = status;
+    renderEditActiveFilters();
+  }
+}
+
+function openTransactionsNeedingAttention() {
+  sessionStorage.setItem("editFilterLabelStatus", "needs_attention");
+  setTab("edit");
+}
+
+function updateEditNeedsAttentionBanner(reviewCount) {
+  const banner = $("#edit-needs-attention-banner");
+  const text = $("#edit-needs-attention-text");
+  if (!banner || !text) return;
+  const review = reviewCount || 0;
+  if (review > 0) {
+    text.textContent = `${review} merchant label(s) need confirmation. Filter transactions below or open the Review inbox.`;
+    banner.classList.remove("hidden");
+  } else {
+    banner.classList.add("hidden");
+  }
+}
+
+function formatLabelStatus(status) {
+  const s = String(status || "").trim().toLowerCase();
+  if (s === "needs_review") return "Needs review";
+  if (s === "pending") return "Pending";
+  if (s === "confirmed") return "Confirmed";
+  return s ? s.replace(/_/g, " ") : "—";
+}
+
+function renderLabelStatusBadge(status) {
+  const s = String(status || "").trim().toLowerCase();
+  if (!s) return "—";
+  const cls =
+    s === "confirmed"
+      ? "label-status-confirmed"
+      : s === "needs_review" || s === "pending"
+        ? `label-status-${s}`
+        : "label-status-other";
+  return `<span class="label-status-badge ${cls}">${escapeHtml(formatLabelStatus(s))}</span>`;
+}
+
 function focusReviewMerchantIfRequested() {
   const focus = sessionStorage.getItem("reviewFocusMerchant");
   if (!focus) return;
@@ -490,16 +733,57 @@ async function loadStatus() {
   if (s.pipeline_model && s.chat_model && s.pipeline_model !== s.chat_model) {
     modelLabel = `process ${s.pipeline_model} · chat ${s.chat_model}`;
   }
-  $("#status-line").textContent =
+  const statusText =
     `${s.transaction_count} transactions · ${s.review_merchant_count} merchants to confirm · ${provider}${modelLabel}`;
-  $("#inbox-path").textContent = s.inbox_dir;
-  const processedEl = $("#processed-path");
-  if (processedEl && s.processed_dir) {
-    processedEl.textContent = s.processed_dir;
+  const statusLine = $("#status-line");
+  const review = s.review_merchant_count || 0;
+  if (statusLine) {
+    if (review > 0) {
+      statusLine.innerHTML = `${s.transaction_count} transactions · <button type="button" class="btn-link status-confirm-link">${review} merchants to confirm</button> · ${escapeHtml(provider)}${escapeHtml(modelLabel)}`;
+      statusLine.querySelector(".status-confirm-link")?.addEventListener("click", openTransactionsNeedingAttention);
+    } else {
+      statusLine.textContent = statusText;
+    }
   }
+  const statusCompact = $("#status-line-compact");
+  if (statusCompact) {
+    if (review > 0) {
+      statusCompact.innerHTML = `${s.transaction_count} txns · <button type="button" class="btn-link status-confirm-link">${review} to confirm</button>`;
+      statusCompact.querySelector(".status-confirm-link")?.addEventListener("click", openTransactionsNeedingAttention);
+    } else {
+      statusCompact.textContent = `${s.transaction_count} txns · 0 to confirm`;
+    }
+  }
+  updateEditNeedsAttentionBanner(review);
+  const inboxPath = s.inbox_dir;
+  const processedDir = s.processed_dir || "processed/";
+  const inboxEl = $("#inbox-path");
+  if (inboxEl) inboxEl.textContent = inboxPath;
+  const inboxLegacy = $("#inbox-path-legacy");
+  if (inboxLegacy) inboxLegacy.textContent = inboxPath;
+  const processedEl = $("#processed-path");
+  if (processedEl) processedEl.textContent = processedDir;
+  const processedLegacy = $("#processed-path-legacy");
+  if (processedLegacy) processedLegacy.textContent = processedDir;
   updateActionsStepper(s);
   maybeStartOnboarding(s);
   loadClassificationAudit().catch(() => {});
+  await maybeSetInitialRoute(s);
+}
+
+async function maybeSetInitialRoute(status) {
+  if (initialRouteSet || !uiAgentWorkspace) return;
+  initialRouteSet = true;
+  let pending = 0;
+  try {
+    const data = await api("/api/pending-confirmations");
+    pending = data.count ?? (data.items || []).length;
+  } catch {
+    pending = 0;
+  }
+  if (pending > 0) setTab("review");
+  else if ((status.transaction_count || 0) === 0) setTab("import");
+  else setTab("chat");
 }
 
 function escapeHtml(s) {
@@ -1010,7 +1294,10 @@ function appendWorkspaceProposalActions(parent, items) {
     btn.className = "btn-secondary btn-workspace-proposal";
     const label = workspaceTypeLabel(item.confirmation_type);
     btn.textContent = `Review in Workspace (${label})`;
-    btn.addEventListener("click", () => openWorkspaceConfirmModal(item));
+    btn.addEventListener("click", () => {
+      setTab("review");
+      openWorkspaceConfirmModal(item);
+    });
     wrap.appendChild(btn);
   });
   parent.appendChild(wrap);
@@ -1065,10 +1352,71 @@ let chatBusy = false;
 let chatHistoryLoaded = false;
 let chatHistoryPromise = null;
 let chatHistoryModalPage = 1;
-const CHAT_SCREEN_CLEARED_KEY = "chatScreenCleared";
+let chatContextMeterTimer = null;
 
-function isChatScreenCleared() {
-  return sessionStorage.getItem(CHAT_SCREEN_CLEARED_KEY) === "1";
+function formatTokenCount(n) {
+  const num = Number(n) || 0;
+  if (num >= 10000) return `${(num / 1000).toFixed(1)}k`;
+  if (num >= 1000) return `${(num / 1000).toFixed(1)}k`;
+  return String(num);
+}
+
+function renderChatContextMeter(usage) {
+  const meter = $("#chat-context-meter");
+  if (!meter || !usage) return;
+  const fill = meter.querySelector(".chat-context-meter-fill");
+  const label = meter.querySelector(".chat-context-meter-label");
+  const systemTokens = usage.system_tokens || 0;
+  const fullLimit = usage.context_token_limit || 32768;
+  const used = usage.meter_tokens ?? usage.total_tokens ?? 0;
+  const limit =
+    usage.meter_limit ?? Math.max(1024, fullLimit - systemTokens);
+  const pct = Math.min(100, Math.max(0, usage.usage_percent ?? (limit ? (used / limit) * 100 : 0)));
+  if (fill) {
+    fill.style.width = `${pct}%`;
+    fill.classList.toggle("is-warning", pct >= 70 && pct < 90);
+    fill.classList.toggle("is-danger", pct >= 90);
+  }
+  if (label) {
+    label.textContent = `${formatTokenCount(used)} / ${formatTokenCount(limit)}`;
+  }
+  const historyCount = usage.history_message_count || 0;
+  const requestTotal = usage.total_tokens ?? used + systemTokens;
+  meter.title = [
+    `Your conversation: ${formatTokenCount(used)} of ${formatTokenCount(limit)} tokens`,
+    `Full request (incl. system): ${formatTokenCount(requestTotal)} of ${formatTokenCount(fullLimit)}`,
+    `System prompt (fixed each send): ${formatTokenCount(systemTokens)}`,
+    `Conversation history: ${formatTokenCount(usage.history_tokens || 0)} (${historyCount} message${historyCount === 1 ? "" : "s"})`,
+    usage.next_user_tokens
+      ? `Draft message: ${formatTokenCount(usage.next_user_tokens)}`
+      : `DB context on next send: ${formatTokenCount(usage.context_tokens || 0)}`,
+    "Clear screen resets conversation context (history kept for export).",
+  ].join("\n");
+}
+
+async function refreshChatContextMeter(draftMessage) {
+  const meter = $("#chat-context-meter");
+  if (!meter) return;
+  try {
+    const draft =
+      draftMessage !== undefined
+        ? String(draftMessage || "").trim()
+        : ($("#chat-input")?.value || "").trim();
+    const params = new URLSearchParams();
+    if (draft) params.set("message", draft);
+    const qs = params.toString();
+    const usage = await api(`/api/chat/context-usage${qs ? `?${qs}` : ""}`);
+    renderChatContextMeter(usage);
+  } catch {
+    /* meter optional */
+  }
+}
+
+function scheduleChatContextMeterRefresh() {
+  clearTimeout(chatContextMeterTimer);
+  chatContextMeterTimer = setTimeout(() => {
+    refreshChatContextMeter().catch(() => {});
+  }, 350);
 }
 
 function formatChatTimestamp(iso) {
@@ -1087,23 +1435,30 @@ function formatChatTimestamp(iso) {
 function clearChatScreen() {
   const log = $("#chat-log");
   if (log) log.innerHTML = "";
-  sessionStorage.setItem(CHAT_SCREEN_CLEARED_KEY, "1");
   chatHistoryLoaded = true;
+}
+
+async function clearChatContext() {
+  if (chatBusy) return;
+  clearChatScreen();
+  try {
+    const res = await api("/api/chat/clear-context", { method: "POST" });
+    if (res.context_usage) renderChatContextMeter(res.context_usage);
+    else await refreshChatContextMeter("");
+  } catch (err) {
+    alert(err.message || "Could not clear chat context");
+  }
 }
 
 async function loadChatHistory() {
   if (chatHistoryLoaded) return;
-  if (isChatScreenCleared()) {
-    chatHistoryLoaded = true;
-    return;
-  }
   if (chatHistoryPromise) return chatHistoryPromise;
   const log = $("#chat-log");
   if (!log) return;
 
   chatHistoryPromise = (async () => {
     try {
-      const res = await api("/api/chat/history");
+      const res = await api("/api/chat/history?active_only=1");
       if (chatHistoryLoaded) return;
       const messages = res.messages || [];
       log.innerHTML = "";
@@ -1118,6 +1473,7 @@ async function loadChatHistory() {
         );
       });
       log.scrollTop = log.scrollHeight;
+      await refreshChatContextMeter("");
     } catch (_) {
       /* history optional on first load */
     } finally {
@@ -1227,8 +1583,7 @@ async function downloadChatHistory() {
 
 (function initChatHistoryControls() {
   $("#btn-chat-clear")?.addEventListener("click", () => {
-    if (chatBusy) return;
-    clearChatScreen();
+    clearChatContext().catch(() => {});
   });
   $("#btn-chat-history")?.addEventListener("click", () => {
     openChatHistoryModal().catch(() => {});
@@ -1441,7 +1796,6 @@ $("#chat-form").addEventListener("submit", async (e) => {
   const sendBtn = $("#btn-chat-send");
   const msg = input.value.trim();
   if (!msg) return;
-  sessionStorage.removeItem(CHAT_SCREEN_CLEARED_KEY);
   input.value = "";
   chatBusy = true;
   if (sendBtn) sendBtn.disabled = true;
@@ -1462,6 +1816,8 @@ $("#chat-form").addEventListener("submit", async (e) => {
       res.cadence_proposal,
       res.workspace_proposals
     );
+    if (res.context_usage) renderChatContextMeter(res.context_usage);
+    else refreshChatContextMeter("").catch(() => {});
     if (uiAgentWorkspace && res.workspace_proposals?.length) {
       loadWorkspaceInbox().catch(() => {});
     }
@@ -1475,6 +1831,8 @@ $("#chat-form").addEventListener("submit", async (e) => {
     input.focus();
   }
 });
+
+$("#chat-input")?.addEventListener("input", scheduleChatContextMeterRefresh);
 
 (function initChatMic() {
   const micBtn = $("#btn-chat-mic");
@@ -2827,6 +3185,7 @@ const EDIT_FILTER_CONFIG = [
   { key: "q", label: "Search", sel: "#edit-search-q" },
   { key: "month", label: "Month", sel: "#edit-search-month" },
   { key: "category", label: "Category", sel: "#edit-search-category" },
+  { key: "label_status", label: "Label status", sel: "#edit-search-label-status" },
   { key: "sub_category", label: "Sub-category", sel: "#edit-search-sub" },
   { key: "expense_type", label: "Expense type", sel: "#edit-search-expense-type" },
   { key: "classification", label: "Classification", sel: "#edit-search-classification" },
@@ -3102,6 +3461,7 @@ function renderEditResults(transactions) {
           <td>${escapeHtml(sub)}</td>
           <td>${escapeHtml(expenseType)}</td>
           <td>${escapeHtml(classification)}</td>
+          <td>${renderLabelStatusBadge(tx.label_status)}</td>
           <td class="edit-row-actions">
             <button type="button" class="btn-edit-row" data-tx-id="${escapeAttr(tx.transaction_id)}">Edit</button>
             ${cadenceBtn}
@@ -3122,6 +3482,7 @@ function renderEditResults(transactions) {
           <th scope="col">Sub-category</th>
           <th scope="col">Type</th>
           <th scope="col">Class</th>
+          <th scope="col">Status</th>
           <th scope="col"></th>
         </tr>
       </thead>
@@ -3310,6 +3671,7 @@ async function runEditSearch({ resetPage = false } = {}) {
   const subCategory = ($("#edit-search-sub")?.value || "").trim();
   const expenseType = ($("#edit-search-expense-type")?.value || "").trim();
   const classification = ($("#edit-search-classification")?.value || "").trim();
+  const labelStatus = ($("#edit-search-label-status")?.value || "").trim();
 
   const params = new URLSearchParams();
   if (q) params.set("q", q);
@@ -3318,6 +3680,7 @@ async function runEditSearch({ resetPage = false } = {}) {
   if (subCategory) params.set("sub_category", subCategory);
   if (expenseType) params.set("expense_type", expenseType);
   if (classification) params.set("classification", classification);
+  if (labelStatus) params.set("label_status", labelStatus);
   params.set("limit", String(EDIT_PAGE_SIZE));
   params.set("offset", String(editPageOffset));
   params.set("sort_by", editSortBy);
@@ -3905,6 +4268,8 @@ async function loadTransactionEditor() {
       if (current) monthSel.value = current;
     }
     focusEditSearchIfRequested();
+    focusEditLabelStatusIfRequested();
+    updateEditNeedsAttentionBanner(status.review_merchant_count || 0);
     await runEditSearch();
   } catch (err) {
     const host = $("#edit-results");
@@ -3924,6 +4289,7 @@ $("#edit-search-form")?.addEventListener("submit", (e) => {
   "#edit-search-q",
   "#edit-search-month",
   "#edit-search-category",
+  "#edit-search-label-status",
   "#edit-search-sub",
   "#edit-search-expense-type",
   "#edit-search-classification",
@@ -3954,6 +4320,15 @@ $("#btn-edit-next")?.addEventListener("click", () => {
   editPageOffset += EDIT_PAGE_SIZE;
   runEditSearch({ resetPage: false }).catch(() => {});
 });
+
+$("#btn-edit-filter-needs-attention")?.addEventListener("click", () => {
+  const sel = $("#edit-search-label-status");
+  if (sel) sel.value = "needs_attention";
+  renderEditActiveFilters();
+  runEditSearch({ resetPage: true }).catch(() => {});
+});
+
+$("#btn-edit-go-review")?.addEventListener("click", () => setTab("review"));
 
 document.querySelectorAll('input[name="edit-scope"]').forEach((radio) => {
   radio.addEventListener("change", () => {
@@ -4766,9 +5141,9 @@ function setInboxSelectedFiles(files) {
 }
 
 async function uploadCsvFiles(files, { runAfterUpload = true } = {}) {
-  const resultEl = $("#upload-result");
-  const chooseBtn = $("#btn-choose-upload");
-  const processBtn = $("#btn-categorize");
+  const { uploadResult: resultEl } = progressEls();
+  const chooseBtn = uiAgentWorkspace ? $("#btn-workspace-choose-upload") : $("#btn-choose-upload");
+  const processBtn = uiAgentWorkspace ? $("#btn-workspace-categorize") : $("#btn-categorize");
   let startedProcess = false;
   if (!files?.length) {
     if (resultEl) resultEl.textContent = "No files selected.";
@@ -4836,33 +5211,47 @@ function formatDurationSeconds(seconds) {
   return mr ? `${h}h ${mr}m` : `${h}h`;
 }
 
+function progressEls() {
+  const legacy = !uiAgentWorkspace;
+  const suffix = legacy ? "-legacy" : "";
+  return {
+    panel: $(`#categorize-progress${suffix}`),
+    fill: $(`#categorize-progress-fill${suffix}`),
+    text: $(`#categorize-progress-text${suffix}`),
+    timing: $(`#categorize-progress-timing${suffix}`),
+    elapsed: $(`#categorize-progress-elapsed${suffix}`),
+    eta: $(`#categorize-progress-eta${suffix}`),
+    rows: $(`#categorize-progress-rows${suffix}`),
+    log: $(`#categorize-progress-log${suffix}`),
+    result: legacy ? $("#categorize-result-legacy") : $("#categorize-result"),
+    uploadResult: legacy ? $("#upload-result-legacy") : $("#upload-result"),
+  };
+}
+
 function setCategorizeProgressTiming(meta = {}, percent = categorizeProgressPercent) {
-  const timing = $("#categorize-progress-timing");
-  const elapsedEl = $("#categorize-progress-elapsed");
-  const etaEl = $("#categorize-progress-eta");
-  const rowsEl = $("#categorize-progress-rows");
+  const { timing, elapsed, eta, rows } = progressEls();
   const showTiming =
     meta.elapsed_s != null ||
     meta.eta_s != null ||
     meta.estimate_total_s != null ||
     meta.row_count != null;
   timing?.classList.toggle("hidden", !showTiming);
-  if (rowsEl) {
-    rowsEl.textContent = meta.row_count ? `${meta.row_count} transactions` : "";
+  if (rows) {
+    rows.textContent = meta.row_count ? `${meta.row_count} transactions` : "";
   }
-  if (elapsedEl) {
-    elapsedEl.textContent =
+  if (elapsed) {
+    elapsed.textContent =
       meta.elapsed_s != null ? `Elapsed: ${formatDurationSeconds(meta.elapsed_s)}` : "";
   }
-  if (etaEl) {
+  if (eta) {
     if (percent >= 100) {
-      etaEl.textContent = "";
+      eta.textContent = "";
     } else if (meta.eta_s != null) {
-      etaEl.textContent = `~${formatDurationSeconds(meta.eta_s)} remaining`;
+      eta.textContent = `~${formatDurationSeconds(meta.eta_s)} remaining`;
     } else if (meta.estimate_total_s != null) {
-      etaEl.textContent = `~${formatDurationSeconds(meta.estimate_total_s)} estimated`;
+      eta.textContent = `~${formatDurationSeconds(meta.estimate_total_s)} estimated`;
     } else {
-      etaEl.textContent = "";
+      eta.textContent = "";
     }
   }
 }
@@ -4878,15 +5267,14 @@ function progressMetaFromEvent(data) {
 
 function setCategorizeProgress(percent, message, meta = {}) {
   categorizeProgressPercent = Math.min(100, Math.max(0, percent));
-  const fill = $("#categorize-progress-fill");
-  const text = $("#categorize-progress-text");
+  const { fill, text } = progressEls();
   if (fill) fill.style.width = `${categorizeProgressPercent}%`;
   if (text) text.textContent = message;
   setCategorizeProgressTiming(meta, categorizeProgressPercent);
 }
 
 function appendCategorizeLog(message) {
-  const log = $("#categorize-progress-log");
+  const { log } = progressEls();
   if (!log) return;
   const li = document.createElement("li");
   li.textContent = message;
@@ -4897,17 +5285,25 @@ function appendCategorizeLog(message) {
   log.scrollTop = log.scrollHeight;
 }
 
-async function runCategorizeStream() {
-  const btn = $("#btn-categorize");
-  const panel = $("#categorize-progress");
-  const result = $("#categorize-result");
-  const log = $("#categorize-progress-log");
+function setCategorizeButtonsEnabled(enabled) {
+  const legacyBtn = $("#btn-categorize");
+  const workspaceBtn = $("#btn-workspace-categorize");
+  if (legacyBtn) legacyBtn.disabled = !enabled;
+  if (workspaceBtn) workspaceBtn.disabled = !enabled;
+}
 
-  btn.disabled = true;
+async function runCategorizeStream() {
+  const legacyBtn = $("#btn-categorize");
+  const workspaceBtn = $("#btn-workspace-categorize");
+  const { panel, log, result } = progressEls();
+
+  if (uiAgentWorkspace) setTab("import");
+  if (legacyBtn) legacyBtn.disabled = true;
+  if (workspaceBtn) workspaceBtn.disabled = true;
   panel?.classList.remove("hidden");
   if (log) log.innerHTML = "";
   setCategorizeProgress(0, "Checking inbox…");
-  result.textContent = "";
+  if (result) result.textContent = "";
 
   try {
     const st = await api("/api/status");
@@ -4916,8 +5312,8 @@ async function runCategorizeStream() {
       const msg =
         "No CSV in input/. Choose CSV files to upload, or copy an export from processed/ back into input/.";
       setCategorizeProgress(0, msg);
-      result.textContent = msg;
-      btn.disabled = false;
+      if (result) result.textContent = msg;
+      setCategorizeButtonsEnabled(true);
       return;
     }
     if (files.length > 1) {
@@ -4925,8 +5321,8 @@ async function runCategorizeStream() {
     }
   } catch (err) {
     setCategorizeProgress(0, err.message);
-    result.textContent = err.message;
-    btn.disabled = false;
+    if (result) result.textContent = err.message;
+    setCategorizeButtonsEnabled(true);
     return;
   }
 
@@ -4946,7 +5342,7 @@ async function runCategorizeStream() {
       if (typeof data.percent === "number") {
         setCategorizeProgress(data.percent, data.message, meta);
       } else {
-        const text = $("#categorize-progress-text");
+        const { text } = progressEls();
         if (text) text.textContent = data.message;
         setCategorizeProgressTiming(meta);
       }
@@ -4973,7 +5369,7 @@ async function runCategorizeStream() {
       if (typeof data.percent === "number") {
         setCategorizeProgress(data.percent, data.message, meta);
       } else if (data.message) {
-        const text = $("#categorize-progress-text");
+        const { text } = progressEls();
         if (text) text.textContent = data.message;
         setCategorizeProgressTiming(meta);
       }
@@ -5003,17 +5399,19 @@ async function runCategorizeStream() {
             appendCategorizeLog(`Archived ${item.file} → ${item.archived_to}`);
           }
         }
-        result.textContent = JSON.stringify(
-          { file_count: fileCount, results: data.results },
-          null,
-          2
-        );
+        if (result) {
+          result.textContent = JSON.stringify(
+            { file_count: fileCount, results: data.results },
+            null,
+            2
+          );
+        }
       } else if (data.result) {
         if (data.result.archived_to) {
           appendCategorizeLog(`Archived CSV → ${data.result.archived_to}`);
         }
-        result.textContent = JSON.stringify(data.result, null, 2);
-      } else {
+        if (result) result.textContent = JSON.stringify(data.result, null, 2);
+      } else if (result) {
         result.textContent = JSON.stringify(
           {
             labeled: data.labeled,
@@ -5025,28 +5423,31 @@ async function runCategorizeStream() {
         );
       }
       es.close();
-      btn.disabled = false;
+      setCategorizeButtonsEnabled(true);
       loadStatus();
       reviewOptionsCache = null;
       onboardingAfterProcessingDone();
-      if (uiAgentWorkspace) loadWorkspaceInbox().catch(() => {});
+      if (uiAgentWorkspace) {
+        loadWorkspaceInbox().catch(() => {});
+        setTab("review");
+      }
       setTimeout(() => loadClassificationAudit().catch(() => {}), 10000);
       setTimeout(() => loadClassificationAudit().catch(() => {}), 45000);
     } else if (data.type === "error") {
       setCategorizeProgress(0, data.message);
-      result.textContent = data.message;
+      if (result) result.textContent = data.message;
       es.close();
-      btn.disabled = false;
+      setCategorizeButtonsEnabled(true);
     }
   };
 
   es.onerror = () => {
     if (es.readyState === EventSource.CLOSED) return;
     es.close();
-    btn.disabled = false;
+    setCategorizeButtonsEnabled(true);
     const msg = "Connection lost during processing. Check server logs.";
     setCategorizeProgress(0, msg);
-    result.textContent = msg;
+    if (result) result.textContent = msg;
   };
 }
 
@@ -5418,7 +5819,9 @@ async function loadWorkspaceInbox() {
   try {
     const data = await api("/api/pending-confirmations");
     const items = filterWorkspaceCadenceProposals(data.items || []);
-    if (countEl) countEl.textContent = String(data.count ?? items.length);
+    const total = data.count ?? items.length;
+    if (countEl) countEl.textContent = String(total);
+    syncWorkspacePendingChrome(total);
     if (!items.length) {
       list.innerHTML = '<p class="hint workspace-inbox-empty">No pending AI proposals.</p>';
       return;
@@ -6334,3 +6737,4 @@ $("#taxonomy-apply-body")?.addEventListener("click", (e) => {
 });
 
 loadChatHistory();
+refreshChatContextMeter("").catch(() => {});

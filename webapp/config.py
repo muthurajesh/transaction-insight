@@ -88,6 +88,10 @@ _, _, CLASSIFICATION_AUDIT_MODEL = resolve_provider_config(
 )
 LLM_MODEL = CHAT_MODEL
 LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", os.getenv("REQUEST_TIMEOUT", "120")))
+CHAT_HISTORY_MESSAGES = max(0, min(100, int(os.getenv("CHAT_HISTORY_MESSAGES", "20"))))
+CHAT_CONTEXT_TOKEN_LIMIT = max(
+    4096, int(os.getenv("CHAT_CONTEXT_TOKEN_LIMIT", "32768"))
+)
 
 
 def get_llm_client():

@@ -79,6 +79,36 @@ class TransactionEditMerchantTests(unittest.TestCase):
         self.assertEqual(len(data["transactions"]), 1)
         self.assertEqual(data["transactions"][0]["simple_description"], "Payment to Tesla")
 
+    def test_search_label_status_needs_attention(self):
+        conn = _conn()
+        rows = [
+            ("t1", "needs_review"),
+            ("t2", "pending"),
+            ("t3", "confirmed"),
+        ]
+        for tx_id, label_status in rows:
+            conn.execute(
+                """
+                INSERT INTO transactions (
+                    transaction_id, date, budget_month, amount, merchant_key,
+                    simple_description, original_description,
+                    ai_category, flow_type, label_status, imported_at
+                ) VALUES (?, '2026-05-11', '2026-05', -10, ?, 'desc', 'orig',
+                          'Cat', 'Expense', ?, 'now')
+                """,
+                (tx_id, f"Merchant {tx_id}", label_status),
+            )
+        conn.commit()
+
+        data = search_transactions(conn, label_status="needs_attention", limit=10)
+        ids = {r["transaction_id"] for r in data["transactions"]}
+        self.assertEqual(ids, {"t1", "t2"})
+        self.assertEqual(data["total"], 2)
+
+        confirmed = search_transactions(conn, label_status="confirmed", limit=10)
+        self.assertEqual(len(confirmed["transactions"]), 1)
+        self.assertEqual(confirmed["transactions"][0]["transaction_id"], "t3")
+
 
 if __name__ == "__main__":
     unittest.main()

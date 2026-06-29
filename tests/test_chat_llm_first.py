@@ -164,6 +164,34 @@ class ChatAgentLoopTests(unittest.TestCase):
         self.assertEqual(result["tool_trace"][1]["tool"], "query_sql")
         self.assertIsNone(result["tool_trace"][1]["result"].get("validation_rejected"))
 
+    @patch("webapp.agent.chat.chat_completion")
+    def test_follow_up_includes_prior_turns(self, mock_llm):
+        conn = _conn()
+        conn.execute(
+            """
+            INSERT INTO chat_messages (role, content, tool_trace, created_at)
+            VALUES ('user', 'Draft a custom rule for allview rental income', NULL, 'now')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO chat_messages (role, content, tool_trace, created_at)
+            VALUES ('assistant', 'Would you like me to draft a revised rule?', NULL, 'now')
+            """
+        )
+        conn.commit()
+        mock_llm.return_value = json.dumps(
+            {"answer": "Here is a revised rule that matches description text containing allview."}
+        )
+        chat(conn, "Yes please")
+        first_messages = mock_llm.call_args_list[0][0][0]
+        self.assertGreaterEqual(len(first_messages), 4)
+        self.assertEqual(first_messages[0]["role"], "system")
+        self.assertEqual(first_messages[1]["content"], "Draft a custom rule for allview rental income")
+        self.assertEqual(first_messages[2]["content"], "Would you like me to draft a revised rule?")
+        self.assertIn("Yes please", first_messages[-1]["content"])
+        self.assertIn("allview rental income", first_messages[1]["content"].lower())
+
 
 if __name__ == "__main__":
     unittest.main()

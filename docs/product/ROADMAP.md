@@ -42,6 +42,8 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | **Voice input UX** — focus input, continuous listen, 3s silence / 30s cap, auto-send | CHAT_RICH_UI § Voice input |
 | [x] | Help panel — commands, descriptions, **+** insert | CHAT_RICH_UI § Tier 1 |
 | [x] | Tier 2 — Chart.js, CSV export, chat history restore | CHAT_RICH_UI § Tier 2 |
+| [x] | **Multi-turn chat memory** — prior turns sent to LLM (`CHAT_HISTORY_MESSAGES`) | CHAT_RICH_UI § Tier 2 |
+| [x] | **Context usage meter** — toolbar estimate; Clear screen resets LLM anchor | CHAT_RICH_UI § Tier 2 |
 | [~] | Tier 3 — **Save as report** from table replies | Shipped in chat — [CHAT_CUSTOM_REPORTS.md](../chat/CHAT_CUSTOM_REPORTS.md); [CHAT_TIER3_SAVE_REPORT.md](../chat/CHAT_TIER3_SAVE_REPORT.md) |
 | [ ] | Tier 3 — **Multiline composer** (Shift+Enter) | CHAT_RICH_UI § Tier 3 |
 | [ ] | Tier 3 — Streaming tokens (optional) | CHAT_RICH_UI § Tier 3; defer unless latency hurts |
@@ -187,7 +189,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | `decision_events` schema + HITL instrumentation | Confirm, audit dismiss, taxonomy apply, edit corrections |
 | [x] | Unified pending inbox API | `GET /api/pending-confirmations` |
 | [x] | Learning Agent (opt-in scheduler + CLI) | `ai_insights`, `POST /api/learning-agent/run` |
-| [x] | Agent Workspace UI (`UI_AGENT_WORKSPACE`) | Workspace tab + inbox panel; legacy tabs hidden |
+| [x] | Agent Workspace UI (`UI_AGENT_WORKSPACE`) | Sidebar shell: Import / Chat / Review + Transactions, Rules, Settings |
 | [x] | Cadence tab hidden; cadence proposals respect `UI_SHOW_CADENCE` | Hidden from inbox/chat proposals when `0` (default with workspace) |
 | [x] | Accepted insights → `review_suggest` context | `recent_user_corrections` in prompt |
 | [x] | LLM Decision Analyst (`LEARNING_AGENT_MODEL`, `query_sql` loop) | DECISION_MEMORY § Learning Agent |

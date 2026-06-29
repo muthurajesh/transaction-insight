@@ -31,6 +31,7 @@ SORT_COLUMNS = {
 }
 
 _RUN_RATE_FILTER_VALUES = frozenset({"yes", "no"})
+_LABEL_STATUS_FILTER_VALUES = frozenset({"needs_attention", "needs_review", "pending", "confirmed"})
 
 _EFFECTIVE_KIND_EXPR = """
 CASE
@@ -139,6 +140,7 @@ def search_transactions(
     sub_category: str = "",
     expense_type: str = "",
     classification: str = "",
+    label_status: str = "",
     cadence_kind: str = "",
     cadence_period: str = "",
     include_in_run_rate: str = "",
@@ -189,6 +191,17 @@ def search_transactions(
     if classification:
         clauses.append("t.classification = ?")
         params.append(classification)
+
+    label_status_filter = (label_status or "").strip().lower()
+    if label_status_filter:
+        if label_status_filter not in _LABEL_STATUS_FILTER_VALUES:
+            allowed = ", ".join(sorted(_LABEL_STATUS_FILTER_VALUES))
+            raise ValueError(f"label_status must be one of: {allowed}")
+        if label_status_filter == "needs_attention":
+            clauses.append("t.label_status IN ('needs_review', 'pending')")
+        else:
+            clauses.append("t.label_status = ?")
+            params.append(label_status_filter)
 
     cadence_kind = (cadence_kind or "").strip().lower()
     if cadence_kind:
