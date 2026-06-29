@@ -1,9 +1,18 @@
 # Transaction Insight — Documentation index
 
-**Not the project README** — that is [../README.md](../README.md) (install, workflow, quick start).  
+**Not the project README** — that is [../README.md](../README.md) (prerequisites, quick start, next steps).  
 This file is the **catalog of all docs** under `docs/`.
 
 Start here to find the right doc. **Product decisions** always defer to the charter.
+
+---
+
+## Setup (clone & run)
+
+| Doc | Purpose | Status |
+|-----|---------|--------|
+| [../README.md](../README.md) | Prerequisites, quick start, essential config | Active |
+| [setup/LLM_SETUP.md](./setup/LLM_SETUP.md) | Ollama, LM Studio, model roles, performance | Active |
 
 ---
 
@@ -24,7 +33,7 @@ Start here to find the right doc. **Product decisions** always defer to the char
 
 | Doc | Purpose | Status |
 |-----|---------|--------|
-| [pipeline/IMPORT_PROCESS_UPLOAD.md](./pipeline/IMPORT_PROCESS_UPLOAD.md) | CSV upload + Run processing file picker | Partial / planned |
+| [pipeline/IMPORT_PROCESS_UPLOAD.md](./pipeline/IMPORT_PROCESS_UPLOAD.md) | CSV upload, Run processing, output columns | Shipped |
 | [pipeline/PIPELINE_DB_LOOKUPS.md](./pipeline/PIPELINE_DB_LOOKUPS.md) | SQLite pipeline lookups | Shipped |
 | [pipeline/PIPELINE_MERCHANT_LABELS.md](./pipeline/PIPELINE_MERCHANT_LABELS.md) | Confirmed user labels before LLM on re-import | Shipped |
 
@@ -97,7 +106,10 @@ Start here to find the right doc. **Product decisions** always defer to the char
 | Decide if a feature fits the product | [product/PRODUCT_CHARTER.md](./product/PRODUCT_CHARTER.md) |
 | See what’s done / next | [product/ROADMAP.md](./product/ROADMAP.md) |
 | Start a new AI coding session | `@docs/product/AI_SESSION_CONTEXT.md` + `@docs/product/PRODUCT_CHARTER.md` |
-| Onboard as a human | Root [README.md](../README.md) |
+| Install and run locally | Root [README.md](../README.md) → [setup/LLM_SETUP.md](./setup/LLM_SETUP.md) |
+| Understand where AI runs | [product/PRODUCT_CHARTER.md](./product/PRODUCT_CHARTER.md) §5.5 |
+| CSV import & output columns | [pipeline/IMPORT_PROCESS_UPLOAD.md](./pipeline/IMPORT_PROCESS_UPLOAD.md) |
+| Onboard as a human (full doc map) | [INDEX.md](./INDEX.md) |
 
 ---
 

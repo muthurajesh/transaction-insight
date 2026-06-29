@@ -62,7 +62,7 @@ pytest -v --tb=short
 
 ## 5. README and env
 
-- Scan `README.md` sections affected by the diff (workflow, Quick start, How AI is used, LLM setup, lookups, cadence, custom rules).
+- Scan `README.md` and linked setup docs (`docs/setup/LLM_SETUP.md`, `docs/product/PRODUCT_CHARTER.md`, `docs/INDEX.md`) for sections affected by the diff.
 - New or renamed env vars → `config/.env.example` (and presets like `.env.lmstudio` if applicable).
 
 ## 6. Reply and commit message

@@ -39,7 +39,7 @@ Run the **full workflow** below when any of these apply:
    - Update the linked detail doc (e.g. `chat/CHAT_RICH_UI.md`, `cadence/EXPENSE_CADENCE_PHASE_D.md`)
    - Update `docs/product/AI_SESSION_CONTEXT.md` if it describes shipped vs pending state for that area
    - If the change conflicts with `docs/product/PRODUCT_CHARTER.md`, flag it to the user before finishing
-5. **Read `README.md`** — Scan affected sections (workflow table, Quick start, How AI is used, LLM setup, lookups, cadence, custom rules, project files, Further reading).
+5. **Read `README.md`** — Scan affected sections (Prerequisites, Quick start, Next steps, Configuration essentials, Documentation table). Deep content lives in `docs/` — update [docs/setup/LLM_SETUP.md](../docs/setup/LLM_SETUP.md) for provider/model changes, [docs/product/PRODUCT_CHARTER.md](../docs/product/PRODUCT_CHARTER.md) for AI touchpoints, and [docs/INDEX.md](../docs/INDEX.md) for new doc links.
 6. **Update surgically** — Fix stale README text; add doc links; do **not** rewrite the whole README or duplicate `docs/` content.
 7. **Keep env docs aligned** — New/renamed env vars → `config/.env.example` and matching presets (common at top, LLM block at bottom).
 8. **Draft commit message** — 1–2 sentences focused on **why**; note user-facing impact. **Do not commit** unless the user asked.
@@ -49,14 +49,12 @@ Run the **full workflow** below when any of these apply:
 
 | Section | Update when… |
 |---------|----------------|
-| Web app workflow table | Tabs, steps, or primary user flows change |
-| Quick start / `config/.env` | Install, paths, or first-run steps change |
-| How AI is used | LLM touchpoints or confirm-before-save behavior change |
-| LLM setup | Provider, models, or env var names change |
-| Pipeline lookups | SQLite load/save via `lookup_store.py` |
-| Expense cadence | Cadence UI, rules, or analytics views change |
-| Custom Rules | Compile/apply flow or Settings behavior change |
-| Project files / Further reading | New modules or important `docs/` entry points |
+| Prerequisites / Quick start / Next steps | Install, paths, first-run steps, or default UI flow change |
+| Configuration (essentials) | Top env vars or `.env` layout change |
+| Documentation table | New `docs/` entry points linked from README |
+| `docs/setup/LLM_SETUP.md` | Provider, models, or env var names change |
+| `docs/product/PRODUCT_CHARTER.md` | LLM touchpoints or confirm-before-save behavior change |
+| Feature detail docs + `docs/INDEX.md` | Pipeline lookups, cadence, custom rules, workspace inbox |
 
 ## Quality bar
 
