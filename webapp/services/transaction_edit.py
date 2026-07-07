@@ -20,15 +20,66 @@ from webapp.services.expense_cadence import (
 MATCH_SCOPES = frozenset({"single", "merchant_amount", "merchant"})
 CADENCE_SCOPES = frozenset({"transaction", "merchant"})
 CLASSIFICATION_OPTIONS = ("Personal", "Business")
+FLOW_TYPE_OPTIONS = ("Expense", "Income", "Transfer", "Adjustment")
 SORT_COLUMNS = {
     "date": "t.date",
     "amount": "t.amount",
+    "budget_month": "t.budget_month",
     "merchant": "t.merchant_key",
+    "merchant_key": "t.merchant_key",
+    "simple_description": "t.simple_description",
+    "user_description": "t.user_description",
+    "original_description": "t.original_description",
+    "source_category": "t.source_category",
+    "account_name": "t.account_name",
+    "flow_type": "t.flow_type",
     "ai_category": "t.ai_category",
+    "ai_sub_category": "t.ai_sub_category",
+    "expense_type": "t.expense_type",
     "classification": "t.classification",
+    "label_status": "t.label_status",
+    "confidence": "t.confidence",
+    "imported_at": "t.imported_at",
     "cadence_kind": "effective_cadence_kind",
     "include_in_run_rate": "effective_in_run_rate",
+    "transaction_id": "t.transaction_id",
+    "source_file": "t.source_file",
 }
+
+# Display metadata for Edit Transactions result columns (keys match row dict fields).
+RESULT_COLUMNS: list[dict[str, Any]] = [
+    {"key": "date", "label": "Date", "sortable": True, "default_visible": True},
+    {"key": "amount", "label": "Amount", "sortable": True, "default_visible": True},
+    {"key": "simple_description", "label": "Simple description", "sortable": True, "default_visible": True},
+    {"key": "merchant_key", "label": "Merchant", "sortable": True, "sort_key": "merchant", "default_visible": True},
+    {"key": "ai_category", "label": "Category", "sortable": True, "default_visible": True},
+    {"key": "ai_sub_category", "label": "Sub-category", "sortable": True, "default_visible": True},
+    {"key": "expense_type", "label": "Type", "sortable": True, "default_visible": True},
+    {"key": "classification", "label": "Class", "sortable": True, "default_visible": True},
+    {"key": "label_status", "label": "Status", "sortable": True, "default_visible": True},
+    {"key": "transaction_id", "label": "Transaction ID", "sortable": True, "default_visible": False},
+    {"key": "budget_month", "label": "Budget month", "sortable": True, "default_visible": False},
+    {"key": "flow_type", "label": "Flow type", "sortable": True, "default_visible": False},
+    {"key": "source_category", "label": "Bank category", "sortable": True, "default_visible": False},
+    {"key": "user_description", "label": "User description", "sortable": True, "default_visible": False},
+    {"key": "original_description", "label": "Original description", "sortable": True, "default_visible": False},
+    {"key": "description", "label": "Description", "sortable": False, "default_visible": False},
+    {"key": "account_name", "label": "Account", "sortable": True, "default_visible": False},
+    {"key": "source_file", "label": "Source file", "sortable": True, "default_visible": False},
+    {"key": "confidence", "label": "Confidence", "sortable": True, "default_visible": False},
+    {"key": "rationale", "label": "Rationale", "sortable": False, "default_visible": False},
+    {"key": "imported_at", "label": "Imported at", "sortable": True, "default_visible": False},
+    {"key": "cadence_kind_label", "label": "Cadence kind", "sortable": True, "sort_key": "cadence_kind", "default_visible": False},
+    {"key": "expense_cadence", "label": "Cadence period", "sortable": False, "default_visible": False},
+    {"key": "include_in_run_rate_label", "label": "In run rate", "sortable": True, "sort_key": "include_in_run_rate", "default_visible": False},
+    {"key": "cadence_note", "label": "Cadence note", "sortable": False, "default_visible": False},
+    {"key": "cadence_source", "label": "Cadence source", "sortable": False, "default_visible": False},
+]
+
+
+def list_result_columns() -> list[dict[str, Any]]:
+    """Column metadata for Edit Transactions (master list from transactions table + computed labels)."""
+    return [dict(c) for c in RESULT_COLUMNS]
 
 _RUN_RATE_FILTER_VALUES = frozenset({"yes", "no"})
 _LABEL_STATUS_FILTER_VALUES = frozenset({"needs_attention", "needs_review", "pending", "confirmed"})
@@ -139,6 +190,7 @@ def search_transactions(
     category: str = "",
     sub_category: str = "",
     expense_type: str = "",
+    flow_type: str = "",
     classification: str = "",
     label_status: str = "",
     cadence_kind: str = "",
@@ -186,6 +238,13 @@ def search_transactions(
     if expense_type:
         clauses.append("t.expense_type = ?")
         params.append(expense_type)
+
+    flow_type = (flow_type or "").strip()
+    if flow_type:
+        if flow_type not in FLOW_TYPE_OPTIONS:
+            raise ValueError(f"flow_type must be one of: {', '.join(FLOW_TYPE_OPTIONS)}")
+        clauses.append("t.flow_type = ?")
+        params.append(flow_type)
 
     classification = (classification or "").strip()
     if classification:
@@ -240,10 +299,13 @@ def search_transactions(
     rows = conn.execute(
         f"""
         SELECT t.transaction_id,
+               t.source_file,
                t.date,
                t.budget_month,
                t.amount,
+               t.source_category,
                t.merchant_key,
+               t.account_name,
                t.simple_description,
                t.user_description,
                t.original_description,
@@ -254,11 +316,15 @@ def search_transactions(
                t.ai_sub_category,
                t.expense_type,
                t.classification,
+               t.confidence,
                t.label_status,
+               t.rationale,
+               t.imported_at,
                t.cadence_kind,
                t.period_count,
                t.period_unit,
                t.include_in_run_rate,
+               t.cadence_source,
                t.cadence_note,
                ({_EFFECTIVE_KIND_EXPR}) AS effective_cadence_kind,
                ({_EFFECTIVE_PERIOD_COUNT_EXPR}) AS effective_period_count,

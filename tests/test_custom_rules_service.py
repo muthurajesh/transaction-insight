@@ -7,6 +7,8 @@ from webapp.services.custom_rules import (
     add_custom_rule,
     apply_custom_rule_by_id,
     delete_custom_rule,
+    export_custom_rules,
+    import_custom_rules,
     list_custom_rules,
     preview_custom_rule,
     update_custom_rule,
@@ -77,6 +79,66 @@ class CustomRulesServiceTests(unittest.TestCase):
         add_custom_rule(conn, "Rule to delete")
         delete_custom_rule(conn, 1)
         self.assertEqual(list_custom_rules(conn)["rules"], [])
+
+    def test_export_import_round_trip_preserves_compiled_active(self):
+        conn = _conn()
+        add_custom_rule(conn, "If Merchant A then Category X")
+        conn.execute(
+            """
+            UPDATE pipeline_custom_rules
+            SET status = 'Active', compiled_rule = ?
+            WHERE id = 1
+            """,
+            (
+                '{"rule_type":"assign","match":{"description":"*merchant a*"},'
+                '"set":{"ai_category":"Category X"}}',
+            ),
+        )
+        conn.commit()
+
+        payload = export_custom_rules(conn)
+        self.assertEqual(payload["format"], "transaction-insight.custom-rules")
+        self.assertEqual(payload["version"], 1)
+        self.assertEqual(len(payload["rules"]), 1)
+        self.assertEqual(payload["rules"][0]["status"], "Active")
+        self.assertIsInstance(payload["rules"][0]["compiled_rule"], dict)
+
+        conn.execute("DELETE FROM pipeline_custom_rules")
+        conn.commit()
+        result = import_custom_rules(conn, payload, mode="replace")
+        self.assertEqual(result["imported"], 1)
+        rules = list_custom_rules(conn)["rules"]
+        self.assertEqual(len(rules), 1)
+        self.assertEqual(rules[0]["rule"], "If Merchant A then Category X")
+        self.assertEqual(rules[0]["status"], "Active")
+        self.assertEqual(rules[0]["compiled_rule"]["rule_type"], "assign")
+
+    def test_import_merge_skips_duplicates(self):
+        conn = _conn()
+        add_custom_rule(conn, "Rule A")
+        payload = {
+            "format": "transaction-insight.custom-rules",
+            "version": 1,
+            "rules": [
+                {"rule": "Rule A", "status": "Pending"},
+                {"rule": "Rule B", "status": "Pending"},
+            ],
+        }
+        result = import_custom_rules(conn, payload, mode="merge")
+        self.assertEqual(result["imported"], 1)
+        self.assertEqual(result["skipped"], 1)
+        texts = {r["rule"] for r in list_custom_rules(conn)["rules"]}
+        self.assertEqual(texts, {"Rule A", "Rule B"})
+
+    def test_import_active_without_compiled_becomes_pending(self):
+        conn = _conn()
+        result = import_custom_rules(
+            conn,
+            {"rules": [{"rule": "Needs compile", "status": "Active"}]},
+            mode="replace",
+        )
+        self.assertEqual(result["imported"], 1)
+        self.assertEqual(list_custom_rules(conn)["rules"][0]["status"], "Pending")
 
     @patch("webapp.services.custom_rules._compile_rule_ephemeral")
     def test_preview_returns_proposed_labels(self, mock_compile):

@@ -210,6 +210,8 @@ def _match_generated_description(df: pd.DataFrame, desc: Any) -> pd.Series:
 
 def _match_any_description(df: pd.DataFrame, desc: Any) -> pd.Series:
     columns = (
+        "Merchant Key",
+        "merchant_key",
         "Generated Description",
         "Original Description",
         "Simple Description",
@@ -223,36 +225,130 @@ def _match_any_description(df: pd.DataFrame, desc: Any) -> pd.Series:
         mask |= _match_patterns_on_series(df[col], desc)
     return mask
 
+_AMOUNT_OP_ALIASES = {
+    "eq": "eq",
+    "=": "eq",
+    "==": "eq",
+    "exact": "eq",
+    "!=": "!=",
+    "ne": "!=",
+    "<>": "!=",
+    ">": ">",
+    "gt": ">",
+    ">=": ">=",
+    "gte": ">=",
+    "<": "<",
+    "lt": "<",
+    "<=": "<=",
+    "lte": "<=",
+}
+
+# Longer prefixes first so ">=" is not parsed as ">".
+_AMOUNT_OP_PREFIXES = ("!=", "<>", ">=", "<=", "==", ">", "<", "=")
+
+
+def _amount_series(df: pd.DataFrame) -> pd.Series:
+    if "Amount_Numeric" not in df.columns:
+        return df.get("Amount", pd.Series("", index=df.index)).apply(parse_amount)
+    return pd.to_numeric(df["Amount_Numeric"], errors="coerce").fillna(0.0)
+
+
+def _parse_amount_clause(spec: Any) -> tuple[str, float] | None:
+    """Parse one amount clause into (op, abs_target). Plain numbers mean exact abs match."""
+    if spec is None or (isinstance(spec, float) and pd.isna(spec)):
+        return None
+
+    if isinstance(spec, dict):
+        op_raw = str(spec.get("op") or "eq").strip().lower()
+        op = _AMOUNT_OP_ALIASES.get(op_raw)
+        if not op:
+            return None
+        value = spec.get("value", spec.get("amount"))
+        text = str(value or "").strip().replace("$", "").replace(",", "")
+        if not text or text.lower() == "nan":
+            return None
+        try:
+            return op, abs(float(parse_amount(text)))
+        except (TypeError, ValueError):
+            return None
+
+    text = str(spec).strip().replace("$", "").replace(",", "")
+    if not text or text.lower() == "nan":
+        return None
+
+    op = "eq"
+    value_text = text
+    for prefix in _AMOUNT_OP_PREFIXES:
+        if text.startswith(prefix):
+            op = _AMOUNT_OP_ALIASES.get(prefix, "eq")
+            value_text = text[len(prefix) :].strip()
+            break
+
+    if not value_text:
+        return None
+    try:
+        return op, abs(float(parse_amount(value_text)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _compare_abs_amount(amount: Any, op: str, target: float) -> bool:
+    try:
+        value = abs(float(amount))
+    except (TypeError, ValueError):
+        return False
+    if op == "eq":
+        return value == target
+    if op == "!=":
+        return value != target
+    if op == ">":
+        return value > target
+    if op == ">=":
+        return value >= target
+    if op == "<":
+        return value < target
+    if op == "<=":
+        return value <= target
+    return False
+
+
 def _match_custom_rule_amount(df: pd.DataFrame, amount_spec: Any) -> pd.Series:
-    """Match rows where |Amount| equals the target (expenses are often negative)."""
+    """Match on absolute dollar amount with eq / != / < / <= / > / >=.
+
+    Plain values (and lists of them) keep legacy exact abs match.
+    Operator forms: ">50", {"op": ">=", "value": "10"}.
+    A list is OR across clauses.
+    """
     if amount_spec is None or (isinstance(amount_spec, float) and pd.isna(amount_spec)):
         return pd.Series(True, index=df.index)
 
-    specs = (
-        _normalize_match_patterns(amount_spec)
-        if isinstance(amount_spec, (list, tuple))
-        else [amount_spec]
-    )
+    specs = amount_spec if isinstance(amount_spec, (list, tuple)) else [amount_spec]
     if not specs:
         return pd.Series(True, index=df.index)
 
-    if "Amount_Numeric" not in df.columns:
-        amounts = df.get("Amount", pd.Series("", index=df.index)).apply(parse_amount)
-    else:
-        amounts = df["Amount_Numeric"]
-
+    amounts = _amount_series(df)
     mask = pd.Series(False, index=df.index)
     for spec in specs:
-        text = str(spec).strip().replace("$", "").replace(",", "")
-        if not text or text.lower() == "nan":
-            mask |= pd.Series(True, index=df.index)
+        parsed = _parse_amount_clause(spec)
+        if parsed is None:
             continue
-        try:
-            target = abs(parse_amount(text))
-        except (TypeError, ValueError):
-            continue
-        mask |= amounts.apply(lambda a, t=target: abs(float(a)) == t)
+        op, target = parsed
+        mask |= amounts.apply(lambda a, o=op, t=target: _compare_abs_amount(a, o, t))
     return mask
+
+
+def _match_amount_sign(df: pd.DataFrame, sign_spec: Any) -> pd.Series:
+    """Match signed amount: positive (>0), negative (<0), or zero (==0)."""
+    sign = str(sign_spec or "").strip().lower()
+    amounts = _amount_series(df)
+    if sign in ("positive", "pos", "+", "credit"):
+        return amounts > 0
+    if sign in ("negative", "neg", "-", "debit"):
+        return amounts < 0
+    if sign in ("zero", "0"):
+        return amounts == 0
+    return pd.Series(False, index=df.index)
+
 
 def _custom_rule_match_mask(df: pd.DataFrame, match: dict[str, Any]) -> pd.Series:
     """AND of all match keys in a compiled custom rule."""
@@ -262,6 +358,8 @@ def _custom_rule_match_mask(df: pd.DataFrame, match: dict[str, Any]) -> pd.Serie
         mask &= _match_any_description(df, match.get("description"))
     if "generated_description" in match:
         mask &= _match_generated_description(df, match.get("generated_description"))
+    if "amount_sign" in match:
+        mask &= _match_amount_sign(df, match.get("amount_sign"))
     if "amount" in match:
         mask &= _match_custom_rule_amount(df, match.get("amount"))
     return mask

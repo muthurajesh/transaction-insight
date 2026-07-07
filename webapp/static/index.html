@@ -33,36 +33,36 @@
           <small>Personal finance workspace</small>
         </div>
         <button type="button" id="btn-sidebar-toggle" class="btn-sidebar-toggle" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">
-          <svg class="icon-collapse" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-          <svg class="icon-expand" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          <span class="icon-collapse" data-icon="chevron-left" data-icon-size="18" aria-hidden="true"></span>
+          <span class="icon-expand" data-icon="chevron-right" data-icon-size="18" aria-hidden="true"></span>
         </button>
       </div>
       <div class="nav-group-label">Workspace</div>
       <button type="button" class="nav-item" data-nav="import" title="Import">
-        <span class="nav-icon" aria-hidden="true">In</span>
+        <span class="nav-icon" data-icon="upload" data-icon-size="18" aria-hidden="true"></span>
         <span class="nav-label">Import</span>
       </button>
       <button type="button" class="nav-item" data-nav="chat" title="Chat">
-        <span class="nav-icon" aria-hidden="true">Ch</span>
+        <span class="nav-icon" data-icon="message-circle" data-icon-size="18" aria-hidden="true"></span>
         <span class="nav-label">Chat</span>
       </button>
       <button type="button" class="nav-item" data-nav="review" title="Review">
-        <span class="nav-icon" aria-hidden="true">Rv</span>
+        <span class="nav-icon" data-icon="inbox" data-icon-size="18" aria-hidden="true"></span>
         <span class="nav-label">Review</span>
         <span id="nav-review-badge" class="nav-badge hidden" aria-label="Pending proposals">0</span>
       </button>
       <div class="nav-group-label">Data</div>
       <button type="button" class="nav-item" data-nav="edit" title="Transactions">
-        <span class="nav-icon" aria-hidden="true">Tx</span>
+        <span class="nav-icon" data-icon="list" data-icon-size="18" aria-hidden="true"></span>
         <span class="nav-label">Transactions</span>
       </button>
       <button type="button" class="nav-item" data-nav="custom-rules" title="Custom Rules">
-        <span class="nav-icon" aria-hidden="true">Ru</span>
+        <span class="nav-icon" data-icon="list-checks" data-icon-size="18" aria-hidden="true"></span>
         <span class="nav-label">Custom Rules</span>
       </button>
       <div class="sidebar-footer">
         <button type="button" class="nav-item" data-nav="settings" title="Settings">
-          <span class="nav-icon" aria-hidden="true">Se</span>
+          <span class="nav-icon" data-icon="settings" data-icon-size="18" aria-hidden="true"></span>
           <span class="nav-label">Settings</span>
         </button>
       </div>
@@ -70,7 +70,7 @@
     <div class="main-col">
       <div class="top-bar sidebar-chrome">
         <button type="button" id="btn-sidebar-expand-top" class="btn-sidebar-expand-top hidden" aria-label="Expand sidebar" title="Expand sidebar">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          <span data-icon="chevron-right" data-icon-size="18" aria-hidden="true"></span>
         </button>
         <div class="top-bar-titles">
           <div id="page-breadcrumb" class="breadcrumb"></div>
@@ -86,8 +86,14 @@
         <p class="hint">CSV files land in <code id="inbox-path"></code>; after processing they move to <code id="processed-path">processed/</code>.</p>
         <div class="inbox-upload-row">
           <input type="file" id="workspace-file-input" accept=".csv,text/csv" multiple hidden />
-          <button type="button" id="btn-workspace-choose-upload" class="btn-primary">Choose CSV files</button>
-          <button type="button" id="btn-workspace-categorize" class="btn-secondary">Run processing</button>
+          <button type="button" id="btn-workspace-choose-upload" class="btn-primary btn-icon-label">
+            <span data-icon="file-up" data-icon-size="16" aria-hidden="true"></span>
+            <span>Choose CSV files</span>
+          </button>
+          <button type="button" id="btn-workspace-categorize" class="btn-secondary btn-icon-label">
+            <span data-icon="play" data-icon-size="16" aria-hidden="true"></span>
+            <span>Run processing</span>
+          </button>
         </div>
         <p id="workspace-selected-files" class="hint inbox-selected-files hidden"></p>
         <pre id="upload-result"></pre>
@@ -111,12 +117,21 @@
       <div id="chat-layout" class="chat-layout chat-layout-workspace">
         <div class="chat-main">
           <div id="chat-pending-banner" class="chat-pending-banner hidden" aria-live="polite">
-            <span id="chat-pending-banner-text"></span>
+            <span class="banner-with-icon">
+              <span class="banner-icon" data-icon="inbox" data-icon-size="18" aria-hidden="true"></span>
+              <span id="chat-pending-banner-text"></span>
+            </span>
             <button type="button" id="btn-chat-jump-review" class="btn-secondary btn-sm">Open Review</button>
           </div>
           <div class="chat-toolbar">
-            <button type="button" id="btn-chat-clear" class="btn-secondary btn-chat-toolbar">Clear screen</button>
-            <button type="button" id="btn-chat-history" class="btn-secondary btn-chat-toolbar">View history</button>
+            <button type="button" id="btn-chat-clear" class="btn-secondary btn-chat-toolbar btn-icon-label">
+              <span data-icon="eraser" data-icon-size="16" aria-hidden="true"></span>
+              <span>Clear screen</span>
+            </button>
+            <button type="button" id="btn-chat-history" class="btn-secondary btn-chat-toolbar btn-icon-label">
+              <span data-icon="history" data-icon-size="16" aria-hidden="true"></span>
+              <span>View history</span>
+            </button>
             <div
               id="chat-context-meter"
               class="chat-context-meter"
@@ -136,23 +151,29 @@
                 <option value="markdown">Markdown (readable)</option>
                 <option value="csv">CSV (spreadsheet)</option>
               </select>
-              <button type="button" id="btn-chat-download" class="btn-secondary btn-chat-toolbar">Download history</button>
+              <button type="button" id="btn-chat-download" class="btn-secondary btn-chat-toolbar btn-icon-label">
+                <span data-icon="download" data-icon-size="16" aria-hidden="true"></span>
+                <span>Download history</span>
+              </button>
             </div>
           </div>
           <div id="chat-log"></div>
           <form id="chat-form" class="chat-form">
             <div class="chat-composer">
-              <button type="button" id="btn-chat-mic" class="btn-chat-mic" title="Voice input (Chrome / Edge)" aria-label="Voice input">Mic</button>
+              <button type="button" id="btn-chat-mic" class="btn-chat-mic btn-icon" title="Voice input (Chrome / Edge)" aria-label="Voice input" data-icon="mic" data-icon-size="18"></button>
               <input type="text" id="chat-input" placeholder="e.g. How much did I spend last month?" autocomplete="off" />
-              <button type="button" id="btn-chat-help" class="btn-chat-help" title="Example commands" aria-expanded="false" aria-controls="chat-help-panel">Help</button>
-              <button type="submit" id="btn-chat-send">Send</button>
+              <button type="button" id="btn-chat-help" class="btn-chat-help btn-icon" title="Example commands" aria-expanded="false" aria-controls="chat-help-panel" aria-label="Example commands" data-icon="circle-help" data-icon-size="18"></button>
+              <button type="submit" id="btn-chat-send" class="btn-icon-label" aria-label="Send">
+                <span data-icon="send" data-icon-size="16" aria-hidden="true"></span>
+                <span>Send</span>
+              </button>
             </div>
           </form>
         </div>
         <aside id="chat-help-panel" class="chat-help-panel hidden" aria-label="Chat commands" aria-hidden="true">
           <div class="chat-help-header">
             <h2>Commands</h2>
-            <button type="button" id="btn-chat-help-close" class="btn-chat-help-close" aria-label="Close help">×</button>
+            <button type="button" id="btn-chat-help-close" class="btn-chat-help-close btn-icon" aria-label="Close help" data-icon="x" data-icon-size="18"></button>
           </div>
           <p class="hint chat-help-hint">Click a command for details. Use <strong>+</strong> to insert into the chat box.</p>
           <ul id="chat-help-list" class="chat-help-list"></ul>
@@ -166,11 +187,22 @@
         <div class="workspace-inbox-header">
           <h2>Pending</h2>
           <span id="workspace-inbox-count" class="workspace-inbox-count">0</span>
-          <button type="button" id="btn-workspace-inbox-refresh" class="btn-secondary btn-sm">Refresh</button>
+          <button type="button" id="btn-workspace-inbox-refresh" class="btn-secondary btn-sm btn-icon-label">
+            <span data-icon="refresh-cw" data-icon-size="14" aria-hidden="true"></span>
+            <span>Refresh</span>
+          </button>
         </div>
         <div id="workspace-inbox-list" class="workspace-inbox-list" role="list"></div>
       </div>
     </section>
+
+    <div id="edit-columns-popover" class="edit-columns-popover hidden" role="dialog" aria-label="Choose columns" aria-hidden="true">
+      <div class="edit-columns-popover-header">
+        <strong>Show columns</strong>
+        <button type="button" id="btn-edit-columns-reset" class="btn-link btn-sm">Reset</button>
+      </div>
+      <ul id="edit-columns-list" class="edit-columns-list"></ul>
+    </div>
 
     <section id="panel-review" class="panel">
       <p class="hint panel-subtitle">Review and confirm AI label suggestions.</p>
@@ -190,11 +222,15 @@
             <option value="50">50</option>
             <option value="100">100</option>
           </select>
-          <button type="button" id="btn-review-suggest-batch" class="review-bulk-action">✨ Suggest labels (AI)</button>
+          <button type="button" id="btn-review-suggest-batch" class="review-bulk-action btn-icon-label">
+            <span data-icon="sparkles" data-icon-size="16" aria-hidden="true"></span>
+            <span>Suggest labels (AI)</span>
+          </button>
         </div>
         <span id="review-suggest-status" class="review-suggest-status" aria-live="polite"></span>
       </div>
       <div id="review-empty-state" class="empty-state-card hidden">
+        <span class="empty-state-icon" data-icon="circle-check" data-icon-size="40" aria-hidden="true"></span>
         <h2 class="empty-state-title">All caught up</h2>
         <p>No merchants waiting for label confirmation.</p>
         <ul class="empty-state-steps">
@@ -208,7 +244,10 @@
     <section id="panel-edit" class="panel">
       <p class="hint panel-subtitle">Search and edit transaction labels.</p>
       <div id="edit-needs-attention-banner" class="edit-needs-attention-banner hidden" aria-live="polite">
-        <span id="edit-needs-attention-text"></span>
+        <span class="banner-with-icon">
+          <span class="banner-icon" data-icon="triangle-alert" data-icon-size="18" aria-hidden="true"></span>
+          <span id="edit-needs-attention-text"></span>
+        </span>
         <div class="edit-needs-attention-actions">
           <button type="button" id="btn-edit-filter-needs-attention" class="btn-secondary btn-sm">Show needing attention</button>
           <button type="button" id="btn-edit-go-review" class="btn-link">Open Review inbox</button>
@@ -231,15 +270,24 @@
               <option value="pending">Pending</option>
               <option value="confirmed">Confirmed</option>
             </select>
-            <button type="submit">Search</button>
+            <button type="submit" class="btn-icon-label">
+              <span data-icon="search" data-icon-size="16" aria-hidden="true"></span>
+              <span>Search</span>
+            </button>
           </form>
           <details id="edit-advanced-filters" class="edit-advanced-filters">
-            <summary>More filters</summary>
+            <summary class="details-summary"><span class="details-chevron" data-icon="chevron-right" data-icon-size="14" aria-hidden="true"></span>More filters</summary>
             <div class="edit-advanced-grid">
               <label class="edit-advanced-field">
                 <span>Sub-category</span>
                 <select id="edit-search-sub" aria-label="Sub-category filter">
                   <option value="">All sub-categories</option>
+                </select>
+              </label>
+              <label class="edit-advanced-field">
+                <span>Flow Type</span>
+                <select id="edit-search-flow-type" aria-label="Flow type filter">
+                  <option value="">All flow types</option>
                 </select>
               </label>
               <label class="edit-advanced-field">
@@ -257,7 +305,12 @@
             </div>
           </details>
           <div id="edit-active-filters" class="active-filters hidden" aria-label="Active filters"></div>
-          <p id="edit-search-meta" class="edit-search-meta"></p>
+          <div id="edit-results-toolbar" class="edit-results-toolbar hidden">
+            <p id="edit-search-meta" class="edit-search-meta"></p>
+            <button type="button" id="btn-edit-columns-toolbar" class="btn-secondary btn-sm btn-icon edit-columns-trigger" title="Choose columns" aria-label="Choose columns" aria-haspopup="dialog" aria-controls="edit-columns-popover" aria-expanded="false">
+              <span data-icon="columns-3" data-icon-size="16" aria-hidden="true"></span>
+            </button>
+          </div>
           <div id="edit-results" class="edit-results"></div>
           <div id="edit-pagination" class="edit-pagination hidden">
             <button type="button" id="btn-edit-prev" class="btn-secondary">Previous</button>
@@ -268,7 +321,7 @@
         <aside id="edit-side-panel" class="edit-side-panel hidden" aria-label="Edit transaction labels">
           <div class="edit-side-header">
             <h2>Edit labels</h2>
-            <button type="button" id="btn-edit-close" class="btn-edit-close" aria-label="Close editor">×</button>
+            <button type="button" id="btn-edit-close" class="btn-edit-close btn-icon" aria-label="Close editor" data-icon="x" data-icon-size="18"></button>
           </div>
           <p id="edit-source-summary" class="edit-source-summary"></p>
           <form id="edit-label-form" class="edit-label-form">
@@ -276,7 +329,7 @@
               <span>Merchant label</span>
               <div class="combo-field" data-combo="edit-merchant-key">
                 <input type="text" id="edit-merchant-key" required placeholder="Select or type…" autocomplete="off" />
-                <button type="button" class="combo-toggle" tabindex="-1" aria-label="Show all merchants">▾</button>
+                <button type="button" class="combo-toggle" tabindex="-1" aria-label="Show all merchants"><span data-icon="chevron-down" data-icon-size="14" aria-hidden="true"></span></button>
                 <ul class="combo-menu hidden" role="listbox" aria-label="Merchant labels"></ul>
               </div>
             </label>
@@ -288,7 +341,7 @@
               <span>Category</span>
               <div class="combo-field" data-combo="edit-ai-category">
                 <input type="text" id="edit-ai-category" required placeholder="Select or type…" autocomplete="off" />
-                <button type="button" class="combo-toggle" tabindex="-1" aria-label="Show all categories">▾</button>
+                <button type="button" class="combo-toggle" tabindex="-1" aria-label="Show all categories"><span data-icon="chevron-down" data-icon-size="14" aria-hidden="true"></span></button>
                 <ul class="combo-menu hidden" role="listbox" aria-label="Categories"></ul>
               </div>
             </label>
@@ -296,15 +349,17 @@
               <span>Sub-category</span>
               <div class="combo-field" data-combo="edit-ai-sub">
                 <input type="text" id="edit-ai-sub" placeholder="Select or type…" autocomplete="off" />
-                <button type="button" class="combo-toggle" tabindex="-1" aria-label="Show all sub-categories">▾</button>
+                <button type="button" class="combo-toggle" tabindex="-1" aria-label="Show all sub-categories"><span data-icon="chevron-down" data-icon-size="14" aria-hidden="true"></span></button>
                 <ul class="combo-menu hidden" role="listbox" aria-label="Sub-categories"></ul>
               </div>
             </label>
             <label class="edit-field">
-              <span>Income / Expense</span>
-              <select id="edit-label-flow-type" aria-label="Income or expense">
+              <span>Flow Type</span>
+              <select id="edit-label-flow-type" aria-label="Flow type">
                 <option value="Expense">Expense</option>
                 <option value="Income">Income</option>
+                <option value="Transfer">Transfer</option>
+                <option value="Adjustment">Adjustment</option>
               </select>
             </label>
             <label class="edit-field">
@@ -368,10 +423,13 @@
         <select id="cadence-search-category" aria-label="Category filter">
           <option value="">All categories</option>
         </select>
-        <button type="submit">Search merchants</button>
+        <button type="submit" class="btn-icon-label">
+          <span data-icon="search" data-icon-size="16" aria-hidden="true"></span>
+          <span>Search merchants</span>
+        </button>
       </form>
       <details id="cadence-advanced-filters" class="edit-advanced-filters">
-        <summary>More filters</summary>
+        <summary class="details-summary"><span class="details-chevron" data-icon="chevron-right" data-icon-size="14" aria-hidden="true"></span>More filters</summary>
         <div class="edit-advanced-grid">
           <label class="edit-advanced-field">
             <span>Sub-category</span>
@@ -417,7 +475,10 @@
             <option value="25">25</option>
             <option value="50">50</option>
           </select>
-          <button type="button" id="btn-cadence-suggest-batch" class="review-bulk-action">✨ Suggest cadence (AI)</button>
+          <button type="button" id="btn-cadence-suggest-batch" class="review-bulk-action btn-icon-label">
+            <span data-icon="sparkles" data-icon-size="16" aria-hidden="true"></span>
+            <span>Suggest cadence (AI)</span>
+          </button>
         </div>
         <span id="cadence-suggest-status" class="review-suggest-status" aria-live="polite"></span>
       </div>
@@ -432,7 +493,7 @@
         <button type="button" id="btn-cadence-start-over" class="btn-link">Start over</button>
       </div>
       <div id="cadence-queue" class="edit-cadence-queue hidden" aria-label="Cadence suggestions to review"></div>
-      <p id="cadence-queue-empty" class="hint cadence-queue-empty hidden">No suggestions in queue. Go back and run ✨ Suggest cadence (AI).</p>
+      <p id="cadence-queue-empty" class="hint cadence-queue-empty hidden">No suggestions in queue. Go back and run <strong>Suggest cadence (AI)</strong>.</p>
       </div>
     </section>
 
@@ -446,7 +507,10 @@
         </div>
         <div class="taxonomy-toolbar">
           <button type="button" id="btn-taxonomy-analyze" class="btn-secondary">Analyze labels</button>
-          <button type="button" id="btn-taxonomy-suggest" class="btn-primary">✨ Suggest with AI</button>
+          <button type="button" id="btn-taxonomy-suggest" class="btn-primary btn-icon-label">
+            <span data-icon="sparkles" data-icon-size="16" aria-hidden="true"></span>
+            <span>Suggest with AI</span>
+          </button>
           <span id="taxonomy-status" class="taxonomy-status" aria-live="polite"></span>
         </div>
       </div>
@@ -484,7 +548,10 @@
           <div class="classification-audit-header">
             <h3>Classification alerts</h3>
             <span id="classification-audit-count" class="classification-audit-count"></span>
-            <button type="button" id="btn-classification-audit-run" class="btn-secondary btn-sm">Run deep audit</button>
+            <button type="button" id="btn-classification-audit-run" class="btn-secondary btn-sm btn-icon-label">
+              <span data-icon="shield-alert" data-icon-size="14" aria-hidden="true"></span>
+              <span>Run deep audit</span>
+            </button>
           </div>
           <p class="hint">Sampled quality check at audit time. <strong>At audit</strong> is the label on one transaction when the audit ran; <strong>Current in DB</strong> is live. Use Edit Transactions to verify or fix.</p>
           <ul id="classification-audit-list" class="classification-audit-list"></ul>
@@ -492,8 +559,14 @@
         <p class="hint">CSV files land in <code id="inbox-path-legacy"></code>; after processing they move to <code id="processed-path-legacy">processed/</code>.</p>
         <div class="inbox-upload-row">
           <input type="file" id="inbox-file-input" accept=".csv,text/csv" multiple hidden />
-          <button type="button" id="btn-choose-upload" class="btn-primary">Choose CSV files</button>
-          <button type="button" id="btn-categorize" class="btn-secondary">Run processing</button>
+          <button type="button" id="btn-choose-upload" class="btn-primary btn-icon-label">
+            <span data-icon="file-up" data-icon-size="16" aria-hidden="true"></span>
+            <span>Choose CSV files</span>
+          </button>
+          <button type="button" id="btn-categorize" class="btn-secondary btn-icon-label">
+            <span data-icon="play" data-icon-size="16" aria-hidden="true"></span>
+            <span>Run processing</span>
+          </button>
         </div>
         <p id="inbox-selected-files" class="hint inbox-selected-files hidden"></p>
         <pre id="upload-result-legacy"></pre>
@@ -518,17 +591,18 @@
       <div class="custom-rules-tab-layout">
         <div class="custom-rules-composer card">
           <details class="custom-rule-cheatsheet" id="custom-rule-cheatsheet">
-            <summary>What can I use?</summary>
+            <summary class="details-summary"><span class="details-chevron" data-icon="chevron-right" data-icon-size="14" aria-hidden="true"></span>What can I use?</summary>
             <div class="custom-rule-cheatsheet-body">
               <p class="hint">Rules are plain English. The app compiles them once; matching runs on every import or Apply.</p>
               <h3>When (conditions — all must match)</h3>
               <ul>
-                <li><strong>Generated Description</strong> — merchant/payee label (recommended)</li>
-                <li><strong>Description</strong> — any description text (Generated, Original, Simple, User)</li>
-                <li><strong>Amount</strong> — exact dollar value only (sign ignored; <code>9.99</code> matches <code>-9.99</code>)</li>
+                <li><strong>Description</strong> — merchant/payee (Merchant Key, Generated Description) plus Original, Simple, or User text</li>
+                <li><strong>Generated Description</strong> — merchant/payee label only (free-form rules; narrower than Description)</li>
+                <li><strong>Amount sign</strong> — negative (spend), positive (credit/refund), or zero</li>
+                <li><strong>Amount</strong> — absolute dollar value with <code>=</code>, <code>!=</code>, <code>&gt;</code>, <code>&gt;=</code>, <code>&lt;</code>, <code>&lt;=</code> (<code>9.99</code> matches <code>-9.99</code>)</li>
               </ul>
               <p class="hint">Text patterns: exact text, <code>*contains*</code>, <code>prefix*</code>, <code>*suffix</code>. Multiple amounts or merchants can be OR’d in hand-written rules.</p>
-              <p class="hint">Not supported as conditions: category, classification, flow type, date, or amount ranges (&gt;, &lt;, between).</p>
+              <p class="hint">Not supported as conditions: category, classification, flow type, date, or amount between-ranges.</p>
               <h3>Then set (optional fields)</h3>
               <ul>
                 <li>AI Category, AI Sub-category</li>
@@ -539,22 +613,21 @@
               </ul>
               <h3>Examples</h3>
               <p class="hint"><strong>Simple</strong> (use the builder below or type directly):</p>
-              <p class="custom-rule-example">If Generated Description is Merchant A and Amount is 9.99, set AI Category to Category X, Classification to Business, Flow Type to Expense</p>
+              <p class="custom-rule-example">If Description is Merchant A and amount is negative, set AI Category to Category X, Flow Type to Expense</p>
+              <p class="custom-rule-example">If Description is Merchant A and amount is positive, set AI Category to Category X, Flow Type to Adjustment</p>
+              <p class="custom-rule-example">If Description is Merchant B and Amount is greater than or equal to 100 and amount is negative, set AI Category to Category Y</p>
               <p class="hint"><strong>More complex</strong> (type in the composer — builder cannot express OR on original description, parentheses, etc.):</p>
               <p class="custom-rule-example">If Generated Description contains Vendor A and (original description contains 'ACCT1' OR original description contains 'ACCT2') and Amount is 100, set Flow Type to Transfer, AI Category to Category X, AI Sub-category to Sub Y, Classification to Personal</p>
-              <p class="hint">Complex rules still compile via the LLM; the matcher supports them when the compiled JSON matches the engine (see roadmap for future column-specific and range conditions).</p>
+              <p class="hint">Complex rules still compile via the LLM; the matcher supports them when the compiled JSON matches the engine.</p>
             </div>
           </details>
           <details class="custom-rule-builder" id="custom-rule-builder" open>
-            <summary>Build a Simple Rule</summary>
+            <summary class="details-summary"><span class="details-chevron" data-icon="chevron-right" data-icon-size="14" aria-hidden="true"></span>Build a Simple Rule</summary>
             <div class="custom-rule-builder-body">
               <fieldset class="custom-rule-builder-when">
                 <legend>When</legend>
                 <div class="custom-rule-builder-row">
-                  <select id="crb-match-field" aria-label="Match field">
-                    <option value="generated_description" selected>Generated Description</option>
-                    <option value="description">Description</option>
-                  </select>
+                  <span class="custom-rule-builder-label">Description</span>
                   <select id="crb-text-op" aria-label="Text match">
                     <option value="exact">is exactly</option>
                     <option value="contains" selected>contains</option>
@@ -567,12 +640,28 @@
                   <input type="checkbox" id="crb-use-amount" />
                   Also match amount
                 </label>
-                <div id="crb-amount-row" class="custom-rule-builder-row custom-rule-builder-amount hidden">
-                  <span class="custom-rule-builder-label">Amount</span>
-                  <select id="crb-amount-op" aria-label="Amount match" disabled>
-                    <option value="exact" selected>is exactly</option>
-                  </select>
-                  <input type="text" id="crb-amount-value" inputmode="decimal" placeholder="9.99" aria-label="Amount value" disabled />
+                <div id="crb-amount-row" class="custom-rule-builder-amount-block hidden">
+                  <div class="custom-rule-builder-row">
+                    <span class="custom-rule-builder-label">Amount sign</span>
+                    <select id="crb-amount-sign" aria-label="Amount sign" disabled>
+                      <option value="" selected>Any</option>
+                      <option value="negative">Negative (spend)</option>
+                      <option value="positive">Positive (credit/refund)</option>
+                      <option value="zero">Zero</option>
+                    </select>
+                  </div>
+                  <div class="custom-rule-builder-row custom-rule-builder-amount">
+                    <span class="custom-rule-builder-label">Amount</span>
+                    <select id="crb-amount-op" aria-label="Amount match" disabled>
+                      <option value="exact" selected>is exactly</option>
+                      <option value="ne">is not</option>
+                      <option value="gt">is greater than</option>
+                      <option value="gte">is greater than or equal to</option>
+                      <option value="lt">is less than</option>
+                      <option value="lte">is less than or equal to</option>
+                    </select>
+                    <input type="text" id="crb-amount-value" inputmode="decimal" placeholder="9.99" aria-label="Amount value" disabled />
+                  </div>
                 </div>
               </fieldset>
               <fieldset class="custom-rule-builder-then">
@@ -621,8 +710,14 @@
                 </div>
               </fieldset>
               <div class="custom-rule-builder-actions">
-                <button type="button" id="btn-crb-insert" class="btn-secondary">Insert into rule</button>
-                <button type="button" id="btn-crb-replace" class="btn-secondary">Replace rule text</button>
+                <button type="button" id="btn-crb-insert" class="btn-secondary btn-icon-label">
+                  <span data-icon="plus" data-icon-size="16" aria-hidden="true"></span>
+                  <span>Insert into rule</span>
+                </button>
+                <button type="button" id="btn-crb-replace" class="btn-secondary btn-icon-label">
+                  <span data-icon="replace" data-icon-size="16" aria-hidden="true"></span>
+                  <span>Replace rule text</span>
+                </button>
               </div>
               <p id="crb-build-message" class="custom-rule-builder-msg hint" aria-live="polite"></p>
             </div>
@@ -634,9 +729,18 @@
           <p id="custom-rules-composer-mode" class="custom-rules-composer-mode hint" aria-live="polite"></p>
           <textarea id="custom-rule-input" rows="5" placeholder='If Generated Description is Merchant A and Amount is 9.99, set AI Category to Category X, Classification to Business, Flow Type to Expense'></textarea>
           <div class="custom-rules-actions custom-rules-actions-row">
-            <button type="button" id="btn-custom-rule-preview" class="btn-secondary">Run preview</button>
-            <button type="button" id="btn-custom-rule-save">Save</button>
-            <button type="button" id="btn-custom-rule-save-apply">Save &amp; apply</button>
+            <button type="button" id="btn-custom-rule-preview" class="btn-secondary btn-icon-label">
+              <span data-icon="eye" data-icon-size="16" aria-hidden="true"></span>
+              <span>Run preview</span>
+            </button>
+            <button type="button" id="btn-custom-rule-save" class="btn-icon-label">
+              <span data-icon="save" data-icon-size="16" aria-hidden="true"></span>
+              <span>Save</span>
+            </button>
+            <button type="button" id="btn-custom-rule-save-apply" class="btn-icon-label">
+              <span data-icon="check" data-icon-size="16" aria-hidden="true"></span>
+              <span>Save &amp; apply</span>
+            </button>
             <button type="button" id="btn-custom-rules-reapply" class="btn-link custom-rules-reapply">Apply all rules</button>
             <button type="button" id="btn-custom-rule-new" class="btn-link">New rule</button>
           </div>
@@ -644,7 +748,21 @@
         </div>
         <div class="custom-rules-split">
           <div class="custom-rules-list-panel card">
-            <h2>Saved rules</h2>
+            <div class="custom-rules-list-header">
+              <h2>Saved rules</h2>
+              <div class="custom-rules-backup-actions">
+                <button type="button" id="btn-custom-rules-export" class="btn-secondary btn-sm btn-icon-label">
+                  <span data-icon="download" data-icon-size="14" aria-hidden="true"></span>
+                  <span>Export</span>
+                </button>
+                <button type="button" id="btn-custom-rules-import" class="btn-secondary btn-sm btn-icon-label">
+                  <span data-icon="upload" data-icon-size="14" aria-hidden="true"></span>
+                  <span>Import</span>
+                </button>
+                <input type="file" id="custom-rules-import-file" accept="application/json,.json" hidden />
+              </div>
+            </div>
+            <p class="hint custom-rules-backup-hint">Export a backup before clearing the data store. Import restores plain-English rules and compiled JSON when present.</p>
             <div id="custom-rules-list-wrap" class="custom-rules-list-wrap expanded">
               <ul id="custom-rules-list" class="custom-rules-list custom-rules-list-selectable"></ul>
             </div>
@@ -678,8 +796,11 @@
       </div>
       <div class="card card-danger">
         <h2>Clear all data</h2>
-        <p>Deletes all transactions, merchant labels, chat messages, ingest history, and lookup snapshots. Does not modify CSV files in <code>input/</code>.</p>
-        <button type="button" id="btn-clear-data" class="btn-danger">Clear data store</button>
+        <p>Deletes all transactions, merchant labels, custom rules, chat messages, ingest history, and lookup snapshots. Does not modify CSV files in <code>input/</code>. Export custom rules from the Custom Rules tab first if you want to restore them later.</p>
+        <button type="button" id="btn-clear-data" class="btn-danger btn-icon-label">
+          <span data-icon="trash-2" data-icon-size="16" aria-hidden="true"></span>
+          <span>Clear data store</span>
+        </button>
         <pre id="clear-result"></pre>
       </div>
       <div class="card">
@@ -769,7 +890,7 @@
     >
       <div class="modal-header">
         <h2 id="taxonomy-apply-title">Apply taxonomy rules</h2>
-        <button type="button" id="btn-taxonomy-apply-close" class="btn-edit-close" aria-label="Close">×</button>
+        <button type="button" id="btn-taxonomy-apply-close" class="btn-edit-close btn-icon" aria-label="Close" data-icon="x" data-icon-size="18"></button>
       </div>
       <div id="taxonomy-apply-body" class="modal-body">
         <p class="hint">Loading preview…</p>
@@ -794,7 +915,7 @@
     >
       <div class="modal-header">
         <h2 id="cadence-insight-title">Cadence suggestion</h2>
-        <button type="button" id="btn-cadence-insight-close" class="btn-edit-close" aria-label="Close">×</button>
+        <button type="button" id="btn-cadence-insight-close" class="btn-edit-close btn-icon" aria-label="Close" data-icon="x" data-icon-size="18"></button>
       </div>
       <div id="cadence-insight-body" class="modal-body">
         <p class="hint">Loading…</p>
@@ -820,7 +941,7 @@
     >
       <div class="modal-header">
         <h2 id="edit-insight-title">AI insight</h2>
-        <button type="button" id="btn-edit-insight-close" class="btn-edit-close" aria-label="Close">×</button>
+        <button type="button" id="btn-edit-insight-close" class="btn-edit-close btn-icon" aria-label="Close" data-icon="x" data-icon-size="18"></button>
       </div>
       <div id="edit-insight-body" class="modal-body">
         <p class="hint">Analyzing your edit…</p>
@@ -848,7 +969,7 @@
     >
       <div class="modal-header">
         <h2 id="review-confirm-title">Confirm labels</h2>
-        <button type="button" id="btn-review-confirm-close" class="btn-edit-close" aria-label="Close">×</button>
+        <button type="button" id="btn-review-confirm-close" class="btn-edit-close btn-icon" aria-label="Close" data-icon="x" data-icon-size="18"></button>
       </div>
       <div id="review-confirm-body" class="modal-body">
         <p class="hint">Loading…</p>
@@ -878,7 +999,7 @@
     >
       <div class="modal-header">
         <h3 id="save-report-title">Save custom report</h3>
-        <button type="button" id="btn-save-report-close" class="btn-modal-close" aria-label="Close">×</button>
+        <button type="button" id="btn-save-report-close" class="btn-modal-close btn-icon" aria-label="Close" data-icon="x" data-icon-size="18"></button>
       </div>
       <div class="modal-body">
         <p id="save-report-status" class="hint hidden"></p>
@@ -904,7 +1025,7 @@
         </label>
         <input type="hidden" id="save-report-parent-id" value="" />
         <details class="save-report-sql-details">
-          <summary>SQL template</summary>
+          <summary class="details-summary"><span class="details-chevron" data-icon="chevron-right" data-icon-size="14" aria-hidden="true"></span>SQL template</summary>
           <pre id="save-report-sql" class="save-report-sql"></pre>
         </details>
       </div>
@@ -922,7 +1043,7 @@
     <div id="manage-report-modal" class="modal-card" role="dialog" aria-modal="true" aria-labelledby="manage-report-title">
       <div class="modal-header">
         <h3 id="manage-report-title">Manage report</h3>
-        <button type="button" id="btn-manage-report-close" class="btn-modal-close" aria-label="Close">×</button>
+        <button type="button" id="btn-manage-report-close" class="btn-modal-close btn-icon" aria-label="Close" data-icon="x" data-icon-size="18"></button>
       </div>
       <div class="modal-body">
         <label class="field-block">
@@ -949,19 +1070,8 @@
       <div class="modal-header">
         <h3 id="workspace-confirm-title">Review AI proposal</h3>
         <div class="modal-header-actions">
-          <button type="button" id="btn-workspace-confirm-help" class="btn-modal-help" aria-expanded="false" aria-controls="workspace-confirm-help" title="Help" aria-label="Help">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-              <path d="M12 17h.01"/>
-            </svg>
-          </button>
-          <button type="button" id="btn-workspace-confirm-close" class="btn-modal-close" aria-label="Close">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
+          <button type="button" id="btn-workspace-confirm-help" class="btn-modal-help btn-icon" aria-expanded="false" aria-controls="workspace-confirm-help" title="Help" aria-label="Help" data-icon="circle-help" data-icon-size="18"></button>
+          <button type="button" id="btn-workspace-confirm-close" class="btn-modal-close btn-icon" aria-label="Close" data-icon="x" data-icon-size="18"></button>
         </div>
       </div>
       <div id="workspace-confirm-help" class="workspace-confirm-help hidden" role="region" aria-label="Proposal actions help">
@@ -980,7 +1090,7 @@
         </div>
         <div id="workspace-confirm-preview-results" class="workspace-confirm-preview-results"></div>
         <details class="workspace-confirm-technical">
-          <summary>Proposal details (JSON)</summary>
+          <summary class="details-summary"><span class="details-chevron" data-icon="chevron-right" data-icon-size="14" aria-hidden="true"></span>Proposal details (JSON)</summary>
           <pre id="workspace-confirm-detail" class="settings-pre workspace-confirm-detail"></pre>
         </details>
       </div>
@@ -998,6 +1108,7 @@
 
   <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+  <script src="/static/icons.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

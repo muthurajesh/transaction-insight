@@ -2,7 +2,7 @@ import sqlite3
 import unittest
 
 from webapp.db.schema import SCHEMA_SQL, _migrate_schema
-from webapp.services.transaction_edit import bulk_update_labels, get_transaction, search_transactions
+from webapp.services.transaction_edit import bulk_update_labels, get_transaction, list_result_columns, search_transactions
 
 
 def _conn() -> sqlite3.Connection:
@@ -108,6 +108,105 @@ class TransactionEditMerchantTests(unittest.TestCase):
         confirmed = search_transactions(conn, label_status="confirmed", limit=10)
         self.assertEqual(len(confirmed["transactions"]), 1)
         self.assertEqual(confirmed["transactions"][0]["transaction_id"], "t3")
+
+    def test_search_sort_by_label_status_and_simple_description(self):
+        conn = _conn()
+        rows = [
+            ("t1", "confirmed", "Zebra"),
+            ("t2", "needs_review", "Apple"),
+            ("t3", "pending", "Mango"),
+        ]
+        for tx_id, label_status, simple_desc in rows:
+            conn.execute(
+                """
+                INSERT INTO transactions (
+                    transaction_id, date, budget_month, amount, merchant_key,
+                    simple_description, original_description,
+                    ai_category, flow_type, label_status, imported_at
+                ) VALUES (?, '2026-05-11', '2026-05', -10, ?, ?, 'orig',
+                          'Cat', 'Expense', ?, 'now')
+                """,
+                (tx_id, f"Merchant {tx_id}", simple_desc, label_status),
+            )
+        conn.commit()
+
+        by_status = search_transactions(conn, sort_by="label_status", sort_dir="asc", limit=10)
+        self.assertEqual(
+            [r["transaction_id"] for r in by_status["transactions"]],
+            ["t1", "t2", "t3"],
+        )
+
+        by_desc = search_transactions(conn, sort_by="simple_description", sort_dir="asc", limit=10)
+        self.assertEqual(
+            [r["transaction_id"] for r in by_desc["transactions"]],
+            ["t2", "t3", "t1"],
+        )
+
+    def test_search_flow_type_filter(self):
+        conn = _conn()
+        rows = [
+            ("t1", "Expense"),
+            ("t2", "Transfer"),
+            ("t3", "Income"),
+        ]
+        for tx_id, flow_type in rows:
+            conn.execute(
+                """
+                INSERT INTO transactions (
+                    transaction_id, date, budget_month, amount, merchant_key,
+                    simple_description, original_description,
+                    ai_category, flow_type, label_status, imported_at
+                ) VALUES (?, '2026-05-11', '2026-05', -10, ?, 'desc', 'orig',
+                          'Cat', ?, 'confirmed', 'now')
+                """,
+                (tx_id, f"Merchant {tx_id}", flow_type),
+            )
+        conn.commit()
+
+        data = search_transactions(conn, flow_type="Transfer", limit=10)
+        self.assertEqual(len(data["transactions"]), 1)
+        self.assertEqual(data["transactions"][0]["transaction_id"], "t2")
+        self.assertEqual(data["total"], 1)
+
+
+class TransactionEditColumnsTests(unittest.TestCase):
+    def test_list_result_columns_includes_table_fields(self):
+        cols = list_result_columns()
+        keys = {c["key"] for c in cols}
+        self.assertIn("date", keys)
+        self.assertIn("merchant_key", keys)
+        self.assertIn("source_file", keys)
+        self.assertIn("rationale", keys)
+        defaults = [c["key"] for c in cols if c.get("default_visible")]
+        self.assertIn("date", defaults)
+        self.assertIn("label_status", defaults)
+        self.assertNotIn("transaction_id", defaults)
+
+    def test_search_returns_extended_fields(self):
+        conn = _conn()
+        conn.execute(
+            """
+            INSERT INTO transactions (
+                transaction_id, source_file, date, budget_month, amount, merchant_key,
+                simple_description, original_description, source_category, account_name,
+                ai_category, flow_type, confidence, rationale, imported_at,
+                label_status, cadence_source
+            ) VALUES (
+                't1', 'bank.csv', '2026-05-11', '2026-05', -10, 'Merchant A',
+                'Simple', 'Original', 'Shopping', 'Checking',
+                'Cat', 'Expense', 0.91, 'Test rationale', '2026-05-11T12:00:00Z',
+                'confirmed', 'user'
+            )
+            """
+        )
+        conn.commit()
+        row = search_transactions(conn, limit=1)["transactions"][0]
+        self.assertEqual(row["source_file"], "bank.csv")
+        self.assertEqual(row["source_category"], "Shopping")
+        self.assertEqual(row["account_name"], "Checking")
+        self.assertEqual(row["confidence"], 0.91)
+        self.assertEqual(row["rationale"], "Test rationale")
+        self.assertEqual(row["cadence_source"], "user")
 
 
 if __name__ == "__main__":

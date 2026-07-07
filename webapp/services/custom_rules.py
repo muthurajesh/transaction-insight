@@ -289,6 +289,172 @@ def delete_custom_rule(conn: sqlite3.Connection, rule_id: int) -> dict[str, Any]
     return {"message": "Rule deleted.", **list_custom_rules(conn)}
 
 
+CUSTOM_RULES_EXPORT_FORMAT = "transaction-insight.custom-rules"
+CUSTOM_RULES_EXPORT_VERSION = 1
+_IMPORT_STATUSES = frozenset(
+    {
+        CUSTOM_RULE_STATUS_PENDING,
+        CUSTOM_RULE_STATUS_ACTIVE,
+        CUSTOM_RULE_STATUS_DISABLED,
+        CUSTOM_RULE_STATUS_ERROR,
+    }
+)
+
+
+def export_custom_rules(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Backup custom rules as a portable JSON document (no DB ids)."""
+    rules_out: list[dict[str, Any]] = []
+    for row in list_custom_rules(conn).get("rules") or []:
+        entry: dict[str, Any] = {
+            "rule": str(row.get("rule") or "").strip(),
+            "status": str(row.get("status") or CUSTOM_RULE_STATUS_PENDING).strip(),
+        }
+        compiled = row.get("compiled_rule")
+        if isinstance(compiled, dict) and compiled:
+            entry["compiled_rule"] = compiled
+        err = str(row.get("last_error") or "").strip()
+        if err:
+            entry["last_error"] = err
+        if entry["rule"]:
+            rules_out.append(entry)
+    return {
+        "format": CUSTOM_RULES_EXPORT_FORMAT,
+        "version": CUSTOM_RULES_EXPORT_VERSION,
+        "exported_at": _utc_now_iso(),
+        "rules": rules_out,
+    }
+
+
+def _normalize_import_payload(payload: dict[str, Any] | list[Any]) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        items = payload
+    elif isinstance(payload, dict):
+        fmt = str(payload.get("format") or "").strip()
+        if fmt and fmt != CUSTOM_RULES_EXPORT_FORMAT:
+            raise ValueError(f"Unsupported export format: {fmt}")
+        version = payload.get("version")
+        if version is not None and int(version) != CUSTOM_RULES_EXPORT_VERSION:
+            raise ValueError(f"Unsupported export version: {version}")
+        items = payload.get("rules")
+        if items is None:
+            raise ValueError("Import payload must include a rules array.")
+    else:
+        raise ValueError("Import payload must be a JSON object or array.")
+
+    if not isinstance(items, list):
+        raise ValueError("rules must be an array.")
+
+    normalized: list[dict[str, Any]] = []
+    for i, item in enumerate(items):
+        if isinstance(item, str):
+            text = item.strip()
+            if not text:
+                continue
+            normalized.append({"rule": text, "status": CUSTOM_RULE_STATUS_PENDING})
+            continue
+        if not isinstance(item, dict):
+            raise ValueError(f"rules[{i}] must be an object or string.")
+        text = str(item.get("rule") or item.get("rule_text") or "").strip()
+        if not text:
+            continue
+        status = str(item.get("status") or CUSTOM_RULE_STATUS_PENDING).strip()
+        if status not in _IMPORT_STATUSES:
+            status = CUSTOM_RULE_STATUS_PENDING
+        compiled = item.get("compiled_rule")
+        if compiled is not None and not isinstance(compiled, dict):
+            raise ValueError(f"rules[{i}].compiled_rule must be an object when present.")
+        last_error = str(item.get("last_error") or "").strip()
+        normalized.append(
+            {
+                "rule": text,
+                "status": status,
+                "compiled_rule": compiled if isinstance(compiled, dict) else None,
+                "last_error": last_error,
+            }
+        )
+    return normalized
+
+
+def _insert_imported_rule(conn: sqlite3.Connection, entry: dict[str, Any]) -> None:
+    text = entry["rule"]
+    status = entry["status"]
+    compiled_obj = entry.get("compiled_rule")
+    last_error = str(entry.get("last_error") or "")
+
+    compiled_raw = ""
+    if isinstance(compiled_obj, dict) and compiled_obj:
+        compiled_raw = json.dumps(compiled_obj, ensure_ascii=False)
+
+    if status == CUSTOM_RULE_STATUS_ACTIVE and not compiled_raw:
+        status = CUSTOM_RULE_STATUS_PENDING
+    if status == CUSTOM_RULE_STATUS_ERROR:
+        status = CUSTOM_RULE_STATUS_PENDING
+        last_error = ""
+    if status == CUSTOM_RULE_STATUS_PENDING:
+        last_error = ""
+
+    conn.execute(
+        """
+        INSERT INTO pipeline_custom_rules (
+            rule_text, status, compiled_rule, last_error, updated_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (text, status, compiled_raw, last_error, _utc_now_iso()),
+    )
+
+
+def import_custom_rules(
+    conn: sqlite3.Connection,
+    payload: dict[str, Any] | list[Any],
+    *,
+    mode: str = "merge",
+) -> dict[str, Any]:
+    """Restore custom rules from an export document.
+
+    mode=merge — skip rule texts that already exist.
+    mode=replace — delete all existing rules, then import.
+    """
+    mode_norm = (mode or "merge").strip().lower()
+    if mode_norm not in {"merge", "replace"}:
+        raise ValueError("mode must be merge or replace")
+
+    entries = _normalize_import_payload(payload)
+    if not entries:
+        raise ValueError("No rules found in import payload.")
+
+    existing_texts: set[str] = set()
+    if mode_norm == "replace":
+        conn.execute("DELETE FROM pipeline_custom_rules")
+    else:
+        for row in conn.execute("SELECT rule_text FROM pipeline_custom_rules").fetchall():
+            existing_texts.add(str(row["rule_text"] or "").strip())
+
+    imported = 0
+    skipped = 0
+    for entry in entries:
+        text = entry["rule"]
+        if mode_norm == "merge" and text in existing_texts:
+            skipped += 1
+            continue
+        _insert_imported_rule(conn, entry)
+        existing_texts.add(text)
+        imported += 1
+
+    conn.commit()
+    return {
+        "message": (
+            f"Imported {imported} rule(s)"
+            + (f", skipped {skipped} duplicate(s)" if skipped else "")
+            + (f" (replaced existing rules)" if mode_norm == "replace" else "")
+            + "."
+        ),
+        "imported": imported,
+        "skipped": skipped,
+        "mode": mode_norm,
+        **list_custom_rules(conn),
+    }
+
+
 def _transactions_dataframe(conn: sqlite3.Connection) -> pd.DataFrame:
     rows = conn.execute(
         """

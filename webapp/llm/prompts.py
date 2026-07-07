@@ -9,15 +9,21 @@ Supported rule_type values:
 
 1. "assign" — set fields when match criteria all apply (AND). All text matching is case-insensitive.
    Use *text* for contains, prefix* for starts-with, *suffix for ends-with; plain text is exact match.
-   Optional amount: compare absolute dollar value (9.99 matches -9.99 and 9.99).
-   Use match.description when the user says "description" (searches Generated, Original, Simple, and User descriptions).
-   Use match.generated_description only for the merchant/payee label (Generated Description).
-   For OR conditions, use a JSON array of patterns, e.g. ["*vendor a*","*vendor b*"].
-   For OR amounts, use a JSON array of dollar strings, e.g. ["36","69.31"].
+   Use match.description when the user says "description" (searches Merchant Key, Generated Description, Original, Simple, and User descriptions).
+   Use match.generated_description only when the user says "generated description" (merchant/payee label column only).
+   Optional match.amount_sign: "positive" (amount > 0), "negative" (amount < 0), or "zero". Use when the user says positive/credit/refund vs negative/debit/spend.
+   Optional match.amount: compares absolute dollar value (9.99 matches -9.99 and 9.99).
+     Plain "9.99" or 9.99 means exact abs match.
+     Operators: ">50", ">=50", "<50", "<=50", "!=50", "=50" (or object {"op":">=","value":"50"}).
+     For OR amounts, use a JSON array, e.g. ["36","69.31"] or [">100","50"].
+   For OR text patterns, use a JSON array, e.g. ["*vendor a*","*vendor b*"].
    {"rule_type":"assign","match":{"description":["*vendor a*","*vendor b*"]},"set":{"ai_category":"Category A","ai_sub_category":"Sub A","type":"Variable","classification":"Business"}}
    {"rule_type":"assign","match":{"generated_description":"*check*","amount":"60"},"set":{"ai_category":"Category B","ai_sub_category":"Sub B"}}
    {"rule_type":"assign","match":{"generated_description":"Merchant X","amount":"9.99"},"set":{"category":"Category C","classification":"Business","ai_category":"Category C","ai_sub_category":"Sub C"}}
    {"rule_type":"assign","match":{"generated_description":"*capital one*","amount":["36","69.31"]},"set":{"flow_type":"Transfer","ai_category":"Savings","ai_sub_category":"Sub A","classification":"Personal"}}
+   {"rule_type":"assign","match":{"description":"*merchant a*","amount_sign":"negative"},"set":{"flow_type":"Expense","ai_category":"Category D","ai_sub_category":"Sub D"}}
+   {"rule_type":"assign","match":{"description":"*merchant a*","amount_sign":"positive"},"set":{"flow_type":"Adjustment","ai_category":"Category D","ai_sub_category":"Sub D"}}
+   {"rule_type":"assign","match":{"description":"*merchant b*","amount":">=100","amount_sign":"negative"},"set":{"ai_category":"Category E","type":"Variable"}}
 
 2. "monthly_split_max" — rows with the same Generated Description in the same calendar/budget month:
    the row with the largest absolute Amount gets when_max; every other row in that month gets when_other.

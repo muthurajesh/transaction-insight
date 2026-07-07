@@ -60,7 +60,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | Edit Transactions tab — search, bulk label, scopes | |
 | [x] | **Custom Rules tab** — preview matches, compiled JSON, Flow Type, apply one/all | [CUSTOM_RULES.md](../rules/CUSTOM_RULES.md) |
 | [x] | **Custom Rules builder** — “Build a Simple Rule” helper + “What can I use?” cheatsheet (plain English → composer) | [CUSTOM_RULES.md](../rules/CUSTOM_RULES.md) |
-| [ ] | **Complex custom rules** — extend engine beyond 3 AND keys: amount ranges (`>`, `<`, between), date/month filters, multi-pattern AND on text, boolean OR across conditions; update compiler prompt, matcher, tests, and rule builder | → [CUSTOM_RULES.md](../rules/CUSTOM_RULES.md) (detail when work starts) |
+| [~] | **Complex custom rules** — amount sign + amount ops (`=`, `!=`, `>`, `>=`, `<`, `<=`) shipped; still open: between-ranges, date/month filters, multi-pattern AND on text, boolean OR across conditions | → [CUSTOM_RULES.md](../rules/CUSTOM_RULES.md) |
 | [x] | **Edit insights (post-apply)** — AI pattern + suggested CustomRule | EDIT_INSIGHTS |
 | [x] | **AI Rules tab** — taxonomy merge proposals (heuristic + LLM), user confirm apply | [AI_TAXONOMY_RULES.md](../classification/AI_TAXONOMY_RULES.md) |
 | [ ] | **Minimal category vocabulary** — broad AI Category + few sub-categories; reduce Salary vs Paychecks/Salary drift | → [CLASSIFICATION_TAXONOMY.md](../classification/CLASSIFICATION_TAXONOMY.md) (vocab hint + normalize shipped; auto-merge future) |

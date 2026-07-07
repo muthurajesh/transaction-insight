@@ -1,5 +1,17 @@
 const $ = (sel) => document.querySelector(sel);
 
+function inlineIcon(name, { size = 14, className = "" } = {}) {
+  return typeof icon === "function" ? icon(name, { size, className }) : "";
+}
+
+function labelStatusIconName(status) {
+  const s = String(status || "").trim().toLowerCase();
+  if (s === "confirmed") return "check-circle";
+  if (s === "needs_review") return "alert-circle";
+  if (s === "pending") return "clock";
+  return null;
+}
+
 let uiShowCadence = true;
 let uiAgentWorkspace = true;
 let workspaceInboxItem = null;
@@ -425,8 +437,17 @@ function renderOnboardingDots() {
   if (!dots) return;
   const steps = getOnboardingSteps();
   dots.innerHTML = steps.map((_, i) => {
-    const cls = i === onboardingStepIndex ? "onboarding-dot active" : "onboarding-dot";
-    return `<span class="${cls}"></span>`;
+    let cls = "onboarding-dot";
+    let iconName = "circle";
+    if (i === onboardingStepIndex) {
+      cls += " active";
+      iconName = "circle";
+    } else if (i < onboardingStepIndex) {
+      cls += " done";
+      iconName = "circle-check";
+    }
+    const svg = typeof icon === "function" ? icon(iconName, { size: 14 }) : "";
+    return `<span class="${cls}">${svg}</span>`;
   }).join("");
 }
 
@@ -574,10 +595,11 @@ function renderClassificationAuditFindings(findings) {
     const li = document.createElement("li");
     li.className = "classification-audit-item";
     li.innerHTML = `
-      <div class="classification-audit-merchant">${escapeHtml(f.merchant_key || "")}</div>
+      <div class="classification-audit-merchant audit-item-header">${inlineIcon("shield-alert", { size: 16 })}${escapeHtml(f.merchant_key || "")}</div>
       <div class="classification-audit-labels">
         At audit: <strong>${escapeHtml(prod)}</strong>
-        → Suggested: <strong>${escapeHtml(sugg)}</strong>
+        <span class="audit-suggest-arrow" aria-hidden="true">${inlineIcon("arrow-right", { size: 14 })}</span>
+        Suggested: <strong>${escapeHtml(sugg)}</strong>
         <span class="taxonomy-badge taxonomy-badge-conf-high">${conf}%</span>
         <span class="taxonomy-badge">${escapeHtml(f.source === "heuristic" ? "Rule" : "Audit model")}</span>
       </div>
@@ -586,7 +608,9 @@ function renderClassificationAuditFindings(findings) {
       </div>
       <div class="classification-audit-rationale">${escapeHtml(f.rationale || "")}</div>
       <div class="classification-audit-actions">
-        <button type="button" class="btn-secondary btn-sm btn-audit-review" data-finding-id="${f.id}">View in Edit Transactions</button>
+        <button type="button" class="btn-secondary btn-sm btn-audit-review btn-icon-label" data-finding-id="${f.id}">
+          ${typeof btnIconLabel === "function" ? btnIconLabel("search", "View in Edit Transactions", { size: 14 }) : "View in Edit Transactions"}
+        </button>
         <button type="button" class="btn-link btn-sm btn-audit-dismiss" data-finding-id="${f.id}">Dismiss</button>
       </div>
     `;
@@ -705,7 +729,9 @@ function renderLabelStatusBadge(status) {
       : s === "needs_review" || s === "pending"
         ? `label-status-${s}`
         : "label-status-other";
-  return `<span class="label-status-badge ${cls}">${escapeHtml(formatLabelStatus(s))}</span>`;
+  const iconName = labelStatusIconName(s);
+  const ic = iconName ? inlineIcon(iconName, { size: 12, className: "status-inline-icon" }) : "";
+  return `<span class="label-status-badge ${cls}">${ic}${escapeHtml(formatLabelStatus(s))}</span>`;
 }
 
 function focusReviewMerchantIfRequested() {
@@ -815,8 +841,12 @@ function mountTableDisplay(container, display) {
   toolbar.className = "chat-display-toolbar";
   const csvBtn = document.createElement("button");
   csvBtn.type = "button";
-  csvBtn.className = "btn-chat-export";
-  csvBtn.textContent = "Download CSV";
+  csvBtn.className = "btn-chat-export btn-icon-label";
+  if (typeof btnIconLabel === "function") {
+    csvBtn.innerHTML = btnIconLabel("download", "Download CSV", { size: 16 });
+  } else {
+    csvBtn.textContent = "Download CSV";
+  }
   toolbar.appendChild(csvBtn);
   container.appendChild(toolbar);
 
@@ -977,8 +1007,12 @@ function appendReportActions(parent, toolTrace, msgNode) {
   if (sql) {
     const saveBtn = document.createElement("button");
     saveBtn.type = "button";
-    saveBtn.className = "btn-chat-report";
-    saveBtn.textContent = "Save as report";
+    saveBtn.className = "btn-chat-report btn-icon-label";
+    if (typeof btnIconLabel === "function") {
+      saveBtn.innerHTML = btnIconLabel("bookmark", "Save as report", { size: 16 });
+    } else {
+      saveBtn.textContent = "Save as report";
+    }
     saveBtn.addEventListener("click", () => {
       openSaveReportModal({
         toolTrace,
@@ -1736,10 +1770,10 @@ function renderChatHelpList() {
 
     const insertBtn = document.createElement("button");
     insertBtn.type = "button";
-    insertBtn.className = "btn-chat-help-insert";
+    insertBtn.className = "btn-chat-help-insert btn-icon";
     insertBtn.title = "Insert into chat";
     insertBtn.setAttribute("aria-label", `Insert: ${cmd.label}`);
-    insertBtn.textContent = "+";
+    insertBtn.innerHTML = typeof icon === "function" ? icon("plus", { size: 16 }) : "+";
     insertBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       insertChatCommand(cmd.text);
@@ -1899,12 +1933,18 @@ $("#chat-input")?.addEventListener("input", scheduleChatContextMeterRefresh);
     maxTimer = setTimeout(() => stopListening(true, true), remaining);
   }
 
+  function setMicButtonIcon(isListening) {
+    if (typeof setIcon === "function") {
+      setIcon(micBtn, isListening ? "mic-off" : "mic", { size: 18 });
+    }
+  }
+
   function finishListening() {
     listening = false;
     intentionalStop = false;
     clearTimers();
     micBtn.classList.remove("listening");
-    micBtn.textContent = "Mic";
+    setMicButtonIcon(false);
     micBtn.setAttribute("aria-label", "Voice input");
     micBtn.title = "Voice input (Chrome / Edge)";
     focusInputAtEnd();
@@ -1982,7 +2022,7 @@ $("#chat-input")?.addEventListener("input", scheduleChatContextMeterRefresh);
     listening = true;
     listenStartedAt = Date.now();
     micBtn.classList.add("listening");
-    micBtn.textContent = "Listening…";
+    setMicButtonIcon(true);
     micBtn.setAttribute("aria-label", "Stop voice input");
     micBtn.title = "Listening — click to stop";
     armSilenceTimer();
@@ -2195,9 +2235,16 @@ function formatCustomRuleAmount(value) {
   return raw;
 }
 
+const CUSTOM_RULE_AMOUNT_OP_ENGLISH = {
+  exact: "is exactly",
+  ne: "is not",
+  gt: "is greater than",
+  gte: "is greater than or equal to",
+  lt: "is less than",
+  lte: "is less than or equal to",
+};
+
 function buildCustomRuleEnglish() {
-  const matchField = $("#crb-match-field")?.value || "generated_description";
-  const fieldLabel = matchField === "description" ? "Description" : "Generated Description";
   const textOp = $("#crb-text-op")?.value || "contains";
   const textRaw = ($("#crb-text-value")?.value || "").trim();
   if (!textRaw) {
@@ -2206,13 +2253,24 @@ function buildCustomRuleEnglish() {
   const patternFn = CUSTOM_RULE_TEXT_PATTERN[textOp] || CUSTOM_RULE_TEXT_PATTERN.exact;
   const pattern = patternFn(textRaw);
 
-  let when = `If ${fieldLabel} is ${pattern}`;
+  let when = `If Description is ${pattern}`;
   if ($("#crb-use-amount")?.checked) {
+    const amountSign = ($("#crb-amount-sign")?.value || "").trim();
     const amountRaw = ($("#crb-amount-value")?.value || "").trim();
-    if (!amountRaw) {
-      return { ok: false, message: "Enter an amount or uncheck Also match amount." };
+    const amountOp = $("#crb-amount-op")?.value || "exact";
+    if (!amountSign && !amountRaw) {
+      return {
+        ok: false,
+        message: "Choose an amount sign and/or enter an amount value, or uncheck Also match amount.",
+      };
     }
-    when += ` and Amount is ${formatCustomRuleAmount(amountRaw)}`;
+    if (amountSign) {
+      when += ` and amount is ${amountSign}`;
+    }
+    if (amountRaw) {
+      const amountLabel = CUSTOM_RULE_AMOUNT_OP_ENGLISH[amountOp] || CUSTOM_RULE_AMOUNT_OP_ENGLISH.exact;
+      when += ` and Amount ${amountLabel} ${formatCustomRuleAmount(amountRaw)}`;
+    }
   }
 
   const setClauses = [];
@@ -2289,14 +2347,12 @@ function syncCustomRuleBuilderAmountRow() {
   const row = $("#crb-amount-row");
   const amountInput = $("#crb-amount-value");
   const amountOp = $("#crb-amount-op");
+  const amountSign = $("#crb-amount-sign");
   if (row) row.classList.toggle("hidden", !useAmount);
-  if (amountInput) {
-    amountInput.disabled = !useAmount;
-    amountInput.dataset.builderDisabled = useAmount ? "0" : "1";
-  }
-  if (amountOp) {
-    amountOp.disabled = !useAmount;
-    amountOp.dataset.builderDisabled = useAmount ? "0" : "1";
+  for (const el of [amountInput, amountOp, amountSign]) {
+    if (!el) continue;
+    el.disabled = !useAmount;
+    el.dataset.builderDisabled = useAmount ? "0" : "1";
   }
 }
 
@@ -2470,7 +2526,7 @@ function applyReviewSuggestionToCard(card, suggestion) {
   const conf = suggestion.confidence || "medium";
   const src = suggestion.source || "ai";
   const rationale = suggestion.rationale || "Suggested labels applied.";
-  note.textContent = `✨ ${rationale} (${conf} · ${src})`;
+  note.innerHTML = `${inlineIcon("sparkles", { size: 14 })} ${escapeHtml(rationale)} (${escapeHtml(conf)} · ${escapeHtml(src)})`;
   note.dataset.confidence = conf;
 }
 
@@ -2854,7 +2910,7 @@ function renderCustomRulesList(rules) {
           <span class="rule-text">${escapeHtml(r.rule)}</span>
         </button>
         <div class="custom-rules-list-actions">
-          <button type="button" class="btn-link btn-custom-rule-apply-one" data-rule-id="${r.id}">Apply</button>
+          <button type="button" class="btn-link btn-custom-rule-apply-one btn-row-icon" data-rule-id="${r.id}">${inlineIcon("check", { size: 14 })} Apply</button>
           <button type="button" class="btn-link btn-custom-rule-disable" data-rule-id="${r.id}" data-status="${escapeAttr(r.status)}">${r.status === "Disabled" ? "Enable" : "Disable"}</button>
           <button type="button" class="btn-link btn-custom-rule-delete" data-rule-id="${r.id}">Delete</button>
         </div>
@@ -2991,6 +3047,88 @@ async function loadCustomRulesPanel() {
   updateCustomRulesComposerMode();
 }
 
+async function exportCustomRulesBackup() {
+  if (customRulesBusy) return;
+  setCustomRulesBusy(true, { title: "Exporting rules…", hint: "Preparing backup file." });
+  try {
+    const data = await api("/api/custom-rules/export");
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = (data.exported_at || new Date().toISOString()).slice(0, 10);
+    a.href = url;
+    a.download = `custom-rules-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    const count = (data.rules || []).length;
+    showCustomRulesResult({
+      ok: true,
+      message: `Exported ${count} rule(s) to ${a.download}.`,
+    });
+  } catch (err) {
+    showCustomRulesResult({ ok: false, message: err.message });
+  } finally {
+    setCustomRulesBusy(false);
+  }
+}
+
+async function importCustomRulesBackup(file) {
+  if (!file || customRulesBusy) return;
+  let payload;
+  try {
+    payload = JSON.parse(await file.text());
+  } catch {
+    showCustomRulesResult({ ok: false, message: "Import file must be valid JSON." });
+    return;
+  }
+
+  if (!window.confirm("Import custom rules from this file?")) return;
+  const mode = window.confirm(
+    "Replace all existing custom rules?\n\nOK = replace all\nCancel = merge (keep existing, skip duplicate rule text)"
+  )
+    ? "replace"
+    : "merge";
+
+  setCustomRulesBusy(true, { title: "Importing rules…", hint: "Please wait." });
+  try {
+    const body =
+      typeof payload === "object" && payload && !Array.isArray(payload)
+        ? { ...payload, mode }
+        : { rules: payload, mode };
+    const res = await api("/api/custom-rules/import", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    customRulesSelectedId = null;
+    showCustomRulesResult(res);
+    await loadCustomRules();
+    updateCustomRulesComposerMode();
+  } catch (err) {
+    showCustomRulesResult({ ok: false, message: err.message });
+  } finally {
+    setCustomRulesBusy(false);
+  }
+}
+
+$("#btn-custom-rules-export")?.addEventListener("click", () => {
+  exportCustomRulesBackup();
+});
+
+$("#btn-custom-rules-import")?.addEventListener("click", () => {
+  if (customRulesBusy) return;
+  $("#custom-rules-import-file")?.click();
+});
+
+$("#custom-rules-import-file")?.addEventListener("change", async (e) => {
+  const input = e.target;
+  const file = input?.files?.[0];
+  input.value = "";
+  if (!file) return;
+  await importCustomRulesBackup(file);
+});
+
 $("#custom-rule-input")?.addEventListener("input", () => {
   const input = $("#custom-rule-input");
   if (!input || !customRulesSelectedId) return;
@@ -3043,6 +3181,7 @@ let editSourceTx = null;
 let editLastResults = [];
 const EDIT_PAGE_SIZE = 50;
 const EDIT_CLASSIFICATIONS = ["Personal", "Business"];
+const EDIT_FLOW_TYPES = ["Expense", "Income", "Transfer", "Adjustment"];
 const BUSINESS_AI_CATEGORIES = new Set(["Business Expenses", "Business"]);
 
 function alignReviewClassificationFromCategory(formEl) {
@@ -3056,6 +3195,235 @@ let editPageOffset = 0;
 let editSearchTotal = 0;
 let editSortBy = "date";
 let editSortDir = "desc";
+const EDIT_VISIBLE_COLUMNS_KEY = "ti_edit_visible_columns";
+let editColumnCatalog = [];
+let editVisibleColumnKeys = null;
+let editColumnsPopoverAnchor = null;
+
+function getDefaultEditVisibleColumnKeys() {
+  return editColumnCatalog.filter((c) => c.default_visible).map((c) => c.key);
+}
+
+function loadEditVisibleColumnKeys() {
+  const valid = new Set(editColumnCatalog.map((c) => c.key));
+  try {
+    const raw = localStorage.getItem(EDIT_VISIBLE_COLUMNS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const keys = parsed.filter((k) => valid.has(k));
+        if (keys.length) {
+          editVisibleColumnKeys = keys;
+          return;
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  editVisibleColumnKeys = getDefaultEditVisibleColumnKeys();
+}
+
+function saveEditVisibleColumnKeys(keys) {
+  editVisibleColumnKeys = keys.filter((k) => editColumnCatalog.some((c) => c.key === k));
+  if (!editVisibleColumnKeys.length) {
+    editVisibleColumnKeys = getDefaultEditVisibleColumnKeys();
+  }
+  try {
+    localStorage.setItem(EDIT_VISIBLE_COLUMNS_KEY, JSON.stringify(editVisibleColumnKeys));
+  } catch {
+    /* ignore */
+  }
+}
+
+function getVisibleEditColumns() {
+  const byKey = new Map(editColumnCatalog.map((c) => [c.key, c]));
+  const cols = (editVisibleColumnKeys || getDefaultEditVisibleColumnKeys())
+    .map((key) => byKey.get(key))
+    .filter(Boolean);
+  return cols.length ? cols : editColumnCatalog.filter((c) => c.default_visible);
+}
+
+function editColumnSortField(col) {
+  return col.sort_key || col.key;
+}
+
+function formatEditCellValue(key, tx) {
+  switch (key) {
+    case "amount":
+      return escapeHtml(formatMoney(tx.amount));
+    case "label_status":
+      return renderLabelStatusBadge(tx.label_status);
+    case "confidence": {
+      if (tx.confidence == null || tx.confidence === "") return "—";
+      const n = Number(tx.confidence);
+      return Number.isFinite(n) ? escapeHtml(String(Math.round(n * 1000) / 1000)) : "—";
+    }
+    case "include_in_run_rate_label":
+      return escapeHtml(tx.include_in_run_rate_label || "—");
+    case "cadence_kind_label":
+      return escapeHtml(tx.cadence_kind_label || tx.cadence_kind || "—");
+    case "expense_cadence":
+      return escapeHtml(tx.expense_cadence || "—");
+    default: {
+      const val = tx[key];
+      if (val == null || val === "") return "—";
+      if (typeof val === "boolean") return val ? "Yes" : "No";
+      return escapeHtml(String(val));
+    }
+  }
+}
+
+function editSortHeaderForColumn(col) {
+  if (!col.sortable) {
+    const cls = col.key === "amount" ? " amount-col" : "";
+    const extra = col.key === "rationale" || col.key === "description" ? " description-col" : "";
+    return `<th class="${cls}${extra}" scope="col">${escapeHtml(col.label)}</th>`;
+  }
+  const field = editColumnSortField(col);
+  const active = editSortBy === field || editSortBy === col.key;
+  const sortIcon = active
+    ? inlineIcon(editSortDir === "asc" ? "arrow-up" : "arrow-down", { size: 14, className: "sort-icon" })
+    : inlineIcon("chevrons-up-down", { size: 14, className: "sort-icon sort-icon-inactive" });
+  const cls = col.key === "amount" ? " amount-col" : "";
+  return `<th class="edit-sort-th${cls}" data-sort="${escapeAttr(field)}" scope="col" tabindex="0" aria-sort="${active ? editSortDir + "ending" : "none"}"><span class="sort-th-inner">${escapeHtml(col.label)}${sortIcon}</span></th>`;
+}
+
+function renderEditActionsHeader() {
+  return `<th class="edit-actions-col" scope="col">Actions</th>`;
+}
+
+function renderEditColumnsList() {
+  const list = $("#edit-columns-list");
+  if (!list) return;
+  const visible = new Set(getVisibleEditColumns().map((c) => c.key));
+  list.innerHTML = editColumnCatalog
+    .map((col) => {
+      const checked = visible.has(col.key) ? " checked" : "";
+      const id = `edit-col-${col.key}`;
+      return `<li><label for="${escapeAttr(id)}"><input type="checkbox" id="${escapeAttr(id)}" data-col-key="${escapeAttr(col.key)}"${checked} />${escapeHtml(col.label)}</label></li>`;
+    })
+    .join("");
+  list.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      const key = input.dataset.colKey;
+      if (!key) return;
+      let keys = getVisibleEditColumns().map((c) => c.key);
+      if (input.checked) {
+        if (!keys.includes(key)) keys.push(key);
+      } else {
+        keys = keys.filter((k) => k !== key);
+        if (!keys.length) {
+          input.checked = true;
+          return;
+        }
+      }
+      saveEditVisibleColumnKeys(keys);
+      renderEditColumnsList();
+      refreshEditResultsView();
+    });
+  });
+}
+
+function positionEditColumnsPopover(anchor) {
+  const popover = $("#edit-columns-popover");
+  if (!popover || !anchor) return;
+  const rect = anchor.getBoundingClientRect();
+  const margin = 8;
+  popover.classList.remove("hidden");
+  popover.setAttribute("aria-hidden", "false");
+  const popRect = popover.getBoundingClientRect();
+  let top = rect.bottom + margin;
+  let left = rect.right - popRect.width;
+  if (left < margin) left = margin;
+  if (left + popRect.width > window.innerWidth - margin) {
+    left = window.innerWidth - popRect.width - margin;
+  }
+  if (top + popRect.height > window.innerHeight - margin) {
+    top = rect.top - popRect.height - margin;
+  }
+  if (top < margin) top = margin;
+  popover.style.top = `${top}px`;
+  popover.style.left = `${left}px`;
+}
+
+function openEditColumnsPopover(anchor) {
+  if (!editColumnCatalog.length) return;
+  editColumnsPopoverAnchor = anchor;
+  renderEditColumnsList();
+  positionEditColumnsPopover(anchor);
+  document.querySelectorAll(".edit-columns-trigger").forEach((btn) => {
+    btn.setAttribute("aria-expanded", btn === anchor ? "true" : "false");
+  });
+}
+
+function closeEditColumnsPopover() {
+  const popover = $("#edit-columns-popover");
+  popover?.classList.add("hidden");
+  popover?.setAttribute("aria-hidden", "true");
+  editColumnsPopoverAnchor = null;
+  document.querySelectorAll(".edit-columns-trigger").forEach((btn) => {
+    btn.setAttribute("aria-expanded", "false");
+  });
+}
+
+function bindEditColumnsTriggers(root = document) {
+  root.querySelectorAll(".edit-columns-trigger").forEach((btn) => {
+    if (btn.dataset.columnsBound === "1") return;
+    btn.dataset.columnsBound = "1";
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const popover = $("#edit-columns-popover");
+      const isOpen = popover && !popover.classList.contains("hidden") && editColumnsPopoverAnchor === btn;
+      if (isOpen) closeEditColumnsPopover();
+      else openEditColumnsPopover(btn);
+    });
+  });
+}
+
+function bindEditColumnsUi() {
+  if (document.body.dataset.editColumnsUiBound === "1") return;
+  document.body.dataset.editColumnsUiBound = "1";
+  $("#btn-edit-columns-reset")?.addEventListener("click", () => {
+    saveEditVisibleColumnKeys(getDefaultEditVisibleColumnKeys());
+    renderEditColumnsList();
+    refreshEditResultsView();
+  });
+  document.addEventListener("click", (e) => {
+    const popover = $("#edit-columns-popover");
+    if (!popover || popover.classList.contains("hidden")) return;
+    if (popover.contains(e.target)) return;
+    if (e.target.closest(".edit-columns-trigger")) return;
+    closeEditColumnsPopover();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeEditColumnsPopover();
+  });
+  window.addEventListener(
+    "resize",
+    () => {
+      if (editColumnsPopoverAnchor) positionEditColumnsPopover(editColumnsPopoverAnchor);
+    },
+    { passive: true }
+  );
+}
+
+function refreshEditResultsView() {
+  const host = $("#edit-results");
+  if (!host || !editLastResults.length) return;
+  host.innerHTML = renderEditResults(editLastResults);
+  bindEditResultRows();
+  bindEditSortHeaders();
+  bindEditColumnsTriggers(host);
+}
+
+async function ensureEditColumnCatalog() {
+  if (editColumnCatalog.length) return;
+  const data = await api("/api/transactions/columns");
+  editColumnCatalog = data.columns || [];
+  loadEditVisibleColumnKeys();
+}
+
 let cadenceSuggestBusy = false;
 let cadenceNeedingCount = 0;
 let cadenceFilterLabels = [];
@@ -3084,7 +3452,10 @@ function setEditPanelOpen(open) {
   const layout = document.querySelector(".edit-layout");
   const panel = $("#edit-side-panel");
   if (layout) layout.classList.toggle("panel-open", open);
-  if (panel) panel.classList.toggle("hidden", !open);
+  if (panel) {
+    panel.classList.toggle("hidden", !open);
+    if (open) panel.scrollTop = 0;
+  }
 }
 
 let editCombosInitialized = false;
@@ -3129,6 +3500,12 @@ function populateEditAdvancedFilters(options) {
     $("#edit-search-sub")?.value
   );
   populateEditSelect(
+    $("#edit-search-flow-type"),
+    options.flow_types?.length ? options.flow_types : EDIT_FLOW_TYPES,
+    "All flow types",
+    $("#edit-search-flow-type")?.value
+  );
+  populateEditSelect(
     $("#edit-search-expense-type"),
     options.expense_types,
     "All expense types",
@@ -3166,7 +3543,7 @@ function renderActiveFilterChips({ host, filters, onClearOne, onClearAll }) {
         `<button type="button" class="filter-chip" data-filter-key="${escapeAttr(f.key)}" aria-label="Remove ${escapeAttr(f.label)} filter">
           <span class="filter-chip-label">${escapeHtml(f.label)}:</span>
           <span class="filter-chip-value">${escapeHtml(f.display || f.value)}</span>
-          <span class="filter-chip-remove" aria-hidden="true">×</span>
+          <span class="filter-chip-remove" aria-hidden="true">${inlineIcon("x", { size: 14 })}</span>
         </button>`
     )
     .join("");
@@ -3187,6 +3564,7 @@ const EDIT_FILTER_CONFIG = [
   { key: "category", label: "Category", sel: "#edit-search-category" },
   { key: "label_status", label: "Label status", sel: "#edit-search-label-status" },
   { key: "sub_category", label: "Sub-category", sel: "#edit-search-sub" },
+  { key: "flow_type", label: "Flow Type", sel: "#edit-search-flow-type" },
   { key: "expense_type", label: "Expense type", sel: "#edit-search-expense-type" },
   { key: "classification", label: "Classification", sel: "#edit-search-classification" },
 ];
@@ -3256,10 +3634,51 @@ function renderCadenceActiveFilters() {
   });
 }
 
-function editSortHeader(label, field) {
-  const active = editSortBy === field;
-  const arrow = active ? (editSortDir === "asc" ? " ▲" : " ▼") : "";
-  return `<th class="edit-sort-th" data-sort="${field}" scope="col" tabindex="0" aria-sort="${active ? editSortDir + "ending" : "none"}">${escapeHtml(label)}${arrow}</th>`;
+function renderEditResults(transactions) {
+  if (!transactions.length) {
+    return '<p class="hint">No transactions match your search.</p>';
+  }
+  const visibleCols = getVisibleEditColumns();
+  const rows = transactions
+    .map((tx) => {
+      const merchant = tx.merchant_key || "";
+      const cells = visibleCols
+        .map((col) => {
+          const cls =
+            col.key === "amount"
+              ? ' class="amount"'
+              : col.key === "rationale" || col.key === "description"
+                ? ' class="description-col"'
+                : "";
+          return `<td${cls}>${formatEditCellValue(col.key, tx)}</td>`;
+        })
+        .join("");
+      const cadenceBtn = uiShowCadence
+        ? `<button type="button" class="btn-link btn-edit-cadence-link btn-row-icon" data-merchant-key="${escapeAttr(merchant)}" title="Open Cadence tab for this merchant">${inlineIcon("calendar-clock", { size: 14 })} Cadence</button>`
+        : "";
+      return `
+        <tr>
+          ${cells}
+          <td class="edit-row-actions">
+            <button type="button" class="btn-edit-row btn-row-icon" data-tx-id="${escapeAttr(tx.transaction_id)}">${inlineIcon("pencil", { size: 14 })} Edit</button>
+            ${cadenceBtn}
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+  const headers = visibleCols.map((col) => editSortHeaderForColumn(col)).join("");
+  return `
+    <table class="edit-results-table">
+      <thead>
+        <tr>
+          ${headers}
+          ${renderEditActionsHeader()}
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
 }
 
 function attachComboField(wrapper, getOptions, { sectioned = false, getCategory = null, onSelect = null } = {}) {
@@ -3426,7 +3845,7 @@ function applyEditMerchantLabelPrefill(merchantKey) {
   if (catInput && row.ai_category) catInput.value = row.ai_category;
   if (subInput && row.ai_sub_category) subInput.value = row.ai_sub_category;
   if (flowSel && row.flow_type) {
-    flowSel.value = row.flow_type === "Income" ? "Income" : "Expense";
+    flowSel.value = EDIT_FLOW_TYPES.includes(row.flow_type) ? row.flow_type : "Expense";
   }
   if (expenseSel && row.expense_type) {
     expenseSel.value = row.expense_type === "Fixed" ? "Fixed" : "Variable";
@@ -3434,61 +3853,6 @@ function applyEditMerchantLabelPrefill(merchantKey) {
   if (classSel && row.classification && EDIT_CLASSIFICATIONS.includes(row.classification)) {
     classSel.value = row.classification;
   }
-}
-
-function renderEditResults(transactions) {
-  if (!transactions.length) {
-    return '<p class="hint">No transactions match your search.</p>';
-  }
-  const rows = transactions
-    .map((tx) => {
-      const category = tx.ai_category || "—";
-      const sub = tx.ai_sub_category || "—";
-      const expenseType = tx.expense_type || "—";
-      const classification = tx.classification || "—";
-      const merchant = tx.merchant_key || "";
-      const simpleDesc = (tx.simple_description || "").trim();
-      const cadenceBtn = uiShowCadence
-        ? `<button type="button" class="btn-link btn-edit-cadence-link" data-merchant-key="${escapeAttr(merchant)}" title="Open Cadence tab for this merchant">Cadence</button>`
-        : "";
-      return `
-        <tr>
-          <td>${escapeHtml(tx.date || "")}</td>
-          <td class="amount">${escapeHtml(formatMoney(tx.amount))}</td>
-          <td>${escapeHtml(simpleDesc || "—")}</td>
-          <td>${escapeHtml(merchant)}</td>
-          <td>${escapeHtml(category)}</td>
-          <td>${escapeHtml(sub)}</td>
-          <td>${escapeHtml(expenseType)}</td>
-          <td>${escapeHtml(classification)}</td>
-          <td>${renderLabelStatusBadge(tx.label_status)}</td>
-          <td class="edit-row-actions">
-            <button type="button" class="btn-edit-row" data-tx-id="${escapeAttr(tx.transaction_id)}">Edit</button>
-            ${cadenceBtn}
-          </td>
-        </tr>
-      `;
-    })
-    .join("");
-  return `
-    <table class="edit-results-table">
-      <thead>
-        <tr>
-          ${editSortHeader("Date", "date")}
-          ${editSortHeader("Amount", "amount")}
-          <th scope="col">Simple description</th>
-          ${editSortHeader("Merchant", "merchant")}
-          ${editSortHeader("Category", "ai_category")}
-          <th scope="col">Sub-category</th>
-          <th scope="col">Type</th>
-          <th scope="col">Class</th>
-          <th scope="col">Status</th>
-          <th scope="col"></th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-  `;
 }
 
 function bindEditSortHeaders() {
@@ -3500,10 +3864,18 @@ function bindEditSortHeaders() {
         editSortDir = editSortDir === "asc" ? "desc" : "asc";
       } else {
         editSortBy = field;
-        editSortDir =
-          field === "merchant" || field === "ai_category" || field === "classification"
-            ? "asc"
-            : "desc";
+        editSortDir = [
+          "merchant",
+          "merchant_key",
+          "simple_description",
+          "ai_category",
+          "ai_sub_category",
+          "expense_type",
+          "classification",
+          "label_status",
+        ].includes(field)
+          ? "asc"
+          : "desc";
       }
       runEditSearch({ resetPage: true }).catch(() => {});
     };
@@ -3579,7 +3951,9 @@ async function openEditPanel(tx) {
   if (merchantSaveCb) merchantSaveCb.checked = true;
   if (catInput) catInput.value = tx.ai_category || "";
   if (subInput) subInput.value = tx.ai_sub_category || "";
-  if (flowSel) flowSel.value = tx.flow_type === "Income" ? "Income" : "Expense";
+  if (flowSel) {
+    flowSel.value = EDIT_FLOW_TYPES.includes(tx.flow_type) ? tx.flow_type : "Expense";
+  }
   if (expenseSel) expenseSel.value = tx.expense_type === "Fixed" ? "Fixed" : "Variable";
   if (classSel) {
     classSel.value = EDIT_CLASSIFICATIONS.includes(tx.classification) ? tx.classification : "Personal";
@@ -3669,6 +4043,7 @@ async function runEditSearch({ resetPage = false } = {}) {
   const month = $("#edit-search-month")?.value || "";
   const category = ($("#edit-search-category")?.value || "").trim();
   const subCategory = ($("#edit-search-sub")?.value || "").trim();
+  const flowType = ($("#edit-search-flow-type")?.value || "").trim();
   const expenseType = ($("#edit-search-expense-type")?.value || "").trim();
   const classification = ($("#edit-search-classification")?.value || "").trim();
   const labelStatus = ($("#edit-search-label-status")?.value || "").trim();
@@ -3678,6 +4053,7 @@ async function runEditSearch({ resetPage = false } = {}) {
   if (month) params.set("month", month);
   if (category) params.set("category", category);
   if (subCategory) params.set("sub_category", subCategory);
+  if (flowType) params.set("flow_type", flowType);
   if (expenseType) params.set("expense_type", expenseType);
   if (classification) params.set("classification", classification);
   if (labelStatus) params.set("label_status", labelStatus);
@@ -3692,10 +4068,15 @@ async function runEditSearch({ resetPage = false } = {}) {
 
   const host = $("#edit-results");
   const meta = $("#edit-search-meta");
+  const toolbar = $("#edit-results-toolbar");
   if (host) {
     host.innerHTML = renderEditResults(editLastResults);
     bindEditResultRows();
     bindEditSortHeaders();
+    bindEditColumnsTriggers(host);
+  }
+  if (toolbar) {
+    toolbar.classList.toggle("hidden", !editLastResults.length);
   }
   renderEditActiveFilters();
   if (meta) {
@@ -4250,9 +4631,12 @@ $("#btn-cadence-next")?.addEventListener("click", () => {
 async function loadTransactionEditor() {
   const monthSel = $("#edit-search-month");
   try {
+    bindEditColumnsUi();
+    bindEditColumnsTriggers(document);
     const [status, options] = await Promise.all([
       api("/api/status"),
       editOptionsCache ? Promise.resolve(editOptionsCache) : api("/api/review/options"),
+      ensureEditColumnCatalog(),
     ]);
     editOptionsCache = options;
     setupEditCategoryControls(options);
@@ -4291,6 +4675,7 @@ $("#edit-search-form")?.addEventListener("submit", (e) => {
   "#edit-search-category",
   "#edit-search-label-status",
   "#edit-search-sub",
+  "#edit-search-flow-type",
   "#edit-search-expense-type",
   "#edit-search-classification",
 ].forEach((sel) => {
@@ -5269,7 +5654,16 @@ function setCategorizeProgress(percent, message, meta = {}) {
   categorizeProgressPercent = Math.min(100, Math.max(0, percent));
   const { fill, text } = progressEls();
   if (fill) fill.style.width = `${categorizeProgressPercent}%`;
-  if (text) text.textContent = message;
+  if (text) {
+    const processing = categorizeProgressPercent > 0 && categorizeProgressPercent < 100;
+    if (processing && typeof icon === "function") {
+      text.innerHTML =
+        `<span class="progress-with-icon">${icon("loader-circle", { size: 16, className: "icon-spin" })}` +
+        `<span>${escapeHtml(message)}</span></span>`;
+    } else {
+      text.textContent = message;
+    }
+  }
   setCategorizeProgressTiming(meta, categorizeProgressPercent);
 }
 
@@ -5823,7 +6217,8 @@ async function loadWorkspaceInbox() {
     if (countEl) countEl.textContent = String(total);
     syncWorkspacePendingChrome(total);
     if (!items.length) {
-      list.innerHTML = '<p class="hint workspace-inbox-empty">No pending AI proposals.</p>';
+      list.innerHTML =
+        `<p class="hint workspace-inbox-empty">${inlineIcon("circle-check", { size: 16 })} No pending AI proposals.</p>`;
       return;
     }
     const groups = groupWorkspaceInboxItems(items);
@@ -5837,6 +6232,7 @@ async function loadWorkspaceInbox() {
       const summary = document.createElement("summary");
       summary.className = "workspace-inbox-group-header";
       summary.innerHTML = `
+        <span class="group-chevron" data-icon="chevron-right" data-icon-size="14" aria-hidden="true"></span>
         <span class="workspace-inbox-group-title">${escapeHtml(group.label)}</span>
         <span class="workspace-inbox-group-count">${group.items.length}</span>
       `;
@@ -5848,6 +6244,7 @@ async function loadWorkspaceInbox() {
       details.append(summary, groupList);
       list.appendChild(details);
     });
+    if (typeof hydrateIcons === "function") hydrateIcons(list);
   } catch (err) {
     list.innerHTML = `<p class="hint workspace-inbox-empty">Error: ${escapeHtml(err.message)}</p>`;
   }
@@ -6736,5 +7133,6 @@ $("#taxonomy-apply-body")?.addEventListener("click", (e) => {
   }
 });
 
+if (typeof hydrateIcons === "function") hydrateIcons();
 loadChatHistory();
 refreshChatContextMeter("").catch(() => {});

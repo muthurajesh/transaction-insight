@@ -59,7 +59,9 @@ from webapp.services.custom_rules import (
     apply_custom_rule_by_id,
     compile_and_apply_custom_rules,
     delete_custom_rule,
+    export_custom_rules,
     get_custom_rule,
+    import_custom_rules,
     list_custom_rules,
     preview_custom_rule,
     save_and_apply_custom_rule,
@@ -85,6 +87,7 @@ from webapp.services.transaction_edit import (
     bulk_update_labels,
     get_transaction,
     list_matching_transactions,
+    list_result_columns,
     search_transactions,
 )
 from webapp.services.taxonomy_rules import (
@@ -209,6 +212,16 @@ class CustomRulePreviewRequest(BaseModel):
     rule_id: int | None = None
     limit: int = 50
     offset: int = 0
+
+
+class CustomRuleImportRequest(BaseModel):
+    """Full export envelope, or { rules, mode }."""
+
+    format: str | None = None
+    version: int | None = None
+    exported_at: str | None = None
+    rules: list[Any] | None = None
+    mode: str = "merge"
 
 
 class TransactionCadencePayload(BaseModel):
@@ -958,6 +971,32 @@ def api_custom_rules_add(body: CustomRuleCreateRequest) -> dict[str, Any]:
         conn.close()
 
 
+@app.get("/api/custom-rules/export")
+def api_custom_rules_export() -> dict[str, Any]:
+    conn = _conn()
+    try:
+        return export_custom_rules(conn)
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.post("/api/custom-rules/import")
+def api_custom_rules_import(body: CustomRuleImportRequest) -> dict[str, Any]:
+    conn = _conn()
+    try:
+        payload = body.model_dump(exclude_none=True)
+        mode = str(payload.pop("mode", "merge") or "merge")
+        return import_custom_rules(conn, payload, mode=mode)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+    finally:
+        conn.close()
+
+
 @app.post("/api/custom-rules/preview")
 def api_custom_rules_preview(body: CustomRulePreviewRequest) -> dict[str, Any]:
     if not (body.rule_text or "").strip() and body.rule_id is None:
@@ -1166,6 +1205,11 @@ def api_transactions_cadence_suggest_batch(
         conn.close()
 
 
+@app.get("/api/transactions/columns")
+def api_transactions_columns() -> dict[str, Any]:
+    return {"columns": list_result_columns()}
+
+
 @app.get("/api/transactions/search")
 def api_transactions_search(
     q: str = "",
@@ -1173,6 +1217,7 @@ def api_transactions_search(
     category: str = "",
     sub_category: str = "",
     expense_type: str = "",
+    flow_type: str = "",
     classification: str = "",
     label_status: str = "",
     cadence_kind: str = "",
@@ -1193,6 +1238,7 @@ def api_transactions_search(
                 category=category,
                 sub_category=sub_category,
                 expense_type=expense_type,
+                flow_type=flow_type,
                 classification=classification,
                 label_status=label_status,
                 cadence_kind=cadence_kind,

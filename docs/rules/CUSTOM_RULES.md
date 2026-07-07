@@ -12,16 +12,17 @@ Use Custom Rules when one merchant needs **different labels by amount or descrip
 
 ## Tab workflow
 
-1. **Build a Simple Rule** (optional) — collapsible helper: pick When conditions (Generated Description / Description / Amount), Then set fields, **Insert** or **Replace** into the composer. **What can I use?** expands a cheatsheet with examples, match keys, operators, and settable fields.
+1. **Build a Simple Rule** (optional) — collapsible helper: pick When conditions (Description / Amount), Then set fields, **Insert** or **Replace** into the composer. **What can I use?** expands a cheatsheet with examples, match keys, operators, and settable fields.
 2. **Rule (plain English)** — multiline composer at the top.
 3. **Run preview** — compiles (LLM) and lists matching transactions with **Current** vs **Proposed** labels.
 4. **Compiled JSON** — read-only view of the compiled rule.
 5. **Saved rules** — click to load; **Apply** one rule, **Disable**, or **Delete**. **New rule** clears selection so **Save** creates a separate rule (editing an existing rule updates it in place).
 6. **Save** — stores as Pending (no DB apply). **Save & apply** — compile + update matching rows. **Apply all rules** — compile pending + apply every Active rule.
+7. **Export / Import** — download a JSON backup of all saved rules (plain English + compiled JSON when present). Import can **merge** (skip duplicate rule text) or **replace** all existing rules. Use this before **Clear data store**, then re-import after switching models or reloading CSVs.
 
 Composer hint shows **Editing saved rule #N** vs **New rule — not saved yet**.
 
-Storage: SQLite `pipeline_custom_rules` (stable numeric `id` per rule).
+Storage: SQLite `pipeline_custom_rules` (stable numeric `id` per rule). Export files do not include DB ids; import assigns new ids.
 
 **Apply behavior:** matching rows get `label_status = confirmed` and drop off **Confirm Categories**, even when labels were already correct before apply.
 
@@ -36,9 +37,17 @@ Storage: SQLite `pipeline_custom_rules` (stable numeric `id` per rule).
 
 | Key | Matches |
 |-----|---------|
-| `description` | Generated + Original + Simple + User text (wildcards `*text*`, `prefix*`, `*suffix`) |
-| `generated_description` | Merchant label only |
-| `amount` | Absolute dollar value — **exact** match (`-36` matches amount `36`). JSON **array** = OR (e.g. `["36","69.31"]`). **Not supported:** greater than, less than, or ranges — use explicit amounts or `description` patterns. |
+| `description` | Merchant Key + Generated + Original + Simple + User text (wildcards `*text*`, `prefix*`, `*suffix`) |
+| `generated_description` | Generated Description / merchant label only (free-form rules) |
+| `amount_sign` | Signed amount: `positive` (`> 0`), `negative` (`< 0`), or `zero` (`== 0`) |
+| `amount` | Absolute dollar value (`-36` matches amount `36`). Operators: exact (`"9.99"` / `"=9.99"`), `!=`, `>`, `>=`, `<`, `<=` as strings (`">50"`) or objects (`{"op":">=","value":"50"}`). JSON **array** = OR (e.g. `["36","69.31"]` or `[">100","50"]`). |
+
+**Example (merchant with spends and refunds):**
+
+```json
+{"rule_type":"assign","match":{"description":"*shell*","amount_sign":"negative"},"set":{"flow_type":"Expense","ai_category":"Automotive","ai_sub_category":"Gasoline"}}
+{"rule_type":"assign","match":{"description":"*shell*","amount_sign":"positive"},"set":{"flow_type":"Adjustment","ai_category":"Automotive","ai_sub_category":"Gasoline"}}
+```
 
 ### Set fields
 
@@ -50,6 +59,8 @@ Storage: SQLite `pipeline_custom_rules` (stable numeric `id` per rule).
 |--------|------|---------|
 | GET | `/api/custom-rules` | List rules (includes `id`, `compiled_rule` when Active) |
 | POST | `/api/custom-rules` | Add rule (Pending) |
+| GET | `/api/custom-rules/export` | JSON backup (`format`, `version`, `rules[]`) |
+| POST | `/api/custom-rules/import` | Restore backup; `{ …export fields, mode: "merge"\|"replace" }` |
 | GET | `/api/custom-rules/{id}` | Rule detail |
 | PUT | `/api/custom-rules/{id}` | Update text and/or status |
 | DELETE | `/api/custom-rules/{id}` | Remove rule |
@@ -57,6 +68,25 @@ Storage: SQLite `pipeline_custom_rules` (stable numeric `id` per rule).
 | POST | `/api/custom-rules/{id}/apply` | Compile if needed + apply one rule |
 | POST | `/api/custom-rules/compile-apply` | Compile all pending + apply all Active |
 | POST | `/api/custom-rules/save-apply` | Add + apply new rule |
+
+### Export file shape
+
+```json
+{
+  "format": "transaction-insight.custom-rules",
+  "version": 1,
+  "exported_at": "2026-07-03T12:00:00+00:00",
+  "rules": [
+    {
+      "rule": "If Description is Merchant A, set AI Category to Category X",
+      "status": "Active",
+      "compiled_rule": { "rule_type": "assign", "match": {}, "set": {} }
+    }
+  ]
+}
+```
+
+Active rules without `compiled_rule` import as **Pending** (recompile via Apply / Apply all).
 
 ## Files
 
