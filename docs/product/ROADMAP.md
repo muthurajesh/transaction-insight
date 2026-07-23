@@ -29,6 +29,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | Chat agent + SQL / analytics tools | `webapp/agent/` |
 | [x] | Import & Categorize UI (tabs) | |
 | [x] | **Choose CSV files & scan** | Upload → `input/` → scan; see Import section below |
+| [x] | **Beginner onboarding** — one-model Ollama preset, hardware table, sample CSV, MIT license | README + [LLM_SETUP.md](../setup/LLM_SETUP.md); `config/.env.ollama.beginner`; `samples/` |
 
 ---
 
@@ -147,7 +148,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 
 **Monthly workflow (web):** Upload CSV(s) in **Import & Categorize** — files copy to `input/` and processing runs automatically. Use **Run processing** to re-run files already in the inbox.
 
-**Models (from A/B on May 2026):** seed `PIPELINE_MODEL=qwen2.5-coder:32b`; routine months `qwen2.5:7b-instruct` after lookups exist; chat `CHAT_MODEL=qwen2.5:14b`.
+**Models:** **Beginners** pull one model (`qwen2.5:14b`, or `qwen2.5:7b` on 8–16GB RAM) via `config/.env.ollama.beginner`. **Experts** may split roles (e.g. seed/audit `qwen2.5-coder:32b`, routine `7b`, chat `14b`) — see [LLM_SETUP.md](../setup/LLM_SETUP.md).
 
 ---
 

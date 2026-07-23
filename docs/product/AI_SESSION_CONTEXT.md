@@ -26,10 +26,10 @@ Full charter: [PRODUCT_CHARTER.md](PRODUCT_CHARTER.md).
 | App | `./start.sh` → http://127.0.0.1:8000 |
 | DB | `data/finance.db` |
 | Inbox | `input/` CSVs |
-| Config | `config/.env` — `LLM_PROVIDER=ollama`, local `127.0.0.1:11434` |
-| **Chat model** | `qwen2.5:14b` |
-| **Pipeline seed** | `qwen2.5-coder:32b` (quality) |
-| **Routine pipeline** | `qwen2.5:7b-instruct` after lookups exist |
+| Sample CSV | `samples/sample_transactions.csv` |
+| Config | Beginners: `cp config/.env.ollama.beginner config/.env` — see [LLM_SETUP.md](../setup/LLM_SETUP.md) |
+| **Default (beginner)** | One model: `qwen2.5:14b` (or `7b` on smaller RAM) for pipeline + chat |
+| **Expert roles** | Optional: seed/audit `qwen2.5-coder:32b`; routine `7b`; chat `14b` |
 
 ---
 
