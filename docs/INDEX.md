@@ -26,6 +26,7 @@ Start here to find the right doc. **Product decisions** always defer to the char
 | [product/DECISION_MEMORY.md](./product/DECISION_MEMORY.md) | Decision event log + Learning Agent | Shipped |
 | [product/AGENT_WORKSPACE.md](./product/AGENT_WORKSPACE.md) | Unified Workspace UI + pending inbox | Shipped |
 | [product/AGENTIC_AI_DESIGN.md](./product/AGENTIC_AI_DESIGN.md) | Future agent-native architecture proposal | Design only — not committed scope |
+| [product/TRANSACTION_INTELLIGENCE_ARCHITECTURE.md](./product/TRANSACTION_INTELLIGENCE_ARCHITECTURE.md) | Hybrid classifier — base model, user overlay, HPLLM teacher, phased plan | Agreed — Phase 0 not started |
 
 ---
 

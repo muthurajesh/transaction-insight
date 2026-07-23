@@ -200,6 +200,26 @@ Single index for planned and completed work. Use this file to pick **what to do 
 
 ---
 
+## 9. Transaction Intelligence (hybrid classifier)
+
+**Detail:** [TRANSACTION_INTELLIGENCE_ARCHITECTURE.md](TRANSACTION_INTELLIGENCE_ARCHITECTURE.md)
+
+**Direction (agreed Jul 2026):** Integrate in current repo — base classifier + per-user overlay + HPLLM teacher for corrections. **Not** a fork. Offline benchmark is a go/no-go gate before pipeline hooks. Replaces bulk pipeline LLM classify long-term; converges Learning Agent + Classification Audit in later phases.
+
+| Status | Item | Detail |
+|--------|------|--------|
+| [ ] | **Phase 0 — Offline benchmark** | Export gold labels; train v0 MiniLM+LightGBM; go/no-go on accuracy & speed |
+| [ ] | Phase 1 — Schema & provenance | `classification_events`, `model_registry`, `classification_source`, real model confidence |
+| [ ] | Phase 2 — Classifier shadow mode | `webapp/ml/`, `CLASSIFICATION_ENGINE=hybrid`, shadow hook in `run.py` |
+| [ ] | Phase 3 — Hybrid live | Classifier applies above threshold; LLM fallback local or cloud |
+| [ ] | Phase 4 — HPLLM teacher & distillation | Correction → training rows; scheduled bulk; replaces Learning Agent function |
+| [ ] | Phase 5 — Retire redundant processes | Reduce Classification Audit; deprecate Learning Agent when teacher ships |
+| [ ] | Phase 6 — Chat intelligence tools + MCP | Low-confidence tool; structured analytics; optional stdio MCP |
+
+**A/B:** branch `feature/transaction-intelligence` + `FINANCE_DB_PATH=data/finance_ti.db`.
+
+---
+
 ## Suggested order (next work)
 
 1. **Pipeline lookup save hardening** — pure in-memory merge on save; keep confirmed user/web merchant labels authoritative ([PIPELINE_DB_LOOKUPS.md](../pipeline/PIPELINE_DB_LOOKUPS.md))
@@ -207,6 +227,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 3. **Classification vocabulary / auto-merge** — reduce category drift ([CLASSIFICATION_TAXONOMY.md](../classification/CLASSIFICATION_TAXONOMY.md))
 4. **Phase D2–D3 — report layers** + layered reports ([REPORT_LAYERS.md](../reporting/REPORT_LAYERS.md))
 5. **Optional:** cadence AI tuning (D1 polish); import file-picker for re-run ([IMPORT_PROCESS_UPLOAD.md](../pipeline/IMPORT_PROCESS_UPLOAD.md))
+6. **When ready:** Transaction Intelligence Phase 0 benchmark ([TRANSACTION_INTELLIGENCE_ARCHITECTURE.md](TRANSACTION_INTELLIGENCE_ARCHITECTURE.md)) — no pipeline code until go/no-go passes
 
 ---
 
@@ -238,6 +259,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [CLASSIFICATION_AUDIT.md](../classification/CLASSIFICATION_AUDIT.md) | Sampled classification quality audit |
 | [CUSTOM_REPORTS_UI.md](../chat/CUSTOM_REPORTS_UI.md) | Settings UI for saved reports |
 | [IMPORT_PROCESS_UPLOAD.md](../pipeline/IMPORT_PROCESS_UPLOAD.md) | File picker for Run processing |
+| [TRANSACTION_INTELLIGENCE_ARCHITECTURE.md](TRANSACTION_INTELLIGENCE_ARCHITECTURE.md) | Hybrid classifier plan — benchmark gate, phases, teacher loop |
 
 ---
 
