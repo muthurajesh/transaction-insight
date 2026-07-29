@@ -52,8 +52,7 @@ from webapp.services.classification_audit import (
 )
 from webapp.services.review_options import get_review_options
 from webapp.services.data_store import clear_data_store, table_counts
-from webapp.services.inbox_upload import save_upload_to_inbox, scan_uploaded_files
-from webapp.services.ingest import ingest_csv, scan_inbox
+from webapp.services.inbox_upload import save_upload_to_inbox
 from webapp.services.custom_rules import (
     add_custom_rule,
     apply_custom_rule_by_id,
@@ -176,10 +175,6 @@ class ReviewSuggestRequest(BaseModel):
 
 class ReviewSuggestBatchRequest(BaseModel):
     limit: int = Field(10, ge=10, le=100)
-
-
-class IngestRequest(BaseModel):
-    filename: str | None = None
 
 
 class ClearDataRequest(BaseModel):
@@ -388,48 +383,6 @@ async def api_ingest_upload(
     if not saved_paths:
         return {"uploads": uploads}
     return {"uploads": uploads, "saved_count": len(saved_paths)}
-
-
-@app.post("/api/ingest/scan")
-def api_ingest_scan(force: bool = False) -> dict[str, Any]:
-    """Legacy raw CSV import without pipeline categorization."""
-    conn = _conn()
-    try:
-        return {"results": scan_inbox(conn, INBOX_DIR, force=force)}
-    finally:
-        conn.close()
-
-
-@app.post("/api/ingest/upload-and-scan")
-async def api_ingest_upload_and_scan(
-    files: list[UploadFile] = File(...),
-    force: bool = False,
-) -> dict[str, Any]:
-    """Legacy: upload then raw ingest. Prefer /api/ingest/upload + /api/process."""
-    uploads, saved_paths = await _save_uploaded_csvs(files)
-    if not saved_paths:
-        return {"uploads": uploads, "results": []}
-
-    conn = _conn()
-    try:
-        results = scan_uploaded_files(conn, saved_paths, force=force)
-        return {"uploads": uploads, "results": results}
-    finally:
-        conn.close()
-
-
-@app.post("/api/ingest/file")
-def api_ingest_file(body: IngestRequest) -> dict[str, Any]:
-    if not body.filename:
-        raise HTTPException(400, "filename required")
-    path = INBOX_DIR / body.filename
-    if not path.is_file():
-        raise HTTPException(404, f"Not found in inbox: {body.filename}")
-    conn = _conn()
-    try:
-        return ingest_csv(conn, path, force=False)
-    finally:
-        conn.close()
 
 
 class ProcessRequest(BaseModel):

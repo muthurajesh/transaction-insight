@@ -22,7 +22,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 
 | Status | Item | Notes |
 |--------|------|-------|
-| [x] | Project layout (`webapp/`, lookup workbook, SQLite) | Phase 0 |
+| [x] | Project layout (`webapp/`, SQLite lookups, config) | Phase 0 |
 | [x] | Scan inbox + ingest CSV → `transactions` | |
 | [x] | Run processing (shared pipeline in web) | Descriptions, lookups, LLM, custom rules |
 | [x] | Confirm Categories tab (label queue) | → [CONFIRM_CATEGORIES.md](../classification/CONFIRM_CATEGORIES.md); bulk AI suggest (10/25/50/100) |

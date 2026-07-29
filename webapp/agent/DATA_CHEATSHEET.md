@@ -78,7 +78,7 @@ The user speaks in **plain English**; the model translates to SQL internally. Us
 
 | User says | Filter / column |
 |-----------|-----------------|
-| Merchant, payee, bank name (Capital One, Amazon, …) | `merchant_key` (= or LIKE) — **not** `source_file` |
+| Merchant, payee, bank name (Merchant A, Merchant B, …) | `merchant_key` (= or LIKE) — **not** `source_file` |
 | last N months | `budget_month IN (...)` from recent full months in context |
 | spending / expenses | `flow_type = 'Expense' AND amount < 0` |
 | list / load / show transactions (no "spending") | all flow types unless user said expenses only |

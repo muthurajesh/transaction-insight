@@ -23,6 +23,7 @@ Start here to find the right doc. **Product decisions** always defer to the char
 | Doc | Purpose | Status |
 |-----|---------|--------|
 | [product/PRODUCT_CHARTER.md](./product/PRODUCT_CHARTER.md) | **Master reference** — vision, core design, AI capabilities, decision gate | Active |
+| [product/ARCHITECTURE.md](./product/ARCHITECTURE.md) | How import → pipeline → SQLite → Review/Chat fit together | Active |
 | [product/ROADMAP.md](./product/ROADMAP.md) | Shipped vs planned work; checkboxes and links to detail docs | Active |
 | [product/AI_SESSION_CONTEXT.md](./product/AI_SESSION_CONTEXT.md) | Bootstrap for new AI coding sessions (stack, pitfalls, file map) | Active |
 | [product/DECISION_MEMORY.md](./product/DECISION_MEMORY.md) | Decision event log + Learning Agent | Shipped |
@@ -112,7 +113,7 @@ Start here to find the right doc. **Product decisions** always defer to the char
 
 All docs above remain **relevant** except:
 
-- **product/AGENTIC_AI_DESIGN.md** — aspirational; useful for long-term direction, not current sprint scope. References `docs/MCP_SETUP.md` which was never written.
+- **product/AGENTIC_AI_DESIGN.md** — aspirational; useful for long-term direction, not current sprint scope.
 - **chat/CHAT_TIER3_SAVE_REPORT.md** — largely absorbed by CHAT_CUSTOM_REPORTS; kept as Tier 3 checklist detail until merged or deleted in a future cleanup.
 
 When adding a doc, place it in the folder that matches its primary area and add one row to this index.

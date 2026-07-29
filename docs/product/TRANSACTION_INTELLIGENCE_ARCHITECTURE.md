@@ -204,7 +204,7 @@ Do **not** commit to full pipeline integration until offline benchmark passes.
 ### Phase 0 procedure
 
 1. Export gold + strong labels from `finance.db` (see label tiers above).
-2. Train v0 classifier offline (`scripts/` or `webapp/ml/train.py` — TBD).
+2. Train v0 classifier offline (`webapp/ml/train.py` — TBD).
 3. Evaluate on held-out merchants against:
    - Current pipeline labels on same rows
    - Gold user confirmed/edited rows only
@@ -254,7 +254,7 @@ Switch back: `main` branch + `finance.db` + `CLASSIFICATION_ENGINE=legacy`.
 - [ ] `webapp/ml/classifier.py` — load model, `predict_batch()`
 - [ ] `CLASSIFICATION_ENGINE=hybrid` flag in `webapp/config.py`
 - [ ] Hook in `classify_review_rows()` — shadow: log only, LLM still wins
-- [ ] `scripts/benchmark_classification.py` — same CSV, two DBs, `PhaseTimer` comparison
+- [ ] Offline benchmark harness — same CSV, two DBs, `PhaseTimer` comparison
 
 ### Phase 3 — Hybrid live
 

@@ -52,7 +52,7 @@ The user speaks in **plain English** (like ChatGPT). They do not know table or c
 ### Natural language → database (internal translation)
 | User says | You query |
 |-----------|-----------|
-| Capital One, Amazon, a merchant/payee name | `merchant_key` (= or LIKE) — **never** `source_file` |
+| Merchant A, Merchant B, a merchant/payee name | `merchant_key` (= or LIKE) — **never** `source_file` |
 | last 3 months / recent months | `budget_month IN (...)` from Query hints or Recent full months |
 | spending / expenses / how much did I spend | `flow_type = 'Expense' AND amount < 0` |
 | load/show/list transactions (no "spending") | include all `flow_type` rows for that merchant unless they said expenses only |

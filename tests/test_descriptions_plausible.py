@@ -17,14 +17,14 @@ from webapp.processing import (
 )
 
 
-def _amazon_synchrony_row() -> pd.Series:
+def _card_payment_row() -> pd.Series:
     return pd.Series(
         {
             "User Description": "",
-            "Simple Description": "Synchrony Bank",
+            "Simple Description": "Store Card Bank",
             "Original Description": (
                 "MERCHANT CORP      DES:CARD PAYMNT ID:xxxxxxxxxxx0202 "
-                "INDN:JANE DOE             CO ID:9069"
+                "INDN:JANE DOE             CO ID:1001"
             ),
             "Category": "Online Services",
         }
@@ -34,9 +34,9 @@ def _amazon_synchrony_row() -> pd.Series:
 def test_build_description_payload_excludes_category_and_amount():
     row = pd.Series(
         {
-            "Original Description": " SHELL OIL xxxxxxx3001 RANCHO SANTA CA",
+            "Original Description": " FUEL STOP xxxxxxx3001 ANYTOWN CA",
             "User Description": " ",
-            "Simple Description": " Shell",
+            "Simple Description": " Fuel Stop",
             "Category": "Gasoline/Fuel",
             "Amount": "-55.08",
         }
@@ -44,23 +44,23 @@ def test_build_description_payload_excludes_category_and_amount():
     payload = build_description_payload(row, 0)
     assert payload == {
         "index": 0,
-        "original_description": " SHELL OIL xxxxxxx3001 RANCHO SANTA CA",
+        "original_description": " FUEL STOP xxxxxxx3001 ANYTOWN CA",
         "user_description": " ",
-        "simple_description": " Shell",
+        "simple_description": " Fuel Stop",
     }
     assert "category" not in payload
     assert "amount" not in payload
 
 
-def test_generated_description_plausible_rejects_mcdonalds_for_amazon():
-    row = _amazon_synchrony_row()
-    assert not generated_description_plausible("McDonald's", row)
-    assert generated_description_plausible("Synchrony Bank", row)
-    assert generated_description_plausible("Amazon", row)
+def test_generated_description_plausible_rejects_wrong_merchant():
+    row = _card_payment_row()
+    assert not generated_description_plausible("Cafe Downtown", row)
+    assert generated_description_plausible("Store Card Bank", row)
+    assert generated_description_plausible("Merchant Corp", row)
 
 
 def test_build_description_lookup_map_skips_implausible_cache():
-    row = _amazon_synchrony_row()
+    row = _card_payment_row()
     key = description_source_key(row)
     lookups = {
         "DescriptionLookup": pd.DataFrame(
@@ -68,9 +68,9 @@ def test_build_description_lookup_map_skips_implausible_cache():
                 {
                     "Source Key": key,
                     "User Description": "",
-                    "Simple Description": "Synchrony Bank",
+                    "Simple Description": "Store Card Bank",
                     "Original Description": row["Original Description"],
-                    "Generated Description": "McDonald's",
+                    "Generated Description": "Cafe Downtown",
                     "Source": "llm",
                     "Model": "qwen",
                     "Updated At": "2026-06-09",
@@ -82,7 +82,7 @@ def test_build_description_lookup_map_skips_implausible_cache():
 
 
 def test_fill_generated_descriptions_uses_llm_when_cache_implausible():
-    row = _amazon_synchrony_row()
+    row = _card_payment_row()
     key = description_source_key(row)
     df = pd.DataFrame([row])
     client = MagicMock()
@@ -90,7 +90,7 @@ def test_fill_generated_descriptions_uses_llm_when_cache_implausible():
     response.choices = [
         MagicMock(
             message=MagicMock(
-                content='{"results": [{"index": 0, "generated_description": "Amazon"}]}'
+                content='{"results": [{"index": 0, "generated_description": "Merchant Corp"}]}'
             )
         )
     ]
@@ -102,16 +102,16 @@ def test_fill_generated_descriptions_uses_llm_when_cache_implausible():
         "test-model",
         batch_size=10,
         use_json_mode=False,
-        description_lookup={key: "McDonald's"},
+        description_lookup={key: "Cafe Downtown"},
     )
 
-    assert out.at[0, "Generated Description"] == "Amazon"
+    assert out.at[0, "Generated Description"] == "Merchant Corp"
     assert new_rows.iloc[0]["Source"] == "llm"
     client.chat.completions.create.assert_called_once()
 
 
 def test_fill_generated_descriptions_uses_plausible_cache():
-    row = _amazon_synchrony_row()
+    row = _card_payment_row()
     key = description_source_key(row)
     df = pd.DataFrame([row])
     client = MagicMock()
@@ -122,10 +122,10 @@ def test_fill_generated_descriptions_uses_plausible_cache():
         "test-model",
         batch_size=10,
         use_json_mode=False,
-        description_lookup={key: "Amazon"},
+        description_lookup={key: "Merchant Corp"},
     )
 
-    assert out.at[0, "Generated Description"] == "Amazon"
+    assert out.at[0, "Generated Description"] == "Merchant Corp"
     assert new_rows.empty
     client.chat.completions.create.assert_not_called()
 
@@ -134,10 +134,10 @@ def test_apply_merchant_category_lookup_skips_wrong_merchant_key():
     df = pd.DataFrame(
         [
             {
-                "Merchant Key": "McDonald's",
-                "Generated Description": "McDonald's",
-                "Simple Description": "Synchrony Bank",
-                "Original Description": "AMAZON CORP DES:SYF PAYMNT",
+                "Merchant Key": "Cafe Downtown",
+                "Generated Description": "Cafe Downtown",
+                "Simple Description": "Store Card Bank",
+                "Original Description": "MERCHANT CORP DES:CARD PAYMNT",
                 "AI Category": "Online Services",
                 "AI Sub-Category": "",
                 "Type": "Variable",
@@ -152,7 +152,7 @@ def test_apply_merchant_category_lookup_skips_wrong_merchant_key():
         MERCHANT_CATEGORIES_SHEET: pd.DataFrame(
             [
                 {
-                    "Merchant Key": "McDonald's",
+                    "Merchant Key": "Cafe Downtown",
                     "AI Category": "Dining",
                     "AI Sub-Category": "Fast food",
                     "Budget Tier": "Discretionary",

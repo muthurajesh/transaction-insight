@@ -4,12 +4,14 @@ import json
 import os
 from typing import Any
 
-from dotenv import load_dotenv
+from pathlib import Path
+
 from openai import OpenAI
 
-from webapp.processing.constants import CONFIG_DIR
+# Ensure config/.env is loaded when this module is imported before webapp.config.
+from dotenv import load_dotenv
 
-load_dotenv(CONFIG_DIR / ".env")
+load_dotenv(Path(__file__).resolve().parents[2] / "config" / ".env")
 
 
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "20"))

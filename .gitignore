@@ -11,6 +11,15 @@ config/.env
 __pycache__/
 .pytest_cache/
 *.pyc
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.idea/
+.vscode/
 *.xlsx
 *.bkp
 *.csv

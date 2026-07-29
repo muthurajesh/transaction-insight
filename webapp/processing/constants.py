@@ -3,17 +3,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-SCRIPTS_DIR = PROJECT_ROOT / "scripts"
-
 CONFIG_DIR = PROJECT_ROOT / "config"
-
-INPUT_DIR = PROJECT_ROOT / "input"
-
-load_dotenv(CONFIG_DIR / ".env")
 
 PAYROLL_SPILLOVER_DAYS = int(os.getenv("PAYROLL_SPILLOVER_DAYS", "7"))
 
@@ -77,8 +69,6 @@ CADENCE_DEFAULT_RUNRATE: dict[str, str] = {
     CADENCE_UNPLANNED: "N",
     CADENCE_UNKNOWN: "Y",
 }
-
-CADENCE_REVIEW_SHEET = "Cadence Review"
 
 CUSTOM_RULES_SHEET = "CustomRules"
 

@@ -10,7 +10,6 @@ from webapp.llm.client import create_client, resolve_provider_config
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_DIR = ROOT / "config"
-INPUT_DIR = ROOT / "input"
 load_dotenv(CONFIG_DIR / ".env")
 
 DATA_DIR = ROOT / "data"
@@ -86,7 +85,6 @@ _, _, CLASSIFICATION_AUDIT_MODEL = resolve_provider_config(
     role="classification_audit",
 )
 LLM_MODEL = CHAT_MODEL
-LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", os.getenv("REQUEST_TIMEOUT", "120")))
 CHAT_HISTORY_MESSAGES = max(0, min(100, int(os.getenv("CHAT_HISTORY_MESSAGES", "20"))))
 CHAT_CONTEXT_TOKEN_LIMIT = max(
     4096, int(os.getenv("CHAT_CONTEXT_TOKEN_LIMIT", "32768"))

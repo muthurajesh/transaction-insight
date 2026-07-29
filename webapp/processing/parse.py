@@ -196,53 +196,6 @@ def assign_transaction_ids(df: pd.DataFrame) -> pd.DataFrame:
     df["Transaction ID"] = df.apply(_tid, axis=1)
     return df
 
-def prepare_transaction_export_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Columns for transaction tabs: drop clutter, order Generated Description prominently."""
-    out = df.drop(columns=["Amount_Numeric"], errors="ignore")
-    out = out.drop(columns=[c for c in DROP_OUTPUT_COLUMNS if c in out.columns], errors="ignore")
-
-    if "Generated Description" not in out.columns:
-        out["Generated Description"] = out.apply(heuristic_generated_description, axis=1)
-
-    # Place Generated Description after Date when possible
-    preferred_front = [
-        "Transaction ID",
-        "Date",
-        "Generated Description",
-        "Merchant Key",
-        "Amount",
-        "Category",
-        "Account Name",
-        "Classification",
-        "Expense Cadence",
-        "In Monthly Run-Rate?",
-        "Cadence Source",
-    ]
-    front = [c for c in preferred_front if c in out.columns]
-    rest = [c for c in out.columns if c not in front]
-    out = out[front + rest]
-    if "Amount" in out.columns:
-        if "Amount_Numeric" in df.columns:
-            out["Amount"] = pd.to_numeric(df["Amount_Numeric"], errors="coerce")
-        else:
-            out["Amount"] = out["Amount"].apply(parse_amount)
-    if "Date" in out.columns:
-        if "Transaction Date" in df.columns:
-            out["Date"] = pd.to_datetime(df["Transaction Date"], errors="coerce")
-        else:
-            out["Date"] = parse_transaction_dates(out["Date"])
-    return out
-
-def sort_expenses_for_export(expense_df: pd.DataFrame) -> pd.DataFrame:
-    """Sort expense rows for the Expenses tab: AI Category, then Generated Description."""
-    if expense_df.empty:
-        return expense_df
-    sort_cols = [c for c in ("AI Category", "Generated Description") if c in expense_df.columns]
-    if not sort_cols:
-        return expense_df
-    return expense_df.sort_values(sort_cols, na_position="last", kind="stable").reset_index(
-        drop=True
-    )
 
 def load_csv(path: Path) -> pd.DataFrame:
     df = pd.read_csv(

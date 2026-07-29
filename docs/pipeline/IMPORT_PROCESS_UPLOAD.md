@@ -44,13 +44,6 @@ Credit card payments and internal transfers are treated as expenses (money movem
 | `GET /api/process/stream` | SSE progress for full pipeline |
 | `POST /api/process` | Non-streaming batch process |
 
-Legacy (not used by UI):
-
-| Endpoint | Role |
-|----------|------|
-| `POST /api/ingest/upload-and-scan` | Upload + raw ingest without AI |
-| `POST /api/ingest/scan` | Raw ingest for files already in inbox |
-
 ## Files
 
 | File | Role |

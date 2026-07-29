@@ -790,7 +790,7 @@ Run via `python -m webapp.agents.evals --agent classification` in CI.
 | MCP server package | `mcp_server/` or `webapp/mcp/` |
 | Tool descriptors matching registry | Shared with web agents |
 | Resources + prompts | Cheatsheet, schema, merchants |
-| Cursor MCP config documentation | `docs/MCP_SETUP.md` |
+| Cursor MCP / DevTools | Project uses IronBee DevTools when enabled; no separate MCP setup doc |
 
 **Exit criteria:** Cursor can query spend, list review queue, start workflow.
 

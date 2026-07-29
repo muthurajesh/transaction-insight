@@ -20,33 +20,6 @@ def business_category_rule_keys(lookups: dict[str, pd.DataFrame]) -> set[str]:
         if str(val).strip()
     }
 
-def print_business_tagging_summary(df: pd.DataFrame) -> None:
-    """Clarify business tagging vs bank Category column (common source of confusion)."""
-    if "Classification" not in df.columns:
-        return
-    biz = df[df["Classification"].astype(str).str.strip().str.lower() == "business"]
-    if biz.empty:
-        return
-    n_biz = len(biz)
-    n_ai_be = 0
-    if "AI Category" in biz.columns:
-        n_ai_be = int((biz["AI Category"].astype(str).str.strip() == "Business Expenses").sum())
-    n_bank_be = 0
-    if "Category" in biz.columns:
-        n_bank_be = int((biz["Category"].astype(str).str.strip() == "Business Expenses").sum())
-    print(
-        f"  Business tagging: {n_biz} row(s) with Classification=Business "
-        f"(use this column to filter, not bank Category)",
-        flush=True,
-    )
-    if "AI Category" in biz.columns:
-        print(f"    AI Category 'Business Expenses': {n_ai_be}", flush=True)
-    if "Category" in biz.columns and n_bank_be != n_biz:
-        print(
-            f"    Bank Category 'Business Expenses' only: {n_bank_be} "
-            f"(e.g. Google/AWS labels; Zoom/Cursor use other bank categories)",
-            flush=True,
-        )
 
 def mark_business_from_category_rules(
     df: pd.DataFrame,

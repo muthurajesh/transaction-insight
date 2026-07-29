@@ -10,7 +10,7 @@ Local, privacy-first finance workspace: import bank CSVs into SQLite, let a loca
 
 | Need | Notes |
 |------|--------|
-| **Python** | 3.10+ (3.11+ recommended) |
+| **Python** | 3.11+ |
 | **Ollama** | Free local LLM runtime — [ollama.com](https://ollama.com) (macOS / Windows / Linux) |
 | **Git** | To clone this repository |
 | **RAM** | See [Which model?](#which-model) — one pull is enough |
@@ -139,6 +139,7 @@ Vision, AI-first design, and every LLM touchpoint → [docs/product/PRODUCT_CHAR
 |------------|------|
 | Install LLM (beginner + expert) | [docs/setup/LLM_SETUP.md](docs/setup/LLM_SETUP.md) |
 | Understand product vision | [docs/product/PRODUCT_CHARTER.md](docs/product/PRODUCT_CHARTER.md) |
+| How the pieces fit | [docs/product/ARCHITECTURE.md](docs/product/ARCHITECTURE.md) |
 | See shipped vs planned | [docs/product/ROADMAP.md](docs/product/ROADMAP.md) |
 | Workspace UI & pending inbox | [docs/product/AGENT_WORKSPACE.md](docs/product/AGENT_WORKSPACE.md) |
 | Chat, voice, custom reports | [docs/chat/CHAT_RICH_UI.md](docs/chat/CHAT_RICH_UI.md) |
@@ -151,6 +152,17 @@ Vision, AI-first design, and every LLM touchpoint → [docs/product/PRODUCT_CHAR
 
 [MIT](LICENSE)
 
-## Contributing / AI sessions
+## Security
 
-Bootstrap context for coding agents → [docs/product/AI_SESSION_CONTEXT.md](docs/product/AI_SESSION_CONTEXT.md)
+See [SECURITY.md](SECURITY.md). Do not commit real bank data or API keys.
+
+## Contributing
+
+Human contributors → [CONTRIBUTING.md](CONTRIBUTING.md) (setup, **how to run tests**, PR norms).
+
+Coding agents → [docs/product/AI_SESSION_CONTEXT.md](docs/product/AI_SESSION_CONTEXT.md) + [docs/product/PRODUCT_CHARTER.md](docs/product/PRODUCT_CHARTER.md).
+
+```bash
+pip install -e ".[dev]"
+pytest -q
+```
