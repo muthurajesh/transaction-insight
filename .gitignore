@@ -27,8 +27,6 @@ data/*
 !data/.gitkeep
 input/
 ollama.log
-output/*
-!output/.gitkeep
 processed/*
 !processed/.gitkeep
 backups/

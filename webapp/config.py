@@ -11,7 +11,6 @@ from webapp.llm.client import create_client, resolve_provider_config
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_DIR = ROOT / "config"
 INPUT_DIR = ROOT / "input"
-OUTPUT_DIR = ROOT / "output"
 load_dotenv(CONFIG_DIR / ".env")
 
 DATA_DIR = ROOT / "data"

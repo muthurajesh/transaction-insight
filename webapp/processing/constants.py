@@ -13,8 +13,6 @@ CONFIG_DIR = PROJECT_ROOT / "config"
 
 INPUT_DIR = PROJECT_ROOT / "input"
 
-OUTPUT_DIR = PROJECT_ROOT / "output"
-
 load_dotenv(CONFIG_DIR / ".env")
 
 PAYROLL_SPILLOVER_DAYS = int(os.getenv("PAYROLL_SPILLOVER_DAYS", "7"))
