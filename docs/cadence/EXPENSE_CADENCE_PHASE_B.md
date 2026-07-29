@@ -124,7 +124,7 @@ Ship [CHAT_ROUTING.md](../chat/CHAT_ROUTING.md) with or before Phase B.
 | Case | cash | normalized |
 |------|------|--------------|
 | April 2026 total expenses | ~$8,500 | Lower (annual lumps spread) |
-| InsurerCo ~$975 in April | full amount in cash | ~$81/mo in normalized |
+| InsurerCo ~$900 in April | full amount in cash | ~$75/mo in normalized |
 | Groceries monthly spend | ≈ same | ≈ same |
 
 ```bash

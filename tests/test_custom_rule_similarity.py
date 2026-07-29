@@ -15,7 +15,7 @@ class CustomRuleSimilarityTests(unittest.TestCase):
         self.assertEqual(a, b)
 
     def test_merchant_referenced(self):
-        self.assertTrue(merchant_referenced_in_rule("When Generated Description is *InsurerCo* set ...", "InsurerCo Prem Pay"))
+        self.assertTrue(merchant_referenced_in_rule("When Generated Description is *InsurerCo Prem* set ...", "InsurerCo Prem Pay"))
         self.assertFalse(merchant_referenced_in_rule("When Generated Description is Netflix set ...", "InsurerCo"))
 
     def test_find_by_text_similarity(self):

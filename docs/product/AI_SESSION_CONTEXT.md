@@ -148,9 +148,9 @@ Per-phase timers in `webapp/pipeline/run.py` + `webapp/processing/timer.py` `Pha
 
 ## 7. Dataset shape notes (generic)
 
-- **InsurerCo** appears under multiple `merchant_key`s: `InsurerCo Prem Pay`, `Insurer Co`, `Insurer Casualty Co.` — not one payee.
-- Cadence rules are per `merchant_key`; a semi-annual premium on one key does not apply to a differently keyed row for the same brand.
-- Flow-type mix varies by month; always check `flow_type` counts before treating a month as all spend.
+- One real-world payee can appear under **multiple** `merchant_key`s (typos, truncation, processor suffixes) — match the key from DB, do not assume a single label.
+- Cadence rules are **per `merchant_key`**; a semi-annual premium on one key does not apply to a differently keyed row for the same brand.
+- Flow-type mix varies by month; always check `flow_type` counts before treating a month as “all spend.”
 
 ---
 

@@ -84,10 +84,10 @@ Do **not** train the classifier on 7k+ `pipeline` + `confirmed` rows as gold —
 
 ### Label quality tiers (illustrative)
 
-Example mix after a long personal import (orders of magnitude only):
+Example mix after a long personal import (orders of magnitude only — not a published dataset):
 
-| label_status | rationale | count | Use in ML |
-|--------------|-----------|------:|-----------|
+| label_status | rationale | share (approx.) | Use in ML |
+|--------------|-----------|----------------:|-----------|
 | confirmed | user confirmed | small | **Gold** |
 | confirmed | user edited | small | **Gold** |
 | confirmed | custom rule | medium | **Strong** (user-approved rules) |
@@ -97,7 +97,6 @@ Example mix after a long personal import (orders of magnitude only):
 **Gold human labels** are typically a minority of rows. Plan cold start and benchmarks around that.
 
 ---
-
 ## Architecture
 
 ### High-level flow

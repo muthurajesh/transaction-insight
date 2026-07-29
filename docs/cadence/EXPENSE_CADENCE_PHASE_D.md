@@ -35,7 +35,7 @@ Reuse stats pattern from [EDIT_INSIGHTS.md](../rules/EDIT_INSIGHTS.md) `_gather_
 
 ```json
 {
-  "insight": "2 charges ~$900–$975 about 12 months apart; typical month near $0.",
+  "insight": "2 charges ~$890–$900 about 12 months apart; typical month near $0.",
   "cadence_kind": "lump",
   "period_count": 12,
   "period_unit": "months",
@@ -88,7 +88,7 @@ Decision at implement time — default recommendation: **demote Detected** once 
 
 ### Verification (Slice D1)
 
-1. Chat: “InsurerCo is annual” → proposal lump 12 mo, normalized ~$77 on sample tx
+1. Chat: “InsurerCo is annual” → proposal lump 12 mo, normalized ~$75 on sample tx
 2. Confirm → `GET /api/cadence-rules/InsurerCo Prem Pay` returns rule
 3. Re-ask → no duplicate save; shows existing rule
 4. Normalized April categories (Phase B) reflect change without Edit UI

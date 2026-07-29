@@ -2,6 +2,12 @@
 .venv/
 node_modules/
 config/.env
+.env
+.env.*
+!config/.env.example
+!config/.env.ollama
+!config/.env.lmstudio
+!config/.env.ollama.beginner
 __pycache__/
 .pytest_cache/
 *.pyc
@@ -10,8 +16,16 @@ __pycache__/
 *.csv
 !samples/
 !samples/*.csv
-data/finance.db
-data/finance.db-journal
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.pem
+*.key
+credentials.json
+data/*
+!data/.gitkeep
+input/
 ollama.log
 output/*
 !output/.gitkeep
@@ -19,4 +33,3 @@ processed/*
 !processed/.gitkeep
 backups/
 ab-test/
-data/llm.log

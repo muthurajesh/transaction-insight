@@ -22,7 +22,7 @@ def test_yearly_lump_normalized():
         period_count=12,
         period_unit="months",
     )
-    assert round(amt, 2) == 75.00
+    assert round(amt, 2) == 75.0
 
 
 def test_semi_annual_lump():
@@ -54,7 +54,7 @@ def test_one_time_normalized_zero():
 def test_effective_amount_views():
     assert effective_amount(-900.00, view="cash", kind=CADENCE_KIND_LUMP, period_count=12, period_unit="months") == 900.00
     assert effective_amount(-900.00, view="core", kind=CADENCE_KIND_LUMP, period_count=12, period_unit="months", include_in_run_rate=False) == 0.0
-    assert effective_amount(-900.00, view="normalized", kind=CADENCE_KIND_LUMP, period_count=12, period_unit="months") == 75.00
+    assert effective_amount(-900.00, view="normalized", kind=CADENCE_KIND_LUMP, period_count=12, period_unit="months") == 75.0
 
 
 def test_parse_semi_annual_text():
@@ -103,7 +103,7 @@ def test_sum_expenses_for_view_normalized():
     core, _ = sum_expenses_for_view(conn, view="core", budget_month="2026-04")
     assert count == 2
     assert cash == 1000.0
-    assert norm == round(75.00 + 100.0, 2)
+    assert norm == round(75.0 + 100.0, 2)
     assert core == 100.0
 
 
@@ -149,4 +149,4 @@ def test_merchant_cadence_rule_in_aggregation():
     )
     conn.commit()
     norm, _ = sum_expenses_for_view(conn, view="normalized", budget_month="2026-04")
-    assert norm == 75.00
+    assert norm == 75.0

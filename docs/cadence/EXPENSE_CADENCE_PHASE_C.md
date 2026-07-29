@@ -11,7 +11,7 @@ Let users set cadence on the **Edit Transactions** panel without SQL or chat —
 
 | Merchant | Charge | Cadence |
 |----------|--------|---------|
-| InsurerCo | ~$928 once/year in April | `recurring_lump`, 12 months |
+| InsurerCo | ~$900 once/year in April | `recurring_lump`, 12 months |
 | Auto insurance | $600 every 6 months | `recurring_lump`, 6 months |
 | Payroll-adjacent | bi-weekly | `recurring`, 2 weeks |
 | One-time repair | single debit | `one_time` or exclude from run-rate |
@@ -86,7 +86,7 @@ Optional later: after label apply, edit insights modal also suggests cadence if 
 
 1. Open Edit → select InsurerCo April row
 2. Set Yearly (12 months), Apply to merchant
-3. `GET /api/transactions/{id}/cadence` → normalized ~$77
+3. `GET /api/transactions/{id}/cadence` → normalized ~$75
 4. Re-open edit — fields show saved values
 5. Phase B (when done): chat “normalized April categories” reflects change
 
