@@ -42,23 +42,23 @@
         <span class="nav-icon" data-icon="upload" data-icon-size="18" aria-hidden="true"></span>
         <span class="nav-label">Import</span>
       </button>
-      <button type="button" class="nav-item" data-nav="chat" title="Chat">
+      <button type="button" class="nav-item" data-nav="chat" title="Ask">
         <span class="nav-icon" data-icon="message-circle" data-icon-size="18" aria-hidden="true"></span>
-        <span class="nav-label">Chat</span>
+        <span class="nav-label">Ask</span>
       </button>
-      <button type="button" class="nav-item" data-nav="review" title="Review">
+      <button type="button" class="nav-item" data-nav="review" title="Check labels">
         <span class="nav-icon" data-icon="inbox" data-icon-size="18" aria-hidden="true"></span>
-        <span class="nav-label">Review</span>
-        <span id="nav-review-badge" class="nav-badge hidden" aria-label="Pending proposals">0</span>
+        <span class="nav-label">Check labels</span>
+        <span id="nav-review-badge" class="nav-badge hidden" aria-label="Payees that need a look">0</span>
       </button>
-      <div class="nav-group-label">Data</div>
-      <button type="button" class="nav-item" data-nav="edit" title="Transactions">
+      <div class="nav-group-label nav-expert-only">More</div>
+      <button type="button" class="nav-item nav-expert-only" data-nav="edit" title="Find &amp; edit">
         <span class="nav-icon" data-icon="list" data-icon-size="18" aria-hidden="true"></span>
-        <span class="nav-label">Transactions</span>
+        <span class="nav-label">Find &amp; edit</span>
       </button>
-      <button type="button" class="nav-item" data-nav="custom-rules" title="Custom Rules">
+      <button type="button" class="nav-item nav-expert-only" data-nav="custom-rules" title="Automate">
         <span class="nav-icon" data-icon="list-checks" data-icon-size="18" aria-hidden="true"></span>
-        <span class="nav-label">Custom Rules</span>
+        <span class="nav-label">Automate</span>
       </button>
       <div class="sidebar-footer">
         <button type="button" class="nav-item" data-nav="settings" title="Settings">
@@ -80,9 +80,15 @@
       </div>
       <main id="app-main" class="content-area">
     <section id="panel-import" class="panel">
-      <p class="hint panel-subtitle">Upload bank CSV exports and run AI processing.</p>
+      <p class="hint panel-subtitle">Add your bank CSV, process it, then check labels.</p>
+      <ol class="workflow-stepper" id="import-stepper" aria-label="Import steps">
+        <li class="workflow-step active" data-step="1"><span class="workflow-step-num">1</span> Choose files</li>
+        <li class="workflow-step" data-step="2"><span class="workflow-step-num">2</span> Process</li>
+        <li class="workflow-step" data-step="3"><span class="workflow-step-num">3</span> Done</li>
+      </ol>
+      <div id="import-step-1" class="workflow-step-panel">
       <div class="card">
-        <h2>Import &amp; process</h2>
+        <h2>Choose bank files</h2>
         <p class="hint">CSV files land in <code id="inbox-path"></code>; after processing they move to <code id="processed-path">processed/</code>.</p>
         <div class="inbox-upload-row">
           <input type="file" id="workspace-file-input" accept=".csv,text/csv" multiple hidden />
@@ -97,6 +103,11 @@
         </div>
         <p id="workspace-selected-files" class="hint inbox-selected-files hidden"></p>
         <pre id="upload-result"></pre>
+      </div>
+      </div>
+      <div id="import-step-2" class="workflow-step-panel hidden">
+      <div class="card">
+        <h2>Processing</h2>
         <div id="categorize-progress" class="progress-panel hidden" aria-live="polite">
           <div class="progress-bar-track">
             <div id="categorize-progress-fill" class="progress-bar-fill" style="width: 0%"></div>
@@ -111,18 +122,23 @@
         </div>
         <pre id="categorize-result"></pre>
       </div>
+      </div>
+      <div id="import-step-3" class="workflow-step-panel hidden">
+      <div class="card import-done-card">
+        <h2>Import complete</h2>
+        <p id="import-done-summary" class="hint">Your files are processed.</p>
+        <div class="import-done-actions">
+          <button type="button" id="btn-import-goto-check" class="btn-primary">Check labels</button>
+          <button type="button" id="btn-import-goto-ask" class="btn-secondary">Ask about spending</button>
+          <button type="button" id="btn-import-again" class="btn-link">Import more files</button>
+        </div>
+      </div>
+      </div>
     </section>
 
     <section id="panel-chat" class="panel active">
       <div id="chat-layout" class="chat-layout chat-layout-workspace">
         <div class="chat-main">
-          <div id="chat-pending-banner" class="chat-pending-banner hidden" aria-live="polite">
-            <span class="banner-with-icon">
-              <span class="banner-icon" data-icon="inbox" data-icon-size="18" aria-hidden="true"></span>
-              <span id="chat-pending-banner-text"></span>
-            </span>
-            <button type="button" id="btn-chat-jump-review" class="btn-secondary btn-sm">Open Review</button>
-          </div>
           <div class="chat-toolbar">
             <button type="button" id="btn-chat-clear" class="btn-secondary btn-chat-toolbar btn-icon-label">
               <span data-icon="eraser" data-icon-size="16" aria-hidden="true"></span>
@@ -182,16 +198,34 @@
     </section>
 
     <section id="panel-workspace-review" class="panel">
-      <p class="hint panel-subtitle">AI proposals awaiting your review — labels, quality flags, cadence patterns, insights.</p>
-      <div class="workspace-inbox-panel workspace-inbox-panel-full" aria-label="Pending AI confirmations">
+      <p class="hint panel-subtitle">Approve or fix labels the AI wasn’t sure about. One payee at a time.</p>
+      <details id="review-alias-panel" class="review-alias-panel hidden" aria-live="polite">
+        <summary class="review-alias-summary">
+          <span class="review-alias-summary-chevron" data-icon="chevron-right" data-icon-size="14" aria-hidden="true"></span>
+          <span id="review-alias-summary-label" class="review-alias-summary-label">Possible duplicates — review</span>
+          <span id="review-alias-count" class="review-alias-count hidden" aria-hidden="true"></span>
+        </summary>
+        <div class="review-alias-body">
+          <div class="review-alias-body-header">
+            <p class="hint review-alias-hint">Bank exports sometimes spell the same store two ways. Combining renames the extras to the shared name so you only approve once.</p>
+            <button type="button" id="btn-review-alias-refresh" class="btn-secondary btn-sm btn-icon-label">
+              <span data-icon="refresh-cw" data-icon-size="14" aria-hidden="true"></span>
+              <span>Refresh</span>
+            </button>
+          </div>
+          <div id="review-alias-list" class="review-alias-list"></div>
+        </div>
+      </details>
+      <div class="workspace-inbox-panel workspace-inbox-panel-full" aria-label="Items that need a look">
         <div class="workspace-inbox-header">
-          <h2>Pending</h2>
-          <span id="workspace-inbox-count" class="workspace-inbox-count">0</span>
+          <h2>Needs a look</h2>
+          <span id="workspace-inbox-count" class="workspace-inbox-count" title="Items shown in this list">0</span>
           <button type="button" id="btn-workspace-inbox-refresh" class="btn-secondary btn-sm btn-icon-label">
             <span data-icon="refresh-cw" data-icon-size="14" aria-hidden="true"></span>
             <span>Refresh</span>
           </button>
         </div>
+        <p id="workspace-inbox-hint" class="hint workspace-inbox-hint">Open a payee, adjust the category if needed, then choose <strong>Looks good</strong>.</p>
         <div id="workspace-inbox-list" class="workspace-inbox-list" role="list"></div>
       </div>
     </section>
@@ -242,7 +276,7 @@
     </section>
 
     <section id="panel-edit" class="panel">
-      <p class="hint panel-subtitle">Search and edit transaction labels.</p>
+      <p class="hint panel-subtitle">Search and edit labels by merchant group or individual transaction.</p>
       <div id="edit-needs-attention-banner" class="edit-needs-attention-banner hidden" aria-live="polite">
         <span class="banner-with-icon">
           <span class="banner-icon" data-icon="triangle-alert" data-icon-size="18" aria-hidden="true"></span>
@@ -250,7 +284,7 @@
         </span>
         <div class="edit-needs-attention-actions">
           <button type="button" id="btn-edit-filter-needs-attention" class="btn-secondary btn-sm">Show needing attention</button>
-          <button type="button" id="btn-edit-go-review" class="btn-link">Open Review inbox</button>
+          <button type="button" id="btn-edit-go-review" class="btn-link">Open Check labels</button>
         </div>
       </div>
       <div class="edit-layout">
@@ -265,9 +299,7 @@
             </select>
             <select id="edit-search-label-status" aria-label="Label status filter">
               <option value="">All label statuses</option>
-              <option value="needs_attention">Needs attention</option>
-              <option value="needs_review">Needs review</option>
-              <option value="pending">Pending</option>
+              <option value="needs_attention">Needs attention (unconfirmed)</option>
               <option value="confirmed">Confirmed</option>
             </select>
             <button type="submit" class="btn-icon-label">
@@ -278,6 +310,14 @@
           <details id="edit-advanced-filters" class="edit-advanced-filters">
             <summary class="details-summary"><span class="details-chevron" data-icon="chevron-right" data-icon-size="14" aria-hidden="true"></span>More filters</summary>
             <div class="edit-advanced-grid">
+              <label class="edit-advanced-field">
+                <span>Status detail</span>
+                <select id="edit-search-label-status-detail" aria-label="Detailed label status">
+                  <option value="">— use main status —</option>
+                  <option value="needs_review">Needs review only</option>
+                  <option value="pending">Pending only</option>
+                </select>
+              </label>
               <label class="edit-advanced-field">
                 <span>Sub-category</span>
                 <select id="edit-search-sub" aria-label="Sub-category filter">
@@ -307,6 +347,10 @@
           <div id="edit-active-filters" class="active-filters hidden" aria-label="Active filters"></div>
           <div id="edit-results-toolbar" class="edit-results-toolbar hidden">
             <p id="edit-search-meta" class="edit-search-meta"></p>
+            <div id="edit-view-toggle" class="edit-view-toggle" role="group" aria-label="Results view">
+              <button type="button" class="btn-secondary btn-sm" data-edit-view="merchants" aria-pressed="false">Merchants</button>
+              <button type="button" class="btn-secondary btn-sm" data-edit-view="transactions" aria-pressed="false">Transactions</button>
+            </div>
             <button type="button" id="btn-edit-columns-toolbar" class="btn-secondary btn-sm btn-icon edit-columns-trigger" title="Choose columns" aria-label="Choose columns" aria-haspopup="dialog" aria-controls="edit-columns-popover" aria-expanded="false">
               <span data-icon="columns-3" data-icon-size="16" aria-hidden="true"></span>
             </button>
@@ -789,14 +833,31 @@
 
     <section id="panel-settings" class="panel">
       <div class="card">
+        <h2>Display mode</h2>
+        <p class="hint">Simple keeps Import, Ask, Check labels, and Settings. Expert adds Find &amp; edit and Automate.</p>
+        <label class="edit-advanced-field" for="settings-ui-mode">
+          <span>Mode</span>
+          <select id="settings-ui-mode" aria-label="UI mode">
+            <option value="simple">Simple</option>
+            <option value="expert">Expert</option>
+          </select>
+        </label>
+        <p class="hint">Default comes from <code>UI_MODE</code> in <code>config/.env</code>. This menu overrides it on this browser.</p>
+      </div>
+      <div class="card">
+        <h2>AI models</h2>
+        <pre id="settings-llm-status" class="settings-pre">Loading…</pre>
+        <p class="hint">Change models in <code>config/.env</code> — see docs/setup/LLM_SETUP.md.</p>
+      </div>
+      <div class="card">
         <h2>Data store</h2>
         <p>SQLite database used by the web app (transactions, labels, chat history).</p>
         <pre id="settings-counts" class="settings-pre">Loading…</pre>
         <p class="hint">Path: <code id="settings-db-path"></code></p>
       </div>
-      <div class="card card-danger">
+      <div class="card card-danger settings-expert-only">
         <h2>Clear all data</h2>
-        <p>Deletes all transactions, merchant labels, custom rules, chat messages, ingest history, and lookup snapshots. Does not modify CSV files in <code>input/</code>. Export custom rules from the Custom Rules tab first if you want to restore them later.</p>
+        <p>Deletes all transactions, merchant labels, custom rules, chat messages, ingest history, and lookup snapshots. Does not modify CSV files in <code>input/</code>. Export custom rules from Automate first if you want to restore them later.</p>
         <button type="button" id="btn-clear-data" class="btn-danger btn-icon-label">
           <span data-icon="trash-2" data-icon-size="16" aria-hidden="true"></span>
           <span>Clear data store</span>
@@ -805,14 +866,14 @@
       </div>
       <div class="card">
         <h2>Learning Agent</h2>
-        <p class="hint">Analyzes your responses to AI proposals and surfaces patterns in the Workspace inbox. Configure via <code>config/.env</code>.</p>
+        <p class="hint">Analyzes your responses to AI proposals and surfaces patterns in Check labels. Configure via <code>config/.env</code>.</p>
         <pre id="learning-agent-status" class="settings-pre">Loading…</pre>
         <div class="learning-agent-actions">
           <button type="button" id="btn-learning-agent-run" class="btn-secondary">Run analysis now</button>
         </div>
         <p id="learning-agent-run-result" class="hint hidden"></p>
       </div>
-      <div class="card settings-rules-card" id="settings-cadence-rules-card">
+      <div class="card settings-rules-card settings-expert-only" id="settings-cadence-rules-card">
         <h2>Cadence rules</h2>
         <p class="hint">Saved merchant cadence patterns. Create via Cadence → Review &amp; save.</p>
         <div id="cadence-rules-list-wrap" class="custom-rules-list-wrap">
@@ -1075,11 +1136,11 @@
         </div>
       </div>
       <div id="workspace-confirm-help" class="workspace-confirm-help hidden" role="region" aria-label="Proposal actions help">
-        <p id="workspace-confirm-help-approve"><strong>Approve</strong> — Apply the proposal: confirm labels, fix audit flags, open Custom Rules with preview, review cadence, or open AI Rules for category renames.</p>
-        <p><strong>Reject</strong> — Decline this proposal. Audit flags and Learning Agent insights are marked rejected. Custom rule drafts are discarded.</p>
-        <p><strong>Cancel</strong> — Close without deciding. The item stays in Pending proposals for later.</p>
-        <p><strong>Edit in Transactions</strong> — Jump to Edit Transactions with this merchant pre-searched (label and quality proposals only).</p>
-        <p class="hint">For label queue items, Reject and Cancel both keep the merchant in the inbox until you confirm labels.</p>
+        <p id="workspace-confirm-help-approve"><strong>Looks good</strong> — Save the suggested labels for this payee.</p>
+        <p><strong>Reject</strong> — Dismiss this suggestion (audit flags and insights are marked rejected; drafts are discarded).</p>
+        <p><strong>Cancel</strong> — Close without deciding. It stays in Needs a look for later.</p>
+        <p class="nav-expert-only"><strong>Find &amp; edit</strong> — Open the Expert search page with this payee pre-filled (when available).</p>
+        <p class="hint">For label items, Reject and Cancel both keep the payee in the queue until you say Looks good.</p>
       </div>
       <div class="modal-body">
         <p id="workspace-confirm-summary" class="workspace-confirm-summary"></p>
@@ -1099,8 +1160,8 @@
         <div class="modal-action-row">
           <button type="button" id="btn-workspace-confirm-reject" class="btn-secondary">Reject</button>
           <button type="button" id="btn-workspace-confirm-cancel" class="btn-secondary">Cancel</button>
-          <button type="button" id="btn-workspace-confirm-edit" class="btn-secondary">Edit in Transactions</button>
-          <button type="button" id="btn-workspace-confirm-approve" class="btn-primary">Approve</button>
+          <button type="button" id="btn-workspace-confirm-edit" class="btn-secondary nav-expert-only">Find &amp; edit</button>
+          <button type="button" id="btn-workspace-confirm-approve" class="btn-primary">Looks good</button>
         </div>
       </div>
     </div>

@@ -53,6 +53,10 @@ Content-Type: application/json
 
 Include `transaction_id` for **Check Payment** single-transaction cards.
 
+## Same-merchant merge (Check labels)
+
+Heuristic spelling groups (`GET /api/review/merchant-aliases`) appear as **Same place, different names?** **Combine as one** applies `merchant_alias` taxonomy proposals so multiple payee names become one before you approve labels.
+
 ## Check Payment (unchanged)
 
 `Check Payment` is in `SPLIT_REVIEW_MERCHANT_KEYS`. Each check is its own card; **Confirm this transaction** updates a single row only (no merchant-wide rule).

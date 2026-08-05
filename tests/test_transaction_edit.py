@@ -109,6 +109,42 @@ class TransactionEditMerchantTests(unittest.TestCase):
         self.assertEqual(len(confirmed["transactions"]), 1)
         self.assertEqual(confirmed["transactions"][0]["transaction_id"], "t3")
 
+    def test_search_merchant_groups_needs_attention(self):
+        conn = _conn()
+        rows = [
+            ("t1", "Merchant A", "needs_review", -10),
+            ("t2", "Merchant A", "pending", -20),
+            ("t3", "Merchant B", "needs_review", -5),
+            ("t4", "Merchant C", "confirmed", -99),
+        ]
+        for tx_id, merchant, label_status, amount in rows:
+            conn.execute(
+                """
+                INSERT INTO transactions (
+                    transaction_id, date, budget_month, amount, merchant_key,
+                    simple_description, original_description,
+                    ai_category, flow_type, label_status, imported_at
+                ) VALUES (?, '2026-05-11', '2026-05', ?, ?, 'desc', 'orig',
+                          'Cat', 'Expense', ?, 'now')
+                """,
+                (tx_id, amount, merchant, label_status),
+            )
+        conn.commit()
+
+        from webapp.services.transaction_edit import search_merchant_groups
+
+        data = search_merchant_groups(conn, label_status="needs_attention", limit=10)
+        self.assertEqual(data["group_by"], "merchant")
+        self.assertEqual(data["total"], 2)
+        keys = {m["merchant_key"] for m in data["merchants"]}
+        self.assertEqual(keys, {"Merchant A", "Merchant B"})
+        by_key = {m["merchant_key"]: m for m in data["merchants"]}
+        self.assertEqual(by_key["Merchant A"]["tx_count"], 2)
+        self.assertEqual(by_key["Merchant A"]["expense_spend"], 30.0)
+        self.assertEqual(by_key["Merchant B"]["tx_count"], 1)
+        # Highest spend first
+        self.assertEqual(data["merchants"][0]["merchant_key"], "Merchant A")
+
     def test_search_sort_by_label_status_and_simple_description(self):
         conn = _conn()
         rows = [

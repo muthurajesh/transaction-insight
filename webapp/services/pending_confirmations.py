@@ -14,12 +14,17 @@ def list_pending_confirmations(
     conn: sqlite3.Connection,
     *,
     include_review_queue: bool = True,
-    review_limit: int = 50,
+    review_limit: int = 2000,
     include_cadence: bool = True,
 ) -> dict[str, Any]:
-    """Return grouped pending items for the Agent Workspace inbox."""
+    """Return grouped pending items for the Agent Workspace inbox.
+
+    ``review_limit`` caps how many payee label items are included (default high so
+    Check labels can work the full queue; not a product taxonomy).
+    """
     reconcile_open_findings(conn)
     items: list[dict[str, Any]] = []
+    review_queue_total = 0
 
     for finding in list_findings(conn, status="open"):
         items.append(
@@ -82,8 +87,9 @@ def list_pending_confirmations(
         )
 
     if include_review_queue:
-        review_items = list_review_items(conn)[:review_limit]
-        for item in review_items:
+        review_items = list_review_items(conn)
+        review_queue_total = len(review_items)
+        for item in review_items[: max(0, int(review_limit))]:
             mk = str(item.get("merchant_key") or "")
             pending = int(item.get("transaction_count") or item.get("pending_count") or 0)
             items.append(
@@ -92,7 +98,11 @@ def list_pending_confirmations(
                     "confirmation_type": "merchant_label",
                     "source": "confirm_categories",
                     "title": mk,
-                    "summary": f"{pending} transaction(s) need label confirmation",
+                    "summary": (
+                        f"{pending} purchase{'s' if pending != 1 else ''} — needs a look"
+                        if pending
+                        else "Needs a look"
+                    ),
                     "proposal": {
                         "ai_category": item.get("ai_category"),
                         "ai_sub_category": item.get("ai_sub_category"),
@@ -115,6 +125,7 @@ def list_pending_confirmations(
         "count": len(items),
         "items": items,
         "by_type": _count_by_type(items),
+        "review_queue_total": review_queue_total,
     }
 
 

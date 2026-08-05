@@ -36,12 +36,13 @@ Use exact Generated Description spelling from the user's rule when possible."""
 
 DESCRIPTION_PROMPT = """You are a personal finance assistant. For each transaction, read the bank's
 Original Description, optional User Description, and Simple Description. Produce one short
-Generated Description: a clear merchant or payee label (3–8 words) suitable for budgeting reports.
+Generated Description: a clear merchant or payee label (2–5 words) suitable for budgeting reports.
 
 Rules:
 - Use ONLY names and words that appear in the bank fields. Never invent a merchant not supported by the text.
 - Prefer Simple Description or User Description when they name the payee; otherwise distill Original Description.
-- Ignore card numbers, DES:/ID:/INDN:/CO ID: boilerplate.
+- Never include DES:/ID:/INDN:/CO ID: boilerplate, card/phone masks (XX1234), CHECKCARD prefixes, or trailing city/state codes.
+- Prefer the store/payee name only — not location or reference numbers.
 Return ONLY valid JSON: {"results": [{"index": <int>, "generated_description": "<string>"}]}."""
 
 BUSINESS_RULE_PROMPT = """You are a bookkeeper. Each transaction is marked Business (not Personal).

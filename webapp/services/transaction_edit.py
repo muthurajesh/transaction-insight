@@ -182,8 +182,7 @@ def _parse_cadence_period_filter(value: str) -> tuple[int, str] | None:
     return count, unit
 
 
-def search_transactions(
-    conn: sqlite3.Connection,
+def _search_where(
     *,
     q: str = "",
     month: str = "",
@@ -196,13 +195,7 @@ def search_transactions(
     cadence_kind: str = "",
     cadence_period: str = "",
     include_in_run_rate: str = "",
-    limit: int = 50,
-    offset: int = 0,
-    sort_by: str = "date",
-    sort_dir: str = "desc",
-) -> dict[str, Any]:
-    limit = max(1, min(int(limit), 500))
-    offset = max(0, int(offset))
+) -> tuple[str, list[Any]]:
     clauses = ["1=1"]
     params: list[Any] = []
 
@@ -290,7 +283,43 @@ def search_transactions(
         clauses.append(f"({_EFFECTIVE_RUN_RATE_EXPR}) = ?")
         params.append(want)
 
-    where = " AND ".join(clauses)
+    return " AND ".join(clauses), params
+
+
+def search_transactions(
+    conn: sqlite3.Connection,
+    *,
+    q: str = "",
+    month: str = "",
+    category: str = "",
+    sub_category: str = "",
+    expense_type: str = "",
+    flow_type: str = "",
+    classification: str = "",
+    label_status: str = "",
+    cadence_kind: str = "",
+    cadence_period: str = "",
+    include_in_run_rate: str = "",
+    limit: int = 50,
+    offset: int = 0,
+    sort_by: str = "date",
+    sort_dir: str = "desc",
+) -> dict[str, Any]:
+    limit = max(1, min(int(limit), 500))
+    offset = max(0, int(offset))
+    where, params = _search_where(
+        q=q,
+        month=month,
+        category=category,
+        sub_category=sub_category,
+        expense_type=expense_type,
+        flow_type=flow_type,
+        classification=classification,
+        label_status=label_status,
+        cadence_kind=cadence_kind,
+        cadence_period=cadence_period,
+        include_in_run_rate=include_in_run_rate,
+    )
     total = conn.execute(
         f"SELECT COUNT(*) AS c {_SEARCH_FROM} WHERE {where}",
         params,
@@ -346,6 +375,105 @@ def search_transactions(
         "offset": offset,
         "sort_by": sort_by if sort_by in SORT_COLUMNS else "date",
         "sort_dir": "asc" if str(sort_dir).lower() == "asc" else "desc",
+        "group_by": "",
+    }
+
+
+def search_merchant_groups(
+    conn: sqlite3.Connection,
+    *,
+    q: str = "",
+    month: str = "",
+    category: str = "",
+    sub_category: str = "",
+    expense_type: str = "",
+    flow_type: str = "",
+    classification: str = "",
+    label_status: str = "",
+    cadence_kind: str = "",
+    cadence_period: str = "",
+    include_in_run_rate: str = "",
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Group matching transactions by merchant_key for merchant-centric review."""
+    limit = max(1, min(int(limit), 500))
+    offset = max(0, int(offset))
+    where, params = _search_where(
+        q=q,
+        month=month,
+        category=category,
+        sub_category=sub_category,
+        expense_type=expense_type,
+        flow_type=flow_type,
+        classification=classification,
+        label_status=label_status,
+        cadence_kind=cadence_kind,
+        cadence_period=cadence_period,
+        include_in_run_rate=include_in_run_rate,
+    )
+    total = conn.execute(
+        f"""
+        SELECT COUNT(*) AS c FROM (
+            SELECT t.merchant_key
+            {_SEARCH_FROM}
+            WHERE {where}
+            GROUP BY t.merchant_key
+        )
+        """,
+        params,
+    ).fetchone()["c"]
+
+    rows = conn.execute(
+        f"""
+        SELECT t.merchant_key,
+               COUNT(*) AS tx_count,
+               ROUND(SUM(CASE WHEN t.flow_type = 'Expense' AND t.amount < 0
+                              THEN -t.amount ELSE 0 END), 2) AS expense_spend,
+               MAX(t.ai_category) AS ai_category,
+               MAX(t.ai_sub_category) AS ai_sub_category,
+               MAX(t.expense_type) AS expense_type,
+               MAX(t.classification) AS classification,
+               MAX(t.flow_type) AS flow_type,
+               MAX(t.label_status) AS label_status,
+               MIN(t.transaction_id) AS sample_transaction_id,
+               MAX(COALESCE(NULLIF(t.simple_description, ''),
+                            NULLIF(t.user_description, ''),
+                            NULLIF(t.original_description, ''), '')) AS sample_description
+        {_SEARCH_FROM}
+        WHERE {where}
+        GROUP BY t.merchant_key
+        ORDER BY expense_spend DESC, tx_count DESC, t.merchant_key ASC
+        LIMIT ? OFFSET ?
+        """,
+        [*params, limit, offset],
+    ).fetchall()
+
+    merchants = []
+    for r in rows:
+        merchants.append(
+            {
+                "merchant_key": r["merchant_key"],
+                "tx_count": int(r["tx_count"] or 0),
+                "expense_spend": float(r["expense_spend"] or 0),
+                "ai_category": r["ai_category"] or "",
+                "ai_sub_category": r["ai_sub_category"] or "",
+                "expense_type": r["expense_type"] or "",
+                "classification": r["classification"] or "",
+                "flow_type": r["flow_type"] or "",
+                "label_status": r["label_status"] or "",
+                "sample_transaction_id": r["sample_transaction_id"] or "",
+                "sample_description": r["sample_description"] or "",
+            }
+        )
+
+    return {
+        "merchants": merchants,
+        "transactions": [],
+        "total": int(total),
+        "limit": limit,
+        "offset": offset,
+        "group_by": "merchant",
     }
 
 

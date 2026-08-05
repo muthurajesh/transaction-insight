@@ -65,6 +65,25 @@ class LlmFirstRoutingTests(unittest.TestCase):
         self.assertIsNotNone(payload)
         self.assertIn("custom report", payload["answer"].lower())
 
+    def test_check_labels_intent_short_circuits(self):
+        conn = _conn()
+        conn.execute(
+            """
+            INSERT INTO transactions (
+                transaction_id, date, budget_month, amount, merchant_key,
+                ai_category, flow_type, label_status, imported_at
+            ) VALUES (
+                't1', '2026-05-01', '2026-05', -10, 'Cafe A',
+                'Dining', 'Expense', 'needs_review', 'now'
+            )
+            """
+        )
+        conn.commit()
+        payload = _maybe_direct_answer(conn, "help me review pending labels")
+        self.assertIsNotNone(payload)
+        self.assertIn("check labels", payload["answer"].lower())
+        self.assertNotIn("chart", payload["answer"].lower())
+
     def test_category_context_lists_labels(self):
         conn = _conn()
         _seed_dining(conn)

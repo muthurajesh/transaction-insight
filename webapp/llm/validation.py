@@ -6,7 +6,7 @@ import re
 
 import pandas as pd
 
-from webapp.processing.parse import _clean_original_for_display
+from webapp.processing.parse import looks_like_bank_noise, scrub_bank_text
 
 _TOKEN_RE = re.compile(r"[a-z0-9]{3,}", re.I)
 
@@ -14,8 +14,8 @@ _TOKEN_RE = re.compile(r"[a-z0-9]{3,}", re.I)
 def description_haystack(row: pd.Series) -> str:
     parts = [
         str(row.get("User Description", "") or ""),
-        str(row.get("Simple Description", "") or ""),
-        _clean_original_for_display(str(row.get("Original Description", "") or "")),
+        scrub_bank_text(str(row.get("Simple Description", "") or "")),
+        scrub_bank_text(str(row.get("Original Description", "") or "")),
     ]
     return " ".join(parts).lower()
 
@@ -27,6 +27,8 @@ def generated_description_plausible(generated: str, row: pd.Series) -> bool:
     """
     gen = str(generated or "").strip()
     if not gen or gen.lower() == "unknown":
+        return False
+    if looks_like_bank_noise(gen):
         return False
     hay = description_haystack(row)
     if not hay:

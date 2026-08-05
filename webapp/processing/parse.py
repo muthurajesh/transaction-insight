@@ -100,18 +100,95 @@ def drop_rows_with_invalid_dates(
     out = out.loc[~bad_mask].copy()
     return out, dropped
 
+def is_business_row(row: pd.Series) -> bool:
+    return str(row.get("Classification", "") or "").strip().lower() == "business"
+
+
+# Structural bank-export noise only — no merchant/brand vocabulary.
+# Do NOT match "T-Mobile" / "Wave Mobile" — only ACH/card markers and channel prefixes.
+_BANK_NOISE_MARKERS = re.compile(
+    r"\b(?:DES:|INDN:|CO\s*ID:)|(?:\bID:\s*X)|(?:\bXX\d{3,}\b)|(?:\bx{4,})"
+    r"|(?:^CHECKCARD\b)|(?:^MOBILE\s+PURCHASE\b)|(?:^MOBILE\s+(?:XX\b|\d{4}\b))",
+    re.I,
+)
+
+
+def scrub_bank_text(text: str, *, max_len: int = 120) -> str:
+    """Strip structural bank-export noise from description text.
+
+    Safe for Original and Simple Description. Does not encode merchant brands
+    or category taxonomies — only ACH/card/boilerplate patterns.
+    """
+    t = " ".join(str(text or "").split())
+    if not t:
+        return ""
+    # Leading Square / asterisk markers (e.g. "SQ *NATURE'S NECTAR", "*nature's nectar")
+    t = re.sub(r"^(?:SQ\s*)?\*+\s*", "", t, flags=re.I)
+    # ACH / wire boilerplate — drop from marker to end of string
+    t = re.sub(r"\bDES:.*", "", t, flags=re.I)
+    t = re.sub(r"\bID:.*", "", t, flags=re.I)
+    t = re.sub(r"\bINDN:.*", "", t, flags=re.I)
+    t = re.sub(r"\bCO ID:.*", "", t, flags=re.I)
+    # Leading channel prefixes only (not mid-name "T-Mobile" / "Wave Mobile")
+    # e.g. "CHECKCARD 0122 SELMA'S…", "CHECKCARD XX19 7 LEAVES…",
+    #      "MOBILE 0126 OAKLAND…", "MOBILE XX 365 VEND…", "MOBILE PURCHASE …"
+    t = re.sub(
+        r"^CHECKCARD\s+(?:XX\s*)?(?:\d{2,4}\s+)?",
+        "",
+        t,
+        flags=re.I,
+    )
+    t = re.sub(r"^MOBILE\s+PURCHASE\s+(?:\d{4}\s+)?", "", t, flags=re.I)
+    t = re.sub(r"^MOBILE\s+(?:XX\s+)?\d{4}\s+", "", t, flags=re.I)
+    t = re.sub(r"^MOBILE\s+XX\s+", "", t, flags=re.I)
+    # Leftover leading MMDD-style token (e.g. "0122 SELMA'S…" if prefix already gone)
+    t = re.sub(r"^(?:0[1-9]|1[0-2])[0-3]\d\s+", "", t)
+    # Phone / account masks
+    t = re.sub(r"\bxxx-xxxx\d+\b", "", t, flags=re.I)
+    t = re.sub(r"\bx{4,}\d*\b", "", t, flags=re.I)
+    t = re.sub(r"\bXX\d{3,}\b", "", t, flags=re.I)
+    # Store-number fragments like "Est 19"
+    t = re.sub(r"\bEST\.?\s*\d+\b", "", t, flags=re.I)
+    # Trailing US state code (2 letters)
+    t = re.sub(r"\b[A-Z]{2}\s*$", "", t)
+    # Leftover asterisks / punctuation noise
+    t = re.sub(r"\*+", " ", t)
+    t = " ".join(t.split()).strip(" -/,;")
+    return t[:max_len] if t else ""
+
+
+def looks_like_bank_noise(text: str) -> bool:
+    """True if a label still contains ACH/card boilerplate unfit for a payee name."""
+    return bool(_BANK_NOISE_MARKERS.search(str(text or "")))
+
+
+def _clean_original_for_display(text: str) -> str:
+    """Backward-compatible alias for :func:`scrub_bank_text`."""
+    return scrub_bank_text(text)
+
+
 def merchant_key(row: pd.Series) -> str:
     """Best-effort merchant identifier for lookup matching."""
     explicit = str(row.get("Merchant Key", "") or "").strip()
-    if explicit:
-        return explicit[:120]
+    if explicit and not looks_like_bank_noise(explicit):
+        return " ".join(explicit.split())[:120]
+
     gd = str(row.get("Generated Description", "") or "").strip()
-    if gd:
+    if gd and not looks_like_bank_noise(gd):
         return " ".join(gd.split())[:120]
-    sd = str(row.get("Simple Description", "") or "").strip()
-    od = str(row.get("Original Description", "") or "").strip()
-    key = sd if sd else od
-    return " ".join(key.split())[:120]
+
+    sd = scrub_bank_text(str(row.get("Simple Description", "") or ""))
+    if sd:
+        return sd
+    od = scrub_bank_text(str(row.get("Original Description", "") or ""))
+    if od:
+        return od
+    # Last resort: unscrubbed simple/original (truncated)
+    fallback = str(row.get("Simple Description", "") or "").strip() or str(
+        row.get("Original Description", "") or ""
+    ).strip()
+    return " ".join(fallback.split())[:120] if fallback else "Unknown"
+
 
 def ensure_merchant_key_column(df: pd.DataFrame) -> pd.DataFrame:
     """Populate Merchant Key from generated description when missing."""
@@ -120,13 +197,17 @@ def ensure_merchant_key_column(df: pd.DataFrame) -> pd.DataFrame:
         df["Merchant Key"] = df.apply(merchant_key, axis=1)
         return df
     missing = df["Merchant Key"].fillna("").astype(str).str.strip() == ""
-    if missing.any():
+    noisy = df["Merchant Key"].fillna("").astype(str).map(looks_like_bank_noise)
+    needs = missing | noisy
+    if needs.any():
         df = df.copy()
-        df.loc[missing, "Merchant Key"] = df.loc[missing].apply(merchant_key, axis=1)
+        df.loc[needs, "Merchant Key"] = df.loc[needs].apply(merchant_key, axis=1)
     return df
+
 
 def _row_merchant_key(row: pd.Series) -> str:
     return str(row.get("Merchant Key", "") or merchant_key(row)).strip()
+
 
 def _is_semantic_sub_category(row: pd.Series) -> bool:
     sub = str(row.get("AI Sub-Category", "") or "").strip()
@@ -135,36 +216,23 @@ def _is_semantic_sub_category(row: pd.Series) -> bool:
     mk = _row_merchant_key(row).lower()
     return sub.lower() != mk
 
+
 def _merchant_category_is_semantic(row: pd.Series) -> bool:
     mk = str(row.get("Merchant Key", "") or "").strip().lower()
     sub = str(row.get("AI Sub-Category", "") or "").strip().lower()
     return bool(sub) and sub != mk
 
-def is_business_row(row: pd.Series) -> bool:
-    return str(row.get("Classification", "") or "").strip().lower() == "business"
-
-def _clean_original_for_display(text: str) -> str:
-    """Strip common bank noise from Original Description for heuristic labels."""
-    t = " ".join(str(text or "").split())
-    if not t:
-        return ""
-    t = re.sub(r"\bx{6,}\d+\b", "", t, flags=re.I)
-    t = re.sub(r"\bDES:.*", "", t, flags=re.I)
-    t = re.sub(r"\bID:.*", "", t, flags=re.I)
-    t = re.sub(r"\bINDN:.*", "", t, flags=re.I)
-    t = re.sub(r"\bCO ID:.*", "", t, flags=re.I)
-    t = re.sub(r"\bMOBILE PURCHASE\s+\d{4}\s*", "", t, flags=re.I)
-    return " ".join(t.split()).strip()[:120]
 
 def heuristic_generated_description(row: pd.Series) -> str:
     user = str(row.get("User Description", "") or "").strip()
-    simple = str(row.get("Simple Description", "") or "").strip()
-    original = _clean_original_for_display(str(row.get("Original Description", "") or ""))
-    if user:
+    simple = scrub_bank_text(str(row.get("Simple Description", "") or ""))
+    original = scrub_bank_text(str(row.get("Original Description", "") or ""))
+    if user and not looks_like_bank_noise(user):
         return user[:120]
     if simple:
         return simple[:120]
     return original[:120] if original else "Unknown"
+
 
 def _norm_description_part(text: str) -> str:
     return " ".join(str(text or "").split()).strip().lower()

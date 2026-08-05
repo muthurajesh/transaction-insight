@@ -24,6 +24,7 @@ from webapp.config import (
     PIPELINE_MODEL,
     STATIC_DIR,
     UI_AGENT_WORKSPACE,
+    UI_MODE,
     UI_SHOW_CADENCE,
     LEARNING_AGENT_ENABLED,
     LEARNING_AGENT_INTERVAL_HOURS,
@@ -87,8 +88,10 @@ from webapp.services.transaction_edit import (
     get_transaction,
     list_matching_transactions,
     list_result_columns,
+    search_merchant_groups,
     search_transactions,
 )
+from webapp.services.label_health import detect_alias_candidates
 from webapp.services.taxonomy_rules import (
     analyze_taxonomy,
     apply_taxonomy_proposals,
@@ -315,6 +318,9 @@ def api_status() -> dict[str, Any]:
         review_count = conn.execute(
             "SELECT COUNT(DISTINCT merchant_key) AS c FROM transactions WHERE label_status IN ('needs_review', 'pending')"
         ).fetchone()["c"]
+        review_tx_count = conn.execute(
+            "SELECT COUNT(*) AS c FROM transactions WHERE label_status IN ('needs_review', 'pending')"
+        ).fetchone()["c"]
         months = conn.execute(
             "SELECT DISTINCT budget_month FROM transactions ORDER BY budget_month DESC"
         ).fetchall()
@@ -333,10 +339,12 @@ def api_status() -> dict[str, Any]:
             "chat_model": CHAT_MODEL,
             "transaction_count": tx_count,
             "review_merchant_count": review_count,
+            "review_transaction_count": review_tx_count,
             "months": [r["budget_month"] for r in months],
             "table_counts": counts,
             "ui_show_cadence": UI_SHOW_CADENCE,
             "ui_agent_workspace": UI_AGENT_WORKSPACE,
+            "ui_mode": UI_MODE,
             "learning_agent_enabled": LEARNING_AGENT_ENABLED,
             "learning_agent_interval_hours": LEARNING_AGENT_INTERVAL_HOURS,
             "learning_agent_model": LEARNING_AGENT_MODEL,
@@ -693,6 +701,18 @@ def api_learning_agent_reject_insight(insight_id: int) -> dict[str, Any]:
             return reject_insight(conn, insight_id)
         except ValueError as exc:
             raise HTTPException(404, str(exc)) from exc
+    finally:
+        conn.close()
+
+
+@app.get("/api/review/merchant-aliases")
+def api_review_merchant_aliases(limit: int = 20) -> dict[str, Any]:
+    """Heuristic same-merchant spelling groups for Review merge UI (no LLM, no writes)."""
+    conn = _conn()
+    try:
+        limit = max(1, min(int(limit), 50))
+        groups = detect_alias_candidates(conn)[:limit]
+        return {"groups": groups, "total": len(groups)}
     finally:
         conn.close()
 
@@ -1180,10 +1200,31 @@ def api_transactions_search(
     offset: int = 0,
     sort_by: str = "date",
     sort_dir: str = "desc",
+    group_by: str = "",
 ) -> dict[str, Any]:
     conn = _conn()
     try:
         try:
+            group = (group_by or "").strip().lower()
+            if group == "merchant":
+                return search_merchant_groups(
+                    conn,
+                    q=q,
+                    month=month,
+                    category=category,
+                    sub_category=sub_category,
+                    expense_type=expense_type,
+                    flow_type=flow_type,
+                    classification=classification,
+                    label_status=label_status,
+                    cadence_kind=cadence_kind,
+                    cadence_period=cadence_period,
+                    include_in_run_rate=include_in_run_rate,
+                    limit=limit,
+                    offset=offset,
+                )
+            if group:
+                raise ValueError("group_by must be empty or merchant")
             return search_transactions(
                 conn,
                 q=q,
@@ -1401,6 +1442,7 @@ def api_settings() -> dict[str, Any]:
             "table_counts": table_counts(conn),
             "ui_show_cadence": UI_SHOW_CADENCE,
             "ui_agent_workspace": UI_AGENT_WORKSPACE,
+            "ui_mode": UI_MODE,
             "learning_agent_enabled": LEARNING_AGENT_ENABLED,
             "learning_agent_interval_hours": LEARNING_AGENT_INTERVAL_HOURS,
             "learning_agent_model": LEARNING_AGENT_MODEL,

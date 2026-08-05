@@ -87,9 +87,11 @@ from webapp.processing.parse import (
     ensure_merchant_key_column,
     heuristic_generated_description,
     load_csv,
+    looks_like_bank_noise,
     merchant_key,
     parse_amount,
     parse_transaction_dates,
+    scrub_bank_text,
     transaction_fingerprint,
 )
 from webapp.processing.timer import PhaseTimer, format_duration
@@ -149,6 +151,7 @@ __all__ = [
     "json_for_prompt",
     "load_active_custom_rules",
     "load_csv",
+    "looks_like_bank_noise",
     "mark_business_from_category_rules",
     "merge_business_category_rules",
     "merge_description_lookup",
@@ -161,6 +164,7 @@ __all__ = [
     "preview_rule_affected",
     "resolve_batch_sizes",
     "resolve_provider_config",
+    "scrub_bank_text",
     "transaction_fingerprint",
     "_custom_rule_match_mask",
 ]

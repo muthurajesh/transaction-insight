@@ -13,24 +13,33 @@ from webapp.llm.prompts import DESCRIPTION_PROMPT
 from webapp.llm.validation import generated_description_plausible
 from webapp.processing.constants import DESCRIPTION_LOOKUP_COLUMNS
 from webapp.processing.parse import (
-    _clean_original_for_display,
     _norm_description_part,
+    looks_like_bank_noise,
+    scrub_bank_text,
 )
 
 
 def _interim_generated_description(row: pd.Series) -> str:
-    """Placeholder before LLM runs, or when the model call fails (original text only)."""
-    original = _clean_original_for_display(str(row.get("Original Description", "") or ""))
+    """Placeholder before LLM runs, or when the model call fails (scrubbed text)."""
+    simple = scrub_bank_text(str(row.get("Simple Description", "") or ""))
+    if simple:
+        return simple[:120]
+    original = scrub_bank_text(str(row.get("Original Description", "") or ""))
     return original[:120] if original else "Unknown"
+
+
 def description_source_key(row: pd.Series) -> str:
-    """Stable hash key from normalized User, Simple, and cleaned Original descriptions."""
+    """Stable hash key from normalized User + scrubbed Simple/Original descriptions."""
     user = _norm_description_part(row.get("User Description", ""))
-    simple = _norm_description_part(row.get("Simple Description", ""))
+    simple = _norm_description_part(
+        scrub_bank_text(str(row.get("Simple Description", "") or ""))
+    )
     original = _norm_description_part(
-        _clean_original_for_display(str(row.get("Original Description", "") or ""))
+        scrub_bank_text(str(row.get("Original Description", "") or ""))
     )
     payload = f"u:{user}|s:{simple}|o:{original[:300]}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
 
 def build_description_lookup_map(lookups: dict[str, pd.DataFrame]) -> dict[str, str]:
     """Source Key -> Generated Description from the DescriptionLookup sheet."""
@@ -45,6 +54,8 @@ def build_description_lookup_map(lookups: dict[str, pd.DataFrame]) -> dict[str, 
         desc = str(row.get("Generated Description", "") or "").strip()
         if not key or not desc:
             continue
+        if looks_like_bank_noise(desc):
+            continue
         pseudo = pd.Series(
             {
                 "User Description": row.get("User Description", ""),
@@ -56,6 +67,7 @@ def build_description_lookup_map(lookups: dict[str, pd.DataFrame]) -> dict[str, 
             continue
         result[key] = desc[:120]
     return result
+
 
 def make_description_lookup_row(
     row: pd.Series,
@@ -74,6 +86,7 @@ def make_description_lookup_row(
         "Model": model if source == "llm" else "",
         "Updated At": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
+
 
 def merge_description_lookup(
     existing: pd.DataFrame | None,
@@ -125,14 +138,23 @@ def merge_description_lookup(
     merged = pd.concat([existing[cols], append[cols]], ignore_index=True)
     return merged.sort_values("Source Key").reset_index(drop=True)
 
+
 def build_description_payload(row: pd.Series, index: int) -> dict[str, Any]:
-    """Bank text fields only — category/amount are handled in the classify step."""
+    """Bank text fields only — category/amount are handled in the classify step.
+
+    Simple/Original are pre-scrubbed so smaller local models see less ACH noise.
+    """
     return {
         "index": index,
-        "original_description": str(row.get("Original Description", "") or "")[:300],
+        "original_description": scrub_bank_text(
+            str(row.get("Original Description", "") or ""), max_len=300
+        ),
         "user_description": str(row.get("User Description", "") or "")[:200],
-        "simple_description": str(row.get("Simple Description", "") or "")[:200],
+        "simple_description": scrub_bank_text(
+            str(row.get("Simple Description", "") or ""), max_len=200
+        ),
     }
+
 
 def generate_descriptions_batch(
     client: OpenAI,
@@ -173,6 +195,7 @@ def generate_descriptions_batch(
         raise ValueError(f"Unexpected description response: {raw[:500]}")
     return results
 
+
 def fill_generated_descriptions(
     df: pd.DataFrame,
     client: OpenAI,
@@ -202,7 +225,9 @@ def fill_generated_descriptions(
 
         cached = lookup.get(key, "")
         if cached and not rebuild_lookup:
-            if generated_description_plausible(cached, row):
+            if generated_description_plausible(cached, row) and not looks_like_bank_noise(
+                cached
+            ):
                 df.at[idx, "Generated Description"] = cached
                 lookup_hits += 1
                 continue
@@ -271,6 +296,12 @@ def fill_generated_descriptions(
                     continue
                 key, rep_idx = llm_tasks[batch_idx]
                 row = df.loc[rep_idx]
+                if looks_like_bank_noise(desc):
+                    print(
+                        f"  Rejected noisy description {desc!r} for key {key}",
+                        flush=True,
+                    )
+                    continue
                 if not generated_description_plausible(desc, row):
                     print(
                         f"  Rejected implausible description {desc!r} for key {key}",

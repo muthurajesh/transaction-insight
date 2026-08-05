@@ -44,6 +44,29 @@ def test_api_status(client: TestClient):
     assert "db_path" in body
     assert "inbox_dir" in body
     assert isinstance(body.get("inbox_csv_files"), list)
+    assert "review_merchant_count" in body
+    assert "review_transaction_count" in body
+    assert body["review_merchant_count"] == 0
+    assert body["review_transaction_count"] == 0
+    assert body.get("ui_mode") in ("simple", "expert")
+
+
+def test_api_review_merchant_aliases(client: TestClient):
+    res = client.get("/api/review/merchant-aliases")
+    assert res.status_code == 200
+    body = res.json()
+    assert "groups" in body
+    assert isinstance(body["groups"], list)
+    assert body.get("total", 0) == len(body["groups"])
+
+
+def test_api_transactions_search_group_by_merchant(client: TestClient):
+    res = client.get("/api/transactions/search", params={"group_by": "merchant", "limit": 5})
+    assert res.status_code == 200
+    body = res.json()
+    assert body.get("group_by") == "merchant"
+    assert "merchants" in body
+    assert body.get("transactions") == []
 
 
 def test_api_ingest_upload(client: TestClient, tmp_path: Path):

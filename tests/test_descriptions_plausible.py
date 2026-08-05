@@ -14,6 +14,9 @@ from webapp.processing import (
     description_source_key,
     fill_generated_descriptions,
     generated_description_plausible,
+    looks_like_bank_noise,
+    merchant_key,
+    scrub_bank_text,
 )
 
 
@@ -31,6 +34,66 @@ def _card_payment_row() -> pd.Series:
     )
 
 
+def test_scrub_bank_text_examples():
+    assert scrub_bank_text(" *nature's nectar") == "nature's nectar"
+    assert scrub_bank_text(" SQ *NATURE'S NECTAR SANTA ANA CA") == "NATURE'S NECTAR SANTA ANA"
+    assert "XX4188" not in scrub_bank_text("18/8 RANCH* 188 RANCH XX4188 CA")
+    assert scrub_bank_text("18/8 RANCH* 188 RANCH XX4188 CA") == "18/8 RANCH 188 RANCH"
+    scrubbed_leaves = scrub_bank_text(
+        " CHECKCARD XX19 7 LEAVES TUSTIN EST 19 TUSTIN CA XX2139"
+    )
+    assert "CHECKCARD" not in scrubbed_leaves.upper()
+    assert "XX2139" not in scrubbed_leaves
+    assert "7 LEAVES" in scrubbed_leaves.upper()
+    scrubbed_acct = scrub_bank_text(
+        "ACCT INTEGRATORS DES:Assn Dues ID:XX8678 INDN:Rajesh Muthu CO ID:1454"
+    )
+    assert scrubbed_acct == "ACCT INTEGRATORS"
+    assert not looks_like_bank_noise(scrubbed_acct)
+    assert looks_like_bank_noise(
+        "ACCT Integrators DES:Assn Dues ID:XX8678 INDN:Rajesh Muthu CO ID:1454"
+    )
+
+
+def test_scrub_bank_text_checkcard_and_mobile_refs():
+    assert (
+        scrub_bank_text("CHECKCARD 0122 SELMA'S CHICAGO PIZZERI RANCHO")
+        == "SELMA'S CHICAGO PIZZERI RANCHO"
+    )
+    assert scrub_bank_text("CHECKCARD 0126 TUTTO FRESCO KITCHEN XX3360 CA") == (
+        "TUTTO FRESCO KITCHEN"
+    )
+    assert scrub_bank_text("MOBILE 0126 OAKLANDNEWSST2663 OAKLAND CA XX5649") == (
+        "OAKLANDNEWSST2663 OAKLAND"
+    )
+    assert scrub_bank_text("MOBILE XX 365 VEND LLC 3 TROY MI XX5711") == (
+        "365 VEND LLC 3 TROY"
+    )
+    # Brand names containing "Mobile" must not be mangled
+    assert scrub_bank_text("T-Mobile Transfer") == "T-Mobile Transfer"
+    assert scrub_bank_text("Wave Mobile Money Inc") == "Wave Mobile Money Inc"
+    assert scrub_bank_text("Mobile Banking Payment") == "Mobile Banking Payment"
+    assert scrub_bank_text("Mobile Purchase Ninas Indian & British LAKE FOREST CA") == (
+        "Ninas Indian & British LAKE FOREST"
+    )
+
+
+def test_merchant_key_skips_noisy_generated_description():
+    row = pd.Series(
+        {
+            "Merchant Key": "",
+            "Generated Description": (
+                "ACCT Integrators DES:Assn Dues ID:XX8678 INDN:Rajesh Muthu CO ID:1454"
+            ),
+            "Simple Description": "ACCT INTEGRATORS DES:Assn Dues ID:XX8678 INDN:Rajesh ",
+            "Original Description": (
+                "ACCT INTEGRATORS DES:Assn Dues ID:xx8678 INDN:Rajesh Muthu CO ID:1454"
+            ),
+        }
+    )
+    assert merchant_key(row) == "ACCT INTEGRATORS"
+
+
 def test_build_description_payload_excludes_category_and_amount():
     row = pd.Series(
         {
@@ -42,12 +105,12 @@ def test_build_description_payload_excludes_category_and_amount():
         }
     )
     payload = build_description_payload(row, 0)
-    assert payload == {
-        "index": 0,
-        "original_description": " FUEL STOP xxxxxxx3001 ANYTOWN CA",
-        "user_description": " ",
-        "simple_description": " Fuel Stop",
-    }
+    assert payload["index"] == 0
+    assert "xxxxxxx3001" not in payload["original_description"].lower()
+    assert "FUEL STOP" in payload["original_description"]
+    assert not payload["original_description"].endswith(" CA")
+    assert payload["user_description"] == " "
+    assert payload["simple_description"] == "Fuel Stop"
     assert "category" not in payload
     assert "amount" not in payload
 
@@ -57,6 +120,13 @@ def test_generated_description_plausible_rejects_wrong_merchant():
     assert not generated_description_plausible("Cafe Downtown", row)
     assert generated_description_plausible("Store Card Bank", row)
     assert generated_description_plausible("Merchant Corp", row)
+
+
+def test_generated_description_plausible_rejects_bank_noise():
+    row = _card_payment_row()
+    assert not generated_description_plausible(
+        "MERCHANT CORP DES:CARD PAYMNT ID:XX0202", row
+    )
 
 
 def test_build_description_lookup_map_skips_implausible_cache():
@@ -108,6 +178,45 @@ def test_fill_generated_descriptions_uses_llm_when_cache_implausible():
     assert out.at[0, "Generated Description"] == "Merchant Corp"
     assert new_rows.iloc[0]["Source"] == "llm"
     client.chat.completions.create.assert_called_once()
+
+
+def test_fill_generated_descriptions_rejects_noisy_llm_keeps_scrubbed():
+    row = pd.Series(
+        {
+            "User Description": "",
+            "Simple Description": "ACCT INTEGRATORS DES:Assn Dues ID:XX8678",
+            "Original Description": (
+                "ACCT INTEGRATORS DES:Assn Dues ID:xx8678 INDN:Rajesh Muthu CO ID:1454"
+            ),
+            "Category": "Business Expenses",
+        }
+    )
+    df = pd.DataFrame([row])
+    client = MagicMock()
+    response = MagicMock()
+    response.choices = [
+        MagicMock(
+            message=MagicMock(
+                content=(
+                    '{"results": [{"index": 0, "generated_description": '
+                    '"ACCT Integrators DES:Assn Dues ID:XX8678"}]}'
+                )
+            )
+        )
+    ]
+    client.chat.completions.create.return_value = response
+
+    out, new_rows = fill_generated_descriptions(
+        df,
+        client,
+        "test-model",
+        batch_size=10,
+        use_json_mode=False,
+        description_lookup={},
+    )
+
+    assert out.at[0, "Generated Description"] == "ACCT INTEGRATORS"
+    assert new_rows.empty
 
 
 def test_fill_generated_descriptions_uses_plausible_cache():

@@ -54,11 +54,13 @@ Single index for planned and completed work. Use this file to pick **what to do 
 
 ## 3. Edit transactions & AI-assisted rules
 
-**Detail:** [EDIT_INSIGHTS.md](../rules/EDIT_INSIGHTS.md)
+**Detail:** [EDIT_INSIGHTS.md](../rules/EDIT_INSIGHTS.md) · Simple/Expert shell → [AGENT_WORKSPACE.md](AGENT_WORKSPACE.md)
 
 | Status | Item | Detail |
 |--------|------|--------|
 | [x] | Edit Transactions tab — search, bulk label, scopes | |
+| [x] | **Simple / Expert UX** — `UI_MODE`; Simple = Import / Ask / Check labels / Settings; Expert adds Find & edit + Automate | [AGENT_WORKSPACE.md](AGENT_WORKSPACE.md) |
+| [x] | **Review simplification** — plain-English Check labels; Combine as one; Import wizard; chat check-labels intent | → [CONFIRM_CATEGORIES.md](../classification/CONFIRM_CATEGORIES.md) |
 | [x] | **Custom Rules tab** — preview matches, compiled JSON, Flow Type, apply one/all | [CUSTOM_RULES.md](../rules/CUSTOM_RULES.md) |
 | [x] | **Custom Rules builder** — “Build a Simple Rule” helper + “What can I use?” cheatsheet (plain English → composer) | [CUSTOM_RULES.md](../rules/CUSTOM_RULES.md) |
 | [~] | **Complex custom rules** — amount sign + amount ops (`=`, `!=`, `>`, `>=`, `<`, `<=`) shipped; still open: between-ranges, date/month filters, multi-pattern AND on text, boolean OR across conditions | → [CUSTOM_RULES.md](../rules/CUSTOM_RULES.md) |
@@ -207,8 +209,13 @@ Single index for planned and completed work. Use this file to pick **what to do 
 
 **Direction (agreed Jul 2026):** Integrate in current repo — base classifier + per-user overlay + HPLLM teacher for corrections. **Not** a fork. Offline benchmark is a go/no-go gate before pipeline hooks. Replaces bulk pipeline LLM classify long-term; converges Learning Agent + Classification Audit in later phases.
 
+**Near-term (Layer 1, shipped):** Deterministic `scrub_bank_text` + reject noisy Generated Description before merchant key — improves local-LLM payee labels without the classifier. Classifier phases below remain backlog until description quality is stable.
+
 | Status | Item | Detail |
 |--------|------|--------|
+| [x] | **Layer 1 scrubber** | Structural ACH/card scrub; noisy LLM reject; scrubbed Simple preferred for `merchant_key` |
+| [x] | **S8 noise report** | Read-only `scripts/report_merchant_key_noise.py` — counts + scrub preview (no DB writes) |
+| [x] | **S7 remint script** | `scripts/remint_merchant_keys.py` — dry-run plan + `--apply` (backup first); default scope `bank_noise` |
 | [ ] | **Phase 0 — Offline benchmark** | Export gold labels; train v0 MiniLM+LightGBM; go/no-go on accuracy & speed |
 | [ ] | Phase 1 — Schema & provenance | `classification_events`, `model_registry`, `classification_source`, real model confidence |
 | [ ] | Phase 2 — Classifier shadow mode | `webapp/ml/`, `CLASSIFICATION_ENGINE=hybrid`, shadow hook in `run.py` |
@@ -228,7 +235,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 3. **Classification vocabulary / auto-merge** — reduce category drift ([CLASSIFICATION_TAXONOMY.md](../classification/CLASSIFICATION_TAXONOMY.md))
 4. **Phase D2–D3 — report layers** + layered reports ([REPORT_LAYERS.md](../reporting/REPORT_LAYERS.md))
 5. **Optional:** cadence AI tuning (D1 polish); import file-picker for re-run ([IMPORT_PROCESS_UPLOAD.md](../pipeline/IMPORT_PROCESS_UPLOAD.md))
-6. **When ready:** Transaction Intelligence Phase 0 benchmark ([TRANSACTION_INTELLIGENCE_ARCHITECTURE.md](TRANSACTION_INTELLIGENCE_ARCHITECTURE.md)) — no pipeline code until go/no-go passes
+6. **When ready:** Transaction Intelligence Phase 0 benchmark ([TRANSACTION_INTELLIGENCE_ARCHITECTURE.md](TRANSACTION_INTELLIGENCE_ARCHITECTURE.md)) — after Layer 1 scrub is stable on new imports; no classifier pipeline code until go/no-go passes
 
 ---
 

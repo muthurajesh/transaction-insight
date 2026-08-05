@@ -131,9 +131,9 @@ Chat assistant (14B–32B) — queries DB via tools; does NOT classify at import
 
 | Layer | Existing | Gap |
 |-------|----------|-----|
-| 1 Normalization | `llm/descriptions.py`, `description_lookup`, `merchant_key` | Deterministic noise stripping; DB aliases |
+| 1 Normalization | `scrub_bank_text` / `looks_like_bank_noise` in `processing/parse.py`; wired through `llm/descriptions.py`, `description_lookup`, `merchant_key` | **Scrub shipped.** S8: `scripts/report_merchant_key_noise.py`. S7: `scripts/remint_merchant_keys.py` (dry-run default; `--apply` remaps tx + labels + cadence). Optional: DB alias Combine |
 | 2 Rules & memory | `processing/lookups.py`, `merchant_labels`, `pipeline_custom_rules` | Solid |
-| 3 Classifier | `llm/classify.py` → `classify_review_rows()` | **New** `webapp/ml/` |
+| 3 Classifier | `llm/classify.py` → `classify_review_rows()` | **New** `webapp/ml/` (backlog until Layer 1 quality is boring) |
 | Store + audit | `dataframe_store.py`, `decision_events` | `classification_source`, model confidence, `classification_events` |
 | Teacher loop | `learning_agent.py`, `classification_audit.py` | **New** distillation job |
 | Chat | `webapp/agent/tools.py` | No MCP server yet; extend tools later |

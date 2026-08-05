@@ -167,11 +167,11 @@ Default posture: **AI proposes → you confirm → then data is saved**. Nothing
 |------|----------------|-------------------|------------------------|
 | **Run processing** | Workspace import strip or Import & Categorize | **Descriptions** — bank text → merchant label. **Classification** — category, sub-category, fixed/variable for unknown merchants. **Business rules** — personal vs business nuance. **Custom Rules** — compiles Pending rules to JSON, then applies. | Yes — pipeline writes to `finance.db` and lookup tables. Re-run improves as cache grows. |
 | **Classification audit** | Import & Categorize (alerts) or inbox (`quality_flag`) | Sampled re-check: heuristics + stronger audit model vs pipeline labels; shows audit-time vs live DB labels. | No — **View in Edit Transactions** or dismiss; stale alerts auto-clear when labels match. |
-| **Review queue** | Inbox (`merchant_label`) or Confirm Categories → ✨ Suggest labels | Proposes labels for merchants still `needs_review` (lookup-first, then LLM). | No — you confirm in the modal. |
+| **Review queue** | Check labels inbox (`merchant_label`) or Confirm Categories → Suggest labels | Proposes labels for payees still needing a look (lookup-first, then LLM). | No — you confirm (**Looks good**). |
 | **After an edit** | Edit Transactions → Apply → AI insight modal | Explains the pattern; may suggest a **Custom Rule** (plain English). | No — save rule is optional. |
 | **Cadence** | Cadence tab → ✨ Suggest cadence (AI); Chat | Proposes recurring vs lump vs one-time from merchant history + your hint. | No — Review & save in modal or cadence queue. |
 | **Label cleanup** | **AI Rules** tab | **Analyze** (heuristics only) or **Suggest with AI** — duplicate categories, sub-categories, merchant spellings. | No — you select proposals, preview, then Apply. |
-| **Analytics & intelligence** | Workspace (Chat) | Plain-English questions → LLM **`query_sql`**; **`run_decision_analysis`**, **`propose_custom_rule`**, insight accept/reject. Saved custom reports — see [chat/CHAT_CUSTOM_REPORTS.md](../chat/CHAT_CUSTOM_REPORTS.md). | Saved reports in `custom_reports`; insights/rules after you confirm. |
+| **Analytics & intelligence** | Ask (Chat) | Plain-English questions → LLM **`query_sql`**; review-pending intent → Check labels (not charts). Saved custom reports — see [chat/CHAT_CUSTOM_REPORTS.md](../chat/CHAT_CUSTOM_REPORTS.md). | Saved reports in `custom_reports`; insights/rules after you confirm. |
 
 **Not AI:** Import upload, inbox archive, table counts, most Edit Transactions field updates (direct SQLite), and cadence **math** (`effective_amount`, cash/core/normalized views).
 

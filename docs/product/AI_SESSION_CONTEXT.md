@@ -99,7 +99,9 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 
 ### Agent Workspace & decision memory
 
-- **`UI_AGENT_WORKSPACE=1` (default):** Sidebar shell — **Import**, **Chat**, **Review** + Transactions, Custom Rules, Settings; legacy Import / Confirm / AI Rules / Cadence tabs hidden ([AGENT_WORKSPACE.md](AGENT_WORKSPACE.md))
+- **`UI_AGENT_WORKSPACE=1` (default):** Sidebar shell — **Import**, **Ask**, **Check labels** + Settings; Expert adds Find & edit / Automate ([AGENT_WORKSPACE.md](AGENT_WORKSPACE.md))
+- **`UI_MODE=simple|expert` (default simple):** Controls Expert nav; Settings toggle overrides per browser
+- **Review simplification:** plain-English Check labels; Combine as one; Import wizard; Ask has no Pending banner; chat check-labels intent
 - **`decision_events`** + **`ai_insights`**; HITL logging on confirm, audit dismiss, taxonomy apply, edit corrections ([DECISION_MEMORY.md](DECISION_MEMORY.md))
 - **Learning Agent:** opt-in (`LEARNING_AGENT_ENABLED=0` default); LLM Decision Analyst (`LEARNING_AGENT_MODEL`, `query_sql` loop) + heuristic fallback → inbox; scheduler + `POST /api/learning-agent/run`; accepted insights → `review_suggest` context
 - **Pending:** Full orchestrator / monthly_close workflow (Steps 4–5 chat+HITL shipped)
@@ -115,7 +117,7 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 
 ### Pipeline LLM behavior (recent)
 
-- **Descriptions:** validated `description_lookup` cache, then LLM — bank text fields only (Original/User/Simple); no category/amount in the LLM payload; no verbatim copy of User/Simple as the label.
+- **Descriptions:** `scrub_bank_text` on Simple/Original before cache key + LLM payload; reject noisy Generated Description (`DES:`/`INDN:`/phone masks); `merchant_key` prefers clean Generated else scrubbed Simple. Validated `description_lookup` cache, then LLM — bank text fields only (no category/amount in payload).
 - **Classification:** review spend rows only; minimal LLM payload; vocabulary hint + normalize from DB (`CLASSIFY_VOCABULARY_HINT`) per [CLASSIFICATION_TAXONOMY.md](../classification/CLASSIFICATION_TAXONOMY.md).
 - **Classification audit:** post-import + optional scheduled sample; heuristics + `CLASSIFICATION_AUDIT_MODEL` spot-check; Import tab alerts with **At audit / Suggested / Current in DB**; **View in Edit Transactions** (merchant search); auto-resolve when live labels match suggestion — [CLASSIFICATION_AUDIT.md](../classification/CLASSIFICATION_AUDIT.md).
 - **Logging:** `LLM_LOG_CALLS=1` → console + `data/llm.log` (`webapp/llm/request_log.py`).

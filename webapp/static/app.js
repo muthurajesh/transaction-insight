@@ -14,6 +14,8 @@ function labelStatusIconName(status) {
 
 let uiShowCadence = true;
 let uiAgentWorkspace = true;
+let uiMode = "simple"; // "simple" | "expert"
+const UI_MODE_KEY = "ti_ui_mode";
 let workspaceInboxItem = null;
 let initialRouteSet = false;
 let sidebarNavBound = false;
@@ -22,11 +24,11 @@ const SIDEBAR_COLLAPSED_KEY = "ti_sidebar_collapsed";
 const reviewSuggestedLabels = new Map();
 
 const PAGE_CHROME = {
-  import: { title: "Import & process", crumb: "Workspace", leaf: "Import" },
-  chat: { title: "Chat & analytics", crumb: "Workspace", leaf: "Chat" },
-  review: { title: "Review AI proposals", crumb: "Workspace", leaf: "Review" },
-  edit: { title: "Edit Transactions", crumb: null, leaf: "Transactions" },
-  "custom-rules": { title: "Custom Rules", crumb: null, leaf: "Custom Rules" },
+  import: { title: "Import", crumb: "Workspace", leaf: "Import" },
+  chat: { title: "Ask", crumb: "Workspace", leaf: "Ask" },
+  review: { title: "Check labels", crumb: "Workspace", leaf: "Check labels" },
+  edit: { title: "Find & edit", crumb: null, leaf: "Find & edit" },
+  "custom-rules": { title: "Automate", crumb: null, leaf: "Automate" },
   settings: { title: "Settings", crumb: null, leaf: "Settings" },
   actions: { title: "Import & Categorize", crumb: null, leaf: "Import & Categorize" },
   cadence: { title: "Cadence", crumb: null, leaf: "Cadence" },
@@ -119,26 +121,69 @@ function bindSidebarToggle() {
   });
 }
 
-function syncWorkspacePendingChrome(total) {
+function syncWorkspacePendingChrome(payeeCount) {
+  /** Nav badge = payees that need a look (same metric as top-bar status). */
   const navBadge = $("#nav-review-badge");
-  if (navBadge) {
-    if (total > 0) {
-      navBadge.textContent = String(total);
-      navBadge.classList.remove("hidden");
-    } else {
-      navBadge.classList.add("hidden");
-    }
+  if (!navBadge) return;
+  const n = Number(payeeCount) || 0;
+  if (n > 0) {
+    navBadge.textContent = String(n);
+    navBadge.classList.remove("hidden");
+    navBadge.setAttribute("aria-label", `${n} payees need a look`);
+  } else {
+    navBadge.classList.add("hidden");
   }
-  const banner = $("#chat-pending-banner");
-  const bannerText = $("#chat-pending-banner-text");
-  if (banner && bannerText) {
-    if (total > 0) {
-      bannerText.textContent = `${total} AI proposal${total === 1 ? "" : "s"} waiting for your review`;
-      banner.classList.remove("hidden");
-    } else {
-      banner.classList.add("hidden");
-    }
+}
+
+function resolveUiMode(serverMode) {
+  try {
+    const stored = localStorage.getItem(UI_MODE_KEY);
+    if (stored === "simple" || stored === "expert") return stored;
+  } catch {
+    /* ignore */
   }
+  const mode = String(serverMode || "simple").trim().toLowerCase();
+  return mode === "expert" ? "expert" : "simple";
+}
+
+function applyUiMode() {
+  const expert = uiMode === "expert";
+  document.body.classList.toggle("ui-mode-simple", !expert);
+  document.body.classList.toggle("ui-mode-expert", expert);
+  document.querySelectorAll(".nav-expert-only, .settings-expert-only").forEach((el) => {
+    el.classList.toggle("hidden", !expert);
+  });
+  const modeSel = $("#settings-ui-mode");
+  if (modeSel && modeSel.value !== uiMode) modeSel.value = uiMode;
+  // If simple mode lands on an expert-only tab, bounce to Check labels or Ask
+  const activeNav = document.querySelector("#app-sidebar .nav-item.active")?.dataset?.nav;
+  if (!expert && (activeNav === "edit" || activeNav === "custom-rules")) {
+    setTab("review");
+  }
+}
+
+let importWizardStep = 1;
+
+function setImportWizardStep(step) {
+  importWizardStep = Math.max(1, Math.min(3, step));
+  setWorkflowStepper($("#import-stepper"), importWizardStep);
+  for (let i = 1; i <= 3; i++) {
+    const panel = $(`#import-step-${i}`);
+    if (panel) panel.classList.toggle("hidden", i !== importWizardStep);
+  }
+}
+
+function finishImportWizard(status) {
+  setImportWizardStep(3);
+  const summary = $("#import-done-summary");
+  const review = status?.review_merchant_count || 0;
+  if (summary) {
+    summary.textContent = review > 0
+      ? `Done. ${review} payee${review === 1 ? "" : "s"} need a look — check labels next.`
+      : "Done. Everything looks labeled — ask a question or import more files.";
+  }
+  const checkBtn = $("#btn-import-goto-check");
+  if (checkBtn) checkBtn.classList.toggle("hidden", review <= 0);
 }
 
 function applyUiFeatureFlags() {
@@ -160,9 +205,16 @@ function applyUiFeatureFlags() {
   }
   const approveHelp = $("#workspace-confirm-help-approve");
   if (approveHelp) {
-    approveHelp.innerHTML = uiShowCadence
-      ? "<strong>Approve</strong> — Apply the proposal: confirm labels, fix audit flags, open Custom Rules with preview, review cadence, or open AI Rules for category renames."
-      : "<strong>Approve</strong> — Apply the proposal: confirm labels, fix audit flags, open Custom Rules with preview, or open AI Rules for category renames.";
+    if (uiMode === "simple") {
+      approveHelp.innerHTML =
+        "<strong>Looks good</strong> — Save the suggested labels for this payee.";
+    } else if (uiShowCadence) {
+      approveHelp.innerHTML =
+        "<strong>Looks good</strong> — Apply the proposal: confirm labels, fix audit flags, open Automate with preview, review cadence, or open AI Rules for category renames.";
+    } else {
+      approveHelp.innerHTML =
+        "<strong>Looks good</strong> — Apply the proposal: confirm labels, fix audit flags, open Automate with preview, or open AI Rules for category renames.";
+    }
   }
 
   document.querySelectorAll(".tab-legacy-workspace").forEach((tab) => {
@@ -194,6 +246,7 @@ function setTab(name, options = {}) {
   if (customRulesBusy) return;
   if (name === "cadence" && !uiShowCadence && !options.skipCadenceGuard) return;
   if (uiAgentWorkspace && name === "actions") name = "import";
+  if (uiMode === "simple" && (name === "edit" || name === "custom-rules")) name = "review";
 
   document.querySelectorAll(".tab").forEach((t) => {
     t.classList.toggle("active", t.dataset.tab === name);
@@ -206,8 +259,10 @@ function setTab(name, options = {}) {
   updatePageChrome(name);
 
   if (name === "review") {
-    if (uiAgentWorkspace) loadWorkspaceInbox().catch(() => {});
-    else loadReview();
+    if (uiAgentWorkspace) {
+      loadWorkspaceInbox().catch(() => {});
+      loadReviewAliasGroups().catch(() => {});
+    } else loadReview();
   }
   if (name === "settings") {
     loadSettings();
@@ -233,6 +288,19 @@ document.querySelectorAll(".tab-jump").forEach((btn) => {
 });
 
 $("#btn-chat-jump-review")?.addEventListener("click", () => setTab("review"));
+$("#btn-import-goto-check")?.addEventListener("click", () => setTab("review"));
+$("#btn-import-goto-ask")?.addEventListener("click", () => setTab("chat"));
+$("#btn-import-again")?.addEventListener("click", () => setImportWizardStep(1));
+$("#settings-ui-mode")?.addEventListener("change", (e) => {
+  const next = e.target.value === "expert" ? "expert" : "simple";
+  uiMode = next;
+  try {
+    localStorage.setItem(UI_MODE_KEY, next);
+  } catch {
+    /* ignore */
+  }
+  applyUiMode();
+});
 
 function setWorkflowStepper(stepperEl, step) {
   if (!stepperEl) return;
@@ -340,24 +408,24 @@ const ONBOARDING_STEPS_WORKSPACE = [
     demoProgress: true,
   },
   {
-    title: "Review AI proposals",
+    title: "Check labels",
     body:
-      "After processing, work the Review inbox — confirm labels, fix quality flags, and accept or reject insights.",
+      "After processing, open Check labels — approve payees the AI wasn’t sure about, and combine duplicate store names when asked.",
     target: '.nav-item[data-nav="review"]',
     tab: "review",
     kicker: "Step 4 of 5",
   },
   {
-    title: "Ask questions in Chat",
+    title: "Ask about spending",
     body:
-      'Once data is loaded, use Chat to ask things like "How much did I spend last month?" or "Compare spending by category."',
+      'Once data is loaded, use Ask for questions like "How much did I spend last month?" or "Compare spending by category."',
     target: '.nav-item[data-nav="chat"]',
     tab: "chat",
     kicker: "Step 5 of 5",
   },
   {
     title: "You're ready",
-    body: "Upload a CSV on Import to get started. Use Custom Rules for if/then patterns.",
+    body: "Upload a CSV on Import to get started. Switch to Expert mode in Settings for Find & edit and Automate.",
     target: null,
     kicker: "Done",
     finish: true,
@@ -695,17 +763,26 @@ function focusEditLabelStatusIfRequested() {
 }
 
 function openTransactionsNeedingAttention() {
+  if (uiMode === "simple") {
+    setTab("review");
+    return;
+  }
   sessionStorage.setItem("editFilterLabelStatus", "needs_attention");
+  sessionStorage.setItem("editViewMode", "merchants");
   setTab("edit");
 }
 
-function updateEditNeedsAttentionBanner(reviewCount) {
+function updateEditNeedsAttentionBanner(reviewCount, reviewTxCount) {
   const banner = $("#edit-needs-attention-banner");
   const text = $("#edit-needs-attention-text");
   if (!banner || !text) return;
   const review = reviewCount || 0;
   if (review > 0) {
-    text.textContent = `${review} merchant label(s) need confirmation. Filter transactions below or open the Review inbox.`;
+    if (uiMode === "expert" && reviewTxCount) {
+      text.textContent = `${review} payee${review === 1 ? "" : "s"} need a look (~${reviewTxCount} transactions). Open Check labels, or filter below.`;
+    } else {
+      text.textContent = `${review} payee${review === 1 ? "" : "s"} need a look. Open Check labels to approve them.`;
+    }
     banner.classList.remove("hidden");
   } else {
     banner.classList.add("hidden");
@@ -753,20 +830,26 @@ async function loadStatus() {
   const s = await api("/api/status");
   uiShowCadence = s.ui_show_cadence !== false;
   uiAgentWorkspace = s.ui_agent_workspace !== false;
+  uiMode = resolveUiMode(s.ui_mode);
   applyUiFeatureFlags();
+  applyUiMode();
   const provider = s.llm_provider ? `${s.llm_provider} · ` : "";
   let modelLabel = s.chat_model || s.llm_model || "";
   if (s.pipeline_model && s.chat_model && s.pipeline_model !== s.chat_model) {
     modelLabel = `process ${s.pipeline_model} · chat ${s.chat_model}`;
   }
-  const statusText =
-    `${s.transaction_count} transactions · ${s.review_merchant_count} merchants to confirm · ${provider}${modelLabel}`;
-  const statusLine = $("#status-line");
   const review = s.review_merchant_count || 0;
+  const reviewTx = s.review_transaction_count || 0;
+  const queueLabel =
+    review > 0
+      ? `${review} payee${review === 1 ? "" : "s"} need a look`
+      : "0 need a look";
+  const statusText = `${s.transaction_count} transactions · ${queueLabel} · ${provider}${modelLabel}`;
+  const statusLine = $("#status-line");
   if (statusLine) {
     if (review > 0) {
-      statusLine.innerHTML = `${s.transaction_count} transactions · <button type="button" class="btn-link status-confirm-link">${review} merchants to confirm</button> · ${escapeHtml(provider)}${escapeHtml(modelLabel)}`;
-      statusLine.querySelector(".status-confirm-link")?.addEventListener("click", openTransactionsNeedingAttention);
+      statusLine.innerHTML = `${s.transaction_count} transactions · <button type="button" class="btn-link status-confirm-link">${escapeHtml(queueLabel)}</button> · ${escapeHtml(provider)}${escapeHtml(modelLabel)}`;
+      statusLine.querySelector(".status-confirm-link")?.addEventListener("click", () => setTab("review"));
     } else {
       statusLine.textContent = statusText;
     }
@@ -774,13 +857,14 @@ async function loadStatus() {
   const statusCompact = $("#status-line-compact");
   if (statusCompact) {
     if (review > 0) {
-      statusCompact.innerHTML = `${s.transaction_count} txns · <button type="button" class="btn-link status-confirm-link">${review} to confirm</button>`;
-      statusCompact.querySelector(".status-confirm-link")?.addEventListener("click", openTransactionsNeedingAttention);
+      statusCompact.innerHTML = `${s.transaction_count} txns · <button type="button" class="btn-link status-confirm-link">${escapeHtml(queueLabel)}</button>`;
+      statusCompact.querySelector(".status-confirm-link")?.addEventListener("click", () => setTab("review"));
     } else {
-      statusCompact.textContent = `${s.transaction_count} txns · 0 to confirm`;
+      statusCompact.textContent = `${s.transaction_count} txns · 0 need a look`;
     }
   }
-  updateEditNeedsAttentionBanner(review);
+  updateEditNeedsAttentionBanner(review, reviewTx);
+  syncWorkspacePendingChrome(review);
   const inboxPath = s.inbox_dir;
   const processedDir = s.processed_dir || "processed/";
   const inboxEl = $("#inbox-path");
@@ -795,6 +879,7 @@ async function loadStatus() {
   maybeStartOnboarding(s);
   loadClassificationAudit().catch(() => {});
   await maybeSetInitialRoute(s);
+  return s;
 }
 
 async function maybeSetInitialRoute(status) {
@@ -3179,7 +3264,10 @@ $("#btn-review-suggest-batch")?.addEventListener("click", () => {
 let editOptionsCache = null;
 let editSourceTx = null;
 let editLastResults = [];
+let editLastMerchants = [];
+let editViewMode = "transactions"; // "transactions" | "merchants"
 const EDIT_PAGE_SIZE = 50;
+const EDIT_MERCHANT_PAGE_SIZE = 25;
 const EDIT_CLASSIFICATIONS = ["Personal", "Business"];
 const EDIT_FLOW_TYPES = ["Expense", "Income", "Transfer", "Adjustment"];
 const BUSINESS_AI_CATEGORIES = new Set(["Business Expenses", "Business"]);
@@ -3199,6 +3287,23 @@ const EDIT_VISIBLE_COLUMNS_KEY = "ti_edit_visible_columns";
 let editColumnCatalog = [];
 let editVisibleColumnKeys = null;
 let editColumnsPopoverAnchor = null;
+
+function preferredEditViewMode() {
+  const stored = sessionStorage.getItem("editViewMode");
+  if (stored === "merchants" || stored === "transactions") return stored;
+  const labelStatus = ($("#edit-search-label-status")?.value || "").trim();
+  return labelStatus === "needs_attention" ? "merchants" : "transactions";
+}
+
+function syncEditViewToggle() {
+  const host = $("#edit-view-toggle");
+  if (!host) return;
+  host.querySelectorAll("[data-edit-view]").forEach((btn) => {
+    const active = btn.dataset.editView === editViewMode;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
 
 function getDefaultEditVisibleColumnKeys() {
   return editColumnCatalog.filter((c) => c.default_visible).map((c) => c.key);
@@ -3410,7 +3515,14 @@ function bindEditColumnsUi() {
 
 function refreshEditResultsView() {
   const host = $("#edit-results");
-  if (!host || !editLastResults.length) return;
+  if (!host) return;
+  if (editViewMode === "merchants") {
+    if (!editLastMerchants.length) return;
+    host.innerHTML = renderEditMerchantGroups(editLastMerchants);
+    bindEditResultRows();
+    return;
+  }
+  if (!editLastResults.length) return;
   host.innerHTML = renderEditResults(editLastResults);
   bindEditResultRows();
   bindEditSortHeaders();
@@ -3563,6 +3675,7 @@ const EDIT_FILTER_CONFIG = [
   { key: "month", label: "Month", sel: "#edit-search-month" },
   { key: "category", label: "Category", sel: "#edit-search-category" },
   { key: "label_status", label: "Label status", sel: "#edit-search-label-status" },
+  { key: "label_status_detail", label: "Status detail", sel: "#edit-search-label-status-detail" },
   { key: "sub_category", label: "Sub-category", sel: "#edit-search-sub" },
   { key: "flow_type", label: "Flow Type", sel: "#edit-search-flow-type" },
   { key: "expense_type", label: "Expense type", sel: "#edit-search-expense-type" },
@@ -3674,6 +3787,52 @@ function renderEditResults(transactions) {
         <tr>
           ${headers}
           ${renderEditActionsHeader()}
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function renderEditMerchantGroups(merchants) {
+  if (!merchants.length) {
+    return '<p class="hint">No merchants match your search.</p>';
+  }
+  const rows = merchants
+    .map((m) => {
+      const merchant = m.merchant_key || "";
+      const cat = m.ai_category || "—";
+      const sub = m.ai_sub_category ? ` / ${m.ai_sub_category}` : "";
+      const cadenceBtn = uiShowCadence
+        ? `<button type="button" class="btn-link btn-edit-cadence-link btn-row-icon" data-merchant-key="${escapeAttr(merchant)}" title="Open Cadence tab for this merchant">${inlineIcon("calendar-clock", { size: 14 })} Cadence</button>`
+        : "";
+      return `
+        <tr>
+          <td>${escapeHtml(merchant)}</td>
+          <td>${escapeHtml(cat)}${escapeHtml(sub)}</td>
+          <td>${Number(m.tx_count) || 0}</td>
+          <td class="amount">${escapeHtml(formatMoney(m.expense_spend || 0))}</td>
+          <td>${renderLabelStatusBadge(m.label_status)}</td>
+          <td class="description-col">${escapeHtml(m.sample_description || "—")}</td>
+          <td class="edit-row-actions">
+            <button type="button" class="btn-edit-merchant-row btn-row-icon" data-merchant-key="${escapeAttr(merchant)}" data-tx-id="${escapeAttr(m.sample_transaction_id || "")}">${inlineIcon("pencil", { size: 14 })} Edit merchant</button>
+            ${cadenceBtn}
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+  return `
+    <table class="edit-results-table edit-merchant-groups-table">
+      <thead>
+        <tr>
+          <th>Merchant</th>
+          <th>Category</th>
+          <th>Txns</th>
+          <th class="amount-col">Spend</th>
+          <th>Status</th>
+          <th>Sample description</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -3919,11 +4078,12 @@ async function loadEditMatches(scope) {
   renderEditMatchList(res.matches || []);
 }
 
-async function openEditPanel(tx) {
+async function openEditPanel(tx, { defaultScope = "single" } = {}) {
   editSourceTx = tx;
   setEditPanelOpen(true);
-  const singleScope = document.querySelector('input[name="edit-scope"][value="single"]');
-  if (singleScope) singleScope.checked = true;
+  const scopeRadio = document.querySelector(`input[name="edit-scope"][value="${defaultScope}"]`)
+    || document.querySelector('input[name="edit-scope"][value="single"]');
+  if (scopeRadio) scopeRadio.checked = true;
   const summary = $("#edit-source-summary");
   const merchantInput = $("#edit-merchant-key");
   const merchantSaveCb = $("#edit-update-merchant-label");
@@ -3937,6 +4097,10 @@ async function openEditPanel(tx) {
   if (summary) {
     const simpleDesc = (tx.simple_description || "").trim();
     const originalDesc = (tx.original_description || "").trim();
+    const scopeHint =
+      defaultScope === "merchant"
+        ? `<br><span class="hint">Apply scope defaults to all transactions for this merchant.</span>`
+        : "";
     summary.innerHTML = `
       Bank: ${escapeHtml(simpleDesc || originalDesc || "—")}<br>
       ${originalDesc && simpleDesc && originalDesc !== simpleDesc
@@ -3945,6 +4109,7 @@ async function openEditPanel(tx) {
       ${escapeHtml(tx.date || "")} · ${escapeHtml(formatMoney(tx.amount))}<br>
       Current labels: ${escapeHtml(tx.ai_category || "—")}${tx.ai_sub_category ? ` / ${escapeHtml(tx.ai_sub_category)}` : ""}<br>
       Flow: ${escapeHtml(tx.flow_type || "Expense")} · Expense: ${escapeHtml(tx.expense_type || "—")} · Class: ${escapeHtml(tx.classification || "—")}
+      ${scopeHint}
     `;
   }
   if (merchantInput) merchantInput.value = tx.merchant_key || "";
@@ -3958,11 +4123,35 @@ async function openEditPanel(tx) {
   if (classSel) {
     classSel.value = EDIT_CLASSIFICATIONS.includes(tx.classification) ? tx.classification : "Personal";
   }
-  const scope = document.querySelector('input[name="edit-scope"]:checked')?.value || "single";
+  const scope = document.querySelector('input[name="edit-scope"]:checked')?.value || defaultScope || "single";
   loadEditMatches(scope).catch((err) => {
     const list = $("#edit-match-list");
     if (list) list.innerHTML = `<li class="edit-match-item">Error: ${escapeHtml(err.message)}</li>`;
   });
+}
+
+async function openEditPanelForMerchant(merchantKey, sampleTxId) {
+  let tx = null;
+  if (sampleTxId) {
+    try {
+      tx = await api(`/api/transactions/${encodeURIComponent(sampleTxId)}`);
+    } catch {
+      tx = null;
+    }
+  }
+  if (!tx) {
+    const params = new URLSearchParams();
+    params.set("q", merchantKey);
+    params.set("limit", "1");
+    const res = await api(`/api/transactions/search?${params.toString()}`);
+    tx = (res.transactions || [])[0] || null;
+  }
+  if (!tx) {
+    const host = $("#edit-apply-result");
+    if (host) host.textContent = "Could not load a sample transaction for this merchant.";
+    return;
+  }
+  await openEditPanel(tx, { defaultScope: "merchant" });
 }
 
 function closeEditPanel() {
@@ -4001,21 +4190,24 @@ function updateEditPagination() {
   const next = $("#btn-edit-next");
   if (!bar || !info) return;
 
+  const pageSize = editViewMode === "merchants" ? EDIT_MERCHANT_PAGE_SIZE : EDIT_PAGE_SIZE;
   const total = editSearchTotal;
-  const pageCount = Math.max(1, Math.ceil(total / EDIT_PAGE_SIZE));
-  const page = Math.floor(editPageOffset / EDIT_PAGE_SIZE) + 1;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.floor(editPageOffset / pageSize) + 1;
+  const pageLen = editViewMode === "merchants" ? editLastMerchants.length : editLastResults.length;
 
-  if (total <= EDIT_PAGE_SIZE) {
+  if (total <= pageSize) {
     bar.classList.add("hidden");
     return;
   }
 
   bar.classList.remove("hidden");
   const start = editPageOffset + 1;
-  const end = Math.min(editPageOffset + editLastResults.length, total);
-  info.textContent = `Page ${page} of ${pageCount} · rows ${start}–${end} of ${total}`;
+  const end = Math.min(editPageOffset + pageLen, total);
+  const unit = editViewMode === "merchants" ? "merchants" : "rows";
+  info.textContent = `Page ${page} of ${pageCount} · ${unit} ${start}–${end} of ${total}`;
   if (prev) prev.disabled = editPageOffset <= 0;
-  if (next) next.disabled = editPageOffset + EDIT_PAGE_SIZE >= total;
+  if (next) next.disabled = editPageOffset + pageSize >= total;
 }
 
 function bindEditResultRows() {
@@ -4026,6 +4218,14 @@ function bindEditResultRows() {
       const id = btn.dataset.txId;
       const tx = editLastResults.find((t) => t.transaction_id === id);
       if (tx) openEditPanel(tx);
+    });
+  });
+  host.querySelectorAll(".btn-edit-merchant-row").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      openEditPanelForMerchant(btn.dataset.merchantKey || "", btn.dataset.txId || "").catch((err) => {
+        const list = $("#edit-apply-result");
+        if (list) list.textContent = err.message || String(err);
+      });
     });
   });
   host.querySelectorAll(".btn-edit-cadence-link").forEach((btn) => {
@@ -4039,6 +4239,10 @@ async function runEditSearch({ resetPage = false } = {}) {
   closeEditPanel();
   if (resetPage) editPageOffset = 0;
 
+  editViewMode = preferredEditViewMode();
+  sessionStorage.setItem("editViewMode", editViewMode);
+  syncEditViewToggle();
+
   const q = ($("#edit-search-q")?.value || "").trim();
   const month = $("#edit-search-month")?.value || "";
   const category = ($("#edit-search-category")?.value || "").trim();
@@ -4046,8 +4250,11 @@ async function runEditSearch({ resetPage = false } = {}) {
   const flowType = ($("#edit-search-flow-type")?.value || "").trim();
   const expenseType = ($("#edit-search-expense-type")?.value || "").trim();
   const classification = ($("#edit-search-classification")?.value || "").trim();
-  const labelStatus = ($("#edit-search-label-status")?.value || "").trim();
+  const detailStatus = ($("#edit-search-label-status-detail")?.value || "").trim();
+  const mainStatus = ($("#edit-search-label-status")?.value || "").trim();
+  const labelStatus = detailStatus || mainStatus;
 
+  const pageSize = editViewMode === "merchants" ? EDIT_MERCHANT_PAGE_SIZE : EDIT_PAGE_SIZE;
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   if (month) params.set("month", month);
@@ -4057,36 +4264,60 @@ async function runEditSearch({ resetPage = false } = {}) {
   if (expenseType) params.set("expense_type", expenseType);
   if (classification) params.set("classification", classification);
   if (labelStatus) params.set("label_status", labelStatus);
-  params.set("limit", String(EDIT_PAGE_SIZE));
+  params.set("limit", String(pageSize));
   params.set("offset", String(editPageOffset));
-  params.set("sort_by", editSortBy);
-  params.set("sort_dir", editSortDir);
+  if (editViewMode === "merchants") {
+    params.set("group_by", "merchant");
+  } else {
+    params.set("sort_by", editSortBy);
+    params.set("sort_dir", editSortDir);
+  }
 
   const res = await api(`/api/transactions/search?${params.toString()}`);
+  editLastMerchants = res.merchants || [];
   editLastResults = res.transactions || [];
-  editSearchTotal = res.total ?? editLastResults.length;
+  editSearchTotal = res.total ?? (editViewMode === "merchants" ? editLastMerchants.length : editLastResults.length);
 
   const host = $("#edit-results");
   const meta = $("#edit-search-meta");
   const toolbar = $("#edit-results-toolbar");
   if (host) {
-    host.innerHTML = renderEditResults(editLastResults);
-    bindEditResultRows();
-    bindEditSortHeaders();
-    bindEditColumnsTriggers(host);
+    if (editViewMode === "merchants") {
+      host.innerHTML = renderEditMerchantGroups(editLastMerchants);
+      bindEditResultRows();
+    } else {
+      host.innerHTML = renderEditResults(editLastResults);
+      bindEditResultRows();
+      bindEditSortHeaders();
+      bindEditColumnsTriggers(host);
+    }
   }
   if (toolbar) {
-    toolbar.classList.toggle("hidden", !editLastResults.length);
+    const hasRows = editViewMode === "merchants" ? editLastMerchants.length > 0 : editLastResults.length > 0;
+    toolbar.classList.toggle("hidden", !hasRows);
   }
+  const columnsBtn = $("#btn-edit-columns-toolbar");
+  if (columnsBtn) columnsBtn.classList.toggle("hidden", editViewMode === "merchants");
   renderEditActiveFilters();
   if (meta) {
-    const shown = editLastResults.length;
-    if (shown) {
-      const start = editPageOffset + 1;
-      const end = editPageOffset + shown;
-      meta.textContent = `Showing ${start}–${end} of ${editSearchTotal} transaction(s)`;
+    if (editViewMode === "merchants") {
+      const shown = editLastMerchants.length;
+      if (shown) {
+        const start = editPageOffset + 1;
+        const end = editPageOffset + shown;
+        meta.textContent = `Showing ${start}–${end} of ${editSearchTotal} merchant(s) — edit applies to all matching transactions for that merchant`;
+      } else {
+        meta.textContent = "No merchants match your filters.";
+      }
     } else {
-      meta.textContent = "No transactions match your filters.";
+      const shown = editLastResults.length;
+      if (shown) {
+        const start = editPageOffset + 1;
+        const end = editPageOffset + shown;
+        meta.textContent = `Showing ${start}–${end} of ${editSearchTotal} transaction(s)`;
+      } else {
+        meta.textContent = "No transactions match your filters.";
+      }
     }
   }
   updateEditPagination();
@@ -4653,7 +4884,10 @@ async function loadTransactionEditor() {
     }
     focusEditSearchIfRequested();
     focusEditLabelStatusIfRequested();
-    updateEditNeedsAttentionBanner(status.review_merchant_count || 0);
+    updateEditNeedsAttentionBanner(
+      status.review_merchant_count || 0,
+      status.review_transaction_count || 0
+    );
     await runEditSearch();
   } catch (err) {
     const host = $("#edit-results");
@@ -4696,21 +4930,42 @@ $("#edit-search-form")?.addEventListener("submit", (e) => {
 
 $("#btn-edit-prev")?.addEventListener("click", () => {
   if (editPageOffset <= 0) return;
-  editPageOffset = Math.max(0, editPageOffset - EDIT_PAGE_SIZE);
+  const pageSize = editViewMode === "merchants" ? EDIT_MERCHANT_PAGE_SIZE : EDIT_PAGE_SIZE;
+  editPageOffset = Math.max(0, editPageOffset - pageSize);
   runEditSearch({ resetPage: false }).catch(() => {});
 });
 
 $("#btn-edit-next")?.addEventListener("click", () => {
-  if (editPageOffset + EDIT_PAGE_SIZE >= editSearchTotal) return;
-  editPageOffset += EDIT_PAGE_SIZE;
+  const pageSize = editViewMode === "merchants" ? EDIT_MERCHANT_PAGE_SIZE : EDIT_PAGE_SIZE;
+  if (editPageOffset + pageSize >= editSearchTotal) return;
+  editPageOffset += pageSize;
   runEditSearch({ resetPage: false }).catch(() => {});
 });
 
 $("#btn-edit-filter-needs-attention")?.addEventListener("click", () => {
   const sel = $("#edit-search-label-status");
   if (sel) sel.value = "needs_attention";
+  sessionStorage.setItem("editViewMode", "merchants");
+  editViewMode = "merchants";
   renderEditActiveFilters();
   runEditSearch({ resetPage: true }).catch(() => {});
+});
+
+$("#edit-view-toggle")?.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-edit-view]");
+  if (!btn) return;
+  const mode = btn.dataset.editView;
+  if (mode !== "merchants" && mode !== "transactions") return;
+  editViewMode = mode;
+  sessionStorage.setItem("editViewMode", mode);
+  runEditSearch({ resetPage: true }).catch(() => {});
+});
+
+$("#edit-search-label-status")?.addEventListener("change", () => {
+  const status = ($("#edit-search-label-status")?.value || "").trim();
+  if (status === "needs_attention") {
+    sessionStorage.setItem("editViewMode", "merchants");
+  }
 });
 
 $("#btn-edit-go-review")?.addEventListener("click", () => setTab("review"));
@@ -5691,7 +5946,10 @@ async function runCategorizeStream() {
   const workspaceBtn = $("#btn-workspace-categorize");
   const { panel, log, result } = progressEls();
 
-  if (uiAgentWorkspace) setTab("import");
+  if (uiAgentWorkspace) {
+    setTab("import");
+    setImportWizardStep(2);
+  }
   if (legacyBtn) legacyBtn.disabled = true;
   if (workspaceBtn) workspaceBtn.disabled = true;
   panel?.classList.remove("hidden");
@@ -5818,12 +6076,16 @@ async function runCategorizeStream() {
       }
       es.close();
       setCategorizeButtonsEnabled(true);
-      loadStatus();
+      loadStatus().then((s) => {
+        finishImportWizard(s);
+      }).catch(() => {
+        finishImportWizard(null);
+      });
       reviewOptionsCache = null;
       onboardingAfterProcessingDone();
       if (uiAgentWorkspace) {
         loadWorkspaceInbox().catch(() => {});
-        setTab("review");
+        loadReviewAliasGroups().catch(() => {});
       }
       setTimeout(() => loadClassificationAudit().catch(() => {}), 10000);
       setTimeout(() => loadClassificationAudit().catch(() => {}), 45000);
@@ -5870,6 +6132,20 @@ async function loadSettings() {
       ([k, v]) => `${k}: ${v}`
     );
     $("#settings-counts").textContent = lines.join("\n") || "Empty";
+    const llmEl = $("#settings-llm-status");
+    if (llmEl) {
+      const st = await api("/api/status");
+      llmEl.textContent = [
+        `Provider: ${st.llm_provider || "—"}`,
+        `Process model: ${st.pipeline_model || st.llm_model || "—"}`,
+        `Ask model: ${st.chat_model || st.llm_model || "—"}`,
+        `UI mode (config): ${st.ui_mode || "simple"}`,
+        `UI mode (this browser): ${uiMode}`,
+      ].join("\n");
+    }
+    const modeSel = $("#settings-ui-mode");
+    if (modeSel) modeSel.value = uiMode;
+    applyUiMode();
     await loadLearningAgentSettings();
   } catch (err) {
     $("#settings-counts").textContent = `Error: ${err.message}`;
@@ -6071,7 +6347,7 @@ function buildWorkspaceProposalContextFallback(item) {
   if (item?.summary) paragraphs.push(item.summary);
   if (ctype === "merchant_label") {
     paragraphs.push(
-      "These transactions are awaiting your confirmation (needs review or pending status — not yet saved as a confirmed merchant rule)."
+      "These purchases still need your OK before we remember this payee for next time."
     );
   }
   const rationale = proposal.sample_rationale || proposal.rationale;
@@ -6124,7 +6400,9 @@ function renderWorkspaceProposalAction(item) {
 function updateWorkspaceConfirmButtons(item) {
   const editBtn = $("#btn-workspace-confirm-edit");
   const approveBtn = $("#btn-workspace-confirm-approve");
-  if (editBtn) editBtn.classList.toggle("hidden", !workspaceShowsEditButton(item));
+  // Find & edit is Expert-only; Simple mode stays on Check labels (Looks good).
+  const showEdit = uiMode === "expert" && workspaceShowsEditButton(item);
+  if (editBtn) editBtn.classList.toggle("hidden", !showEdit);
   if (approveBtn) {
     approveBtn.disabled = !workspaceCanApprove(item);
     approveBtn.title = workspaceCanApprove(item) ? "" : "No apply action for this proposal";
@@ -6205,6 +6483,133 @@ async function rejectLearningAgentInsight(insightId) {
   await api(`/api/learning-agent/insights/${insightId}/reject`, { method: "POST" });
 }
 
+function purchaseLabel(n) {
+  const count = Number(n) || 0;
+  return `${count} purchase${count === 1 ? "" : "s"}`;
+}
+
+function renderReviewAliasGroups(groups) {
+  const panel = $("#review-alias-panel");
+  const list = $("#review-alias-list");
+  const countEl = $("#review-alias-count");
+  const summaryLabel = $("#review-alias-summary-label");
+  if (!panel || !list) return;
+  if (!groups.length) {
+    panel.classList.add("hidden");
+    panel.open = false;
+    list.innerHTML = "";
+    if (countEl) countEl.textContent = "";
+    if (summaryLabel) summaryLabel.textContent = "Possible duplicates — review";
+    return;
+  }
+  panel.classList.remove("hidden");
+  // Stay collapsed unless the user already expanded this session.
+  if (!panel.dataset.userToggled) panel.open = false;
+  const n = groups.length;
+  const banner =
+    n === 1 ? "1 possible duplicate — review" : `${n} possible duplicates — review`;
+  if (summaryLabel) summaryLabel.textContent = banner;
+  if (countEl) {
+    countEl.textContent = String(n);
+    countEl.classList.add("hidden");
+  }
+  list.innerHTML = groups
+    .map((g, idx) => {
+      const canonical = g.canonical_suggestion || "";
+      const members = (g.members || []).filter((m) => m !== canonical);
+      const aliases = members
+        .map((m) => {
+          const nTx = (g.tx_counts && g.tx_counts[m]) || 0;
+          return `<li>Rename <code>${escapeHtml(m)}</code> <span class="hint">(${escapeHtml(purchaseLabel(nTx))})</span></li>`;
+        })
+        .join("");
+      const canTx = (g.tx_counts && g.tx_counts[canonical]) || 0;
+      const btnLabel = members.length === 1
+        ? `Combine into “${canonical}”`
+        : `Combine ${members.length} names into “${canonical}”`;
+      return `
+        <article class="review-alias-card" data-alias-idx="${idx}">
+          <div class="review-alias-card-main">
+            <p class="review-alias-canonical">These look like the <strong>same store</strong>. Use one shared name:</p>
+            <p class="review-alias-keep"><strong>${escapeHtml(canonical)}</strong> <span class="hint">(${escapeHtml(purchaseLabel(canTx))} — keep this)</span></p>
+            <ul class="review-alias-members">${aliases}</ul>
+          </div>
+          <button type="button" class="btn-primary btn-sm btn-review-alias-merge" data-alias-idx="${idx}" title="${escapeAttr(btnLabel)}">
+            ${escapeHtml(btnLabel)}
+          </button>
+        </article>
+      `;
+    })
+    .join("");
+  list.querySelectorAll(".btn-review-alias-merge").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.aliasIdx);
+      const group = reviewAliasGroups[idx];
+      if (!group) return;
+      const label = btn.textContent;
+      mergeReviewAliasGroup(group, btn).catch((err) => {
+        btn.disabled = false;
+        btn.textContent = label || "Combine";
+        window.alert(err.message || String(err));
+      });
+    });
+  });
+}
+
+let reviewAliasGroups = [];
+
+async function loadReviewAliasGroups() {
+  if (!uiAgentWorkspace) return;
+  try {
+    const data = await api("/api/review/merchant-aliases?limit=15");
+    reviewAliasGroups = data.groups || [];
+    renderReviewAliasGroups(reviewAliasGroups);
+  } catch (err) {
+    const list = $("#review-alias-list");
+    if (list) list.innerHTML = `<p class="hint">Could not load alias suggestions: ${escapeHtml(err.message)}</p>`;
+    const panel = $("#review-alias-panel");
+    if (panel) {
+      panel.classList.remove("hidden");
+      panel.open = true;
+      panel.dataset.userToggled = "1";
+    }
+    const summaryLabel = $("#review-alias-summary-label");
+    if (summaryLabel) summaryLabel.textContent = "Could not load duplicates — retry";
+  }
+}
+
+async function mergeReviewAliasGroup(group, btn) {
+  const canonical = String(group.canonical_suggestion || "").trim();
+  if (!canonical) throw new Error("Missing canonical merchant");
+  const aliases = Object.entries(group.aliases || {}).filter(
+    ([from, to]) => from && to && from !== to
+  );
+  if (!aliases.length) {
+    const members = (group.members || []).filter((m) => m && m !== canonical);
+    for (const m of members) aliases.push([m, canonical]);
+  }
+  if (!aliases.length) throw new Error("No aliases to merge");
+  const proposals = aliases.map(([from_label, to_label]) => ({
+    rule_type: "merchant_alias",
+    from_label,
+    to_label,
+    source: "heuristic",
+    rationale: "Merged from Review same-merchant suggestions",
+    confidence: 0.9,
+  }));
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Combining…";
+  }
+  await api("/api/taxonomy-rules/apply", {
+    method: "POST",
+    body: JSON.stringify({ confirm: "APPLY", proposals, reconcile: false }),
+  });
+  await loadReviewAliasGroups();
+  await loadWorkspaceInbox();
+  await loadStatus();
+}
+
 async function loadWorkspaceInbox() {
   const list = $("#workspace-inbox-list");
   const countEl = $("#workspace-inbox-count");
@@ -6214,11 +6619,20 @@ async function loadWorkspaceInbox() {
     const data = await api("/api/pending-confirmations");
     const items = filterWorkspaceCadenceProposals(data.items || []);
     const total = data.count ?? items.length;
-    if (countEl) countEl.textContent = String(total);
-    syncWorkspacePendingChrome(total);
+    const payeeTotal = Number(data.review_queue_total);
+    // Prefer payee queue count so this matches the nav badge / top bar.
+    if (countEl) {
+      const display =
+        Number.isFinite(payeeTotal) && payeeTotal > 0 ? payeeTotal : total;
+      countEl.textContent = String(display);
+      countEl.title =
+        Number.isFinite(payeeTotal) && payeeTotal > 0
+          ? `${payeeTotal} payees need a look`
+          : "Items that need a look";
+    }
     if (!items.length) {
       list.innerHTML =
-        `<p class="hint workspace-inbox-empty">${inlineIcon("circle-check", { size: 16 })} No pending AI proposals.</p>`;
+        `<p class="hint workspace-inbox-empty">${inlineIcon("circle-check", { size: 16 })} All caught up — nothing needs a look.</p>`;
       return;
     }
     const groups = groupWorkspaceInboxItems(items);
@@ -6357,8 +6771,13 @@ async function handleWorkspaceConfirmAction(action) {
   const item = workspaceInboxItem;
   try {
     if (action === "edit") {
+      if (uiMode !== "expert") {
+        closeWorkspaceConfirmModal();
+        return;
+      }
       const mk = item.entity_key || item.title || "";
       closeWorkspaceConfirmModal();
+      sessionStorage.setItem("editViewMode", "merchants");
       setTab("edit");
       const q = $("#edit-search-q");
       if (q && mk) {
@@ -6453,6 +6872,16 @@ async function handleWorkspaceConfirmAction(action) {
 
 $("#btn-workspace-inbox-refresh")?.addEventListener("click", () => {
   loadWorkspaceInbox().catch(() => {});
+  loadReviewAliasGroups().catch(() => {});
+});
+$("#btn-review-alias-refresh")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  loadReviewAliasGroups().catch(() => {});
+});
+$("#review-alias-panel")?.addEventListener("toggle", () => {
+  const panel = $("#review-alias-panel");
+  if (panel) panel.dataset.userToggled = "1";
 });
 $("#btn-workspace-confirm-close")?.addEventListener("click", closeWorkspaceConfirmModal);
 $("#btn-workspace-confirm-help")?.addEventListener("click", () => {

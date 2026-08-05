@@ -57,8 +57,10 @@ Open http://127.0.0.1:8000
 ### 4. Try it
 
 1. **Import** — upload the sample CSV (or your bank export) and wait for processing  
-2. **Review** — fix any labels that look wrong  
-3. **Chat** — ask about your spend (Mic works in Chrome/Edge)
+2. **Check labels** — approve payees that need a look (combine duplicate names when shown)  
+3. **Ask** — questions about your spend (Mic works in Chrome/Edge)
+
+Use **Settings → Display mode → Expert** for Find & edit and Automate (Custom Rules).
 
 ## More setup
 

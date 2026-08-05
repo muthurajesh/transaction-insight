@@ -41,6 +41,13 @@ _DATA_CHEATSHEET_PATH = Path(__file__).resolve().parent / "DATA_CHEATSHEET.md"
 CHAT_SYSTEM = """You are a personal finance assistant with read-only SQL access to a local SQLite database.
 **Never invent dollar amounts.** Every number in your answer must come from a tool result.
 
+## Plain-language glossary (how to talk to the user)
+- **Payee / store** — the cleaned name for who was paid (`merchant_key` in the database). Say "payee" or "store", never `merchant_key`.
+- **Category / sub-category** — spending buckets (`ai_category`, `ai_sub_category`).
+- **Month** — budget month for reports (`budget_month`, `YYYY-MM`), not always the calendar date on the receipt.
+- **Needs a look** — labels not yet approved (`label_status` needs_review or pending). Direct the user to the **Check labels** page; do **not** answer with spending charts.
+- **Approved** — user confirmed labels (`label_status` confirmed).
+
 ## Conversation style
 The user speaks in **plain English** (like ChatGPT). They do not know table or column names.
 - **Never** ask them to use SQL jargon (`merchant_key`, `budget_month`, `source_file`, etc.).
@@ -48,6 +55,7 @@ The user speaks in **plain English** (like ChatGPT). They do not know table or c
 - Translate their intent internally, call `query_sql`, then reply conversationally with results.
 - Use **Query hints** in the message context when present — they map natural language to correct filters.
 - **Prior turns** in the thread are real conversation history. Short follow-ups ("yes", "do that", "draft it") refer to the preceding exchange — continue that task without asking the user to repeat themselves.
+- If they ask to **review pending**, **confirm labels**, **check labels**, or **fix what needs a look**, tell them to open **Check labels** in the sidebar (or summarize open inbox items via `list_open_insights`). Do **not** run spending charts for that intent.
 
 ### Natural language → database (internal translation)
 | User says | You query |
@@ -671,8 +679,80 @@ def _usage_after_turn(conn: sqlite3.Connection) -> dict[str, Any]:
     return estimate_chat_context_usage(conn, user_message="")
 
 
+def _maybe_check_labels_intent(conn: sqlite3.Connection, user_message: str) -> dict[str, Any] | None:
+    """Route review/confirm-label asks away from analytics charts."""
+    msg = (user_message or "").strip().lower()
+    if not msg:
+        return None
+    patterns = (
+        "check labels",
+        "confirm labels",
+        "confirm categories",
+        "needs a look",
+        "need a look",
+        "review pending",
+        "pending review",
+        "pending proposals",
+        "what needs review",
+        "what needs a look",
+        "open review",
+        "review inbox",
+        "approve labels",
+        "fix my labels",
+    )
+    if not any(p in msg for p in patterns):
+        # "pending" alone is too broad (e.g. pending paycheck); require review-ish words
+        if "pending" in msg and any(
+            w in msg for w in ("label", "merchant", "payee", "confirm", "review", "inbox")
+        ):
+            pass
+        else:
+            return None
+
+    review_n = int(
+        conn.execute(
+            """
+            SELECT COUNT(DISTINCT merchant_key) AS c FROM transactions
+            WHERE label_status IN ('needs_review', 'pending')
+            """
+        ).fetchone()["c"]
+    )
+    open_insights = int(
+        conn.execute(
+            "SELECT COUNT(*) AS c FROM ai_insights WHERE status = 'open'"
+        ).fetchone()["c"]
+    )
+    if review_n <= 0 and open_insights <= 0:
+        answer = (
+            "Nothing needs a look right now — labels look approved. "
+            "Open **Check labels** anytime from the sidebar, or ask a spending question here."
+        )
+    else:
+        parts = []
+        if review_n > 0:
+            parts.append(
+                f"**{review_n} payee{'s' if review_n != 1 else ''}** still need a look"
+            )
+        if open_insights > 0:
+            parts.append(
+                f"**{open_insights} other proposal{'s' if open_insights != 1 else ''}** in the inbox"
+            )
+        answer = (
+            "Use the **Check labels** page in the sidebar to approve or fix these — "
+            "that’s where you confirm labels one payee at a time. "
+            + (" · ".join(parts) + "." if parts else "")
+        )
+    return {
+        "answer": answer,
+        "tool_trace": [{"tool": "check_labels_intent", "args": {}, "result": {"review_payees": review_n, "open_insights": open_insights}}],
+    }
+
+
 def _maybe_direct_answer(conn: sqlite3.Connection, user_message: str) -> dict[str, Any] | None:
-    """Bypass the LLM only for UI workflow actions (cadence modal, report list)."""
+    """Bypass the LLM only for UI workflow actions (cadence modal, report list, check-labels intent)."""
+    check_labels = _maybe_check_labels_intent(conn, user_message)
+    if check_labels:
+        return check_labels
     cadence = _maybe_cadence_propose_answer(conn, user_message)
     if cadence:
         return cadence
