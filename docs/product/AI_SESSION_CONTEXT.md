@@ -94,7 +94,7 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 ### Edit & insights
 
 - Edit table: cadence columns + filters ([Phase C](../cadence/EXPENSE_CADENCE_PHASE_C.md))
-- Post-edit AI insight + CustomRule suggest; duplicate rule suppression ([EDIT_INSIGHTS.md](../rules/EDIT_INSIGHTS.md), `custom_rule_similarity.py`)
+- Post-edit AI insight + CustomRule suggest (`EDIT_INSIGHT_ENABLED`); duplicate rule suppression ([EDIT_INSIGHTS.md](../rules/EDIT_INSIGHTS.md), `custom_rule_similarity.py`)
 - **Custom Rules tab** — preview matches (current vs proposed), read-only compiled JSON, `flow_type` in rules, apply one/all ([CUSTOM_RULES.md](../rules/CUSTOM_RULES.md))
 
 ### Agent Workspace & decision memory
@@ -103,7 +103,8 @@ Provenance + replace-by-filename on web process. **Not** used for dedup.
 - **`UI_MODE=simple|expert` (default simple):** Controls Expert nav; Settings toggle overrides per browser
 - **Review simplification:** plain-English Check labels; Combine as one; Import wizard; Ask has no Pending banner; chat check-labels intent
 - **`decision_events`** + **`ai_insights`**; HITL logging on confirm, audit dismiss, taxonomy apply, edit corrections ([DECISION_MEMORY.md](DECISION_MEMORY.md))
-- **Learning Agent:** opt-in (`LEARNING_AGENT_ENABLED=0` default); LLM Decision Analyst (`LEARNING_AGENT_MODEL`, `query_sql` loop) + heuristic fallback → inbox; scheduler + `POST /api/learning-agent/run`; accepted insights → `review_suggest` context
+- **Learning Agent:** opt-in (`LEARNING_AGENT_ENABLED=0` default); LLM Decision Analyst (`LEARNING_AGENT_MODEL`, `query_sql` loop) + heuristic fallback → inbox; scheduler + `POST /api/learning-agent/run`
+- Legacy **Confirm Categories** / bulk Suggest labels removed; review is **Check labels** only ([CONFIRM_CATEGORIES.md](../classification/CONFIRM_CATEGORIES.md))
 - **Pending:** Full orchestrator / monthly_close workflow (Steps 4–5 chat+HITL shipped)
 
 ### Chat UI

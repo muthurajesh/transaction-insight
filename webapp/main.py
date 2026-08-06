@@ -17,6 +17,7 @@ from webapp.agent.chat_history import export_chat_history, list_chat_history, li
 from webapp.config import (
     CHAT_MODEL,
     DB_PATH,
+    EDIT_INSIGHT_ENABLED,
     INBOX_DIR,
     PROCESSED_DIR,
     LLM_BASE_URL,
@@ -31,16 +32,7 @@ from webapp.config import (
     LEARNING_AGENT_MODEL,
 )
 from webapp.db.schema import get_connection, init_db
-from webapp.services.categorize import (
-    list_merchant_transactions,
-    list_review_items,
-)
 from webapp.services.review_confirm import confirm_merchant_or_transaction, confirm_preview
-from webapp.services.review_suggest import (
-    REVIEW_SUGGEST_BATCH_LIMITS,
-    suggest_labels_bulk,
-    suggest_labels_for_merchant,
-)
 from webapp.services.process import list_inbox_csv_paths, process_inbox_files
 from webapp.services.classification_audit import (
     audit_summary,
@@ -170,14 +162,6 @@ class ReviewConfirmPreviewRequest(BaseModel):
     expense_type: str = "Variable"
     flow_type: str = "Expense"
     classification: str = "Personal"
-
-
-class ReviewSuggestRequest(BaseModel):
-    transaction_id: str | None = None
-
-
-class ReviewSuggestBatchRequest(BaseModel):
-    limit: int = Field(10, ge=10, le=100)
 
 
 class ClearDataRequest(BaseModel):
@@ -345,6 +329,7 @@ def api_status() -> dict[str, Any]:
             "ui_show_cadence": UI_SHOW_CADENCE,
             "ui_agent_workspace": UI_AGENT_WORKSPACE,
             "ui_mode": UI_MODE,
+            "edit_insight_enabled": EDIT_INSIGHT_ENABLED,
             "learning_agent_enabled": LEARNING_AGENT_ENABLED,
             "learning_agent_interval_hours": LEARNING_AGENT_INTERVAL_HOURS,
             "learning_agent_model": LEARNING_AGENT_MODEL,
@@ -722,62 +707,6 @@ def api_review_options() -> dict[str, Any]:
     conn = _conn()
     try:
         return get_review_options(conn)
-    finally:
-        conn.close()
-
-
-@app.get("/api/review")
-def api_review() -> list[dict[str, Any]]:
-    conn = _conn()
-    try:
-        return list_review_items(conn)
-    finally:
-        conn.close()
-
-
-@app.get("/api/review/{merchant_key}/transactions")
-def api_review_transactions(merchant_key: str) -> list[dict[str, Any]]:
-    conn = _conn()
-    try:
-        return list_merchant_transactions(conn, merchant_key, review_only=True)
-    finally:
-        conn.close()
-
-
-@app.post("/api/review/suggest-batch")
-def api_review_suggest_batch(body: ReviewSuggestBatchRequest | None = None) -> dict[str, Any]:
-    body = body or ReviewSuggestBatchRequest()
-    if body.limit not in REVIEW_SUGGEST_BATCH_LIMITS:
-        raise HTTPException(400, "limit must be one of: 10, 25, 50, 100")
-    conn = _conn()
-    try:
-        try:
-            return suggest_labels_bulk(conn, limit=body.limit)
-        except ValueError as exc:
-            raise HTTPException(400, str(exc)) from exc
-        except Exception as exc:
-            raise HTTPException(500, str(exc)) from exc
-    finally:
-        conn.close()
-
-
-@app.post("/api/review/{merchant_key}/suggest-labels")
-def api_review_suggest_labels(
-    merchant_key: str, body: ReviewSuggestRequest | None = None
-) -> dict[str, Any]:
-    body = body or ReviewSuggestRequest()
-    conn = _conn()
-    try:
-        try:
-            return suggest_labels_for_merchant(
-                conn,
-                merchant_key,
-                transaction_id=body.transaction_id,
-            )
-        except ValueError as exc:
-            raise HTTPException(404, str(exc)) from exc
-        except Exception as exc:
-            raise HTTPException(500, str(exc)) from exc
     finally:
         conn.close()
 
@@ -1305,6 +1234,11 @@ def api_transactions_bulk_label(body: TransactionBulkLabelRequest) -> dict[str, 
 
 @app.post("/api/transactions/edit-insight")
 def api_transactions_edit_insight(body: EditInsightRequest) -> dict[str, Any]:
+    if not EDIT_INSIGHT_ENABLED:
+        raise HTTPException(
+            403,
+            "AI insight is turned off (EDIT_INSIGHT_ENABLED=0).",
+        )
     conn = _conn()
     try:
         try:
@@ -1443,6 +1377,7 @@ def api_settings() -> dict[str, Any]:
             "ui_show_cadence": UI_SHOW_CADENCE,
             "ui_agent_workspace": UI_AGENT_WORKSPACE,
             "ui_mode": UI_MODE,
+            "edit_insight_enabled": EDIT_INSIGHT_ENABLED,
             "learning_agent_enabled": LEARNING_AGENT_ENABLED,
             "learning_agent_interval_hours": LEARNING_AGENT_INTERVAL_HOURS,
             "learning_agent_model": LEARNING_AGENT_MODEL,

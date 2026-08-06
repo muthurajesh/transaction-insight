@@ -1,6 +1,8 @@
 # Edit insights (AI after label changes)
 
-After you **Apply** label changes in **Edit Transactions**, the app calls the LLM with edit context and database stats, then shows an **AI insight** modal.
+After you **Apply** label changes in **Edit Transactions** / **Find & edit**, the app can call the LLM with edit context and database stats, then show an **AI insight** modal.
+
+**Flag:** `EDIT_INSIGHT_ENABLED` (default `1`). When `0`, Apply still saves labels; the modal shows “AI insight is turned off” and no LLM call is made (`POST /api/transactions/edit-insight` returns 403).
 
 ## What the AI sees
 

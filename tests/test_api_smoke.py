@@ -49,6 +49,27 @@ def test_api_status(client: TestClient):
     assert body["review_merchant_count"] == 0
     assert body["review_transaction_count"] == 0
     assert body.get("ui_mode") in ("simple", "expert")
+    assert "edit_insight_enabled" in body
+
+
+def test_edit_insight_disabled_returns_403(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    import webapp.main as main
+
+    monkeypatch.setattr(main, "EDIT_INSIGHT_ENABLED", False)
+    res = client.post(
+        "/api/transactions/edit-insight",
+        json={
+            "merchant_key": "Test Merchant",
+            "scope": "single",
+            "rows_updated": 1,
+            "before": {"ai_category": "A", "ai_sub_category": "", "expense_type": "Variable", "classification": "Personal"},
+            "after": {"ai_category": "B", "ai_sub_category": "", "expense_type": "Variable", "classification": "Personal"},
+            "amount": -10.0,
+            "update_merchant_label": False,
+        },
+    )
+    assert res.status_code == 403
+    assert "turned off" in res.json()["detail"].lower()
 
 
 def test_api_review_merchant_aliases(client: TestClient):

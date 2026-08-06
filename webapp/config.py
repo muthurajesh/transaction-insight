@@ -35,6 +35,9 @@ UI_SHOW_CADENCE = env_bool("UI_SHOW_CADENCE", default=not UI_AGENT_WORKSPACE)
 _raw_ui_mode = os.getenv("UI_MODE", "simple").strip().lower()
 UI_MODE = _raw_ui_mode if _raw_ui_mode in ("simple", "expert") else "simple"
 
+# Post-Apply AI insight modal on Edit Transactions / Find & edit.
+EDIT_INSIGHT_ENABLED = env_bool("EDIT_INSIGHT_ENABLED", default=True)
+
 CLASSIFICATION_AUDIT_ENABLED = env_bool("CLASSIFICATION_AUDIT_ENABLED", default=True)
 
 LEARNING_AGENT_ENABLED = env_bool("LEARNING_AGENT_ENABLED", default=False)

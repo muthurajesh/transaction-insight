@@ -15,13 +15,13 @@ function labelStatusIconName(status) {
 let uiShowCadence = true;
 let uiAgentWorkspace = true;
 let uiMode = "simple"; // "simple" | "expert"
+let editInsightEnabled = true;
 const UI_MODE_KEY = "ti_ui_mode";
 let workspaceInboxItem = null;
 let initialRouteSet = false;
 let sidebarNavBound = false;
 let sidebarToggleBound = false;
 const SIDEBAR_COLLAPSED_KEY = "ti_sidebar_collapsed";
-const reviewSuggestedLabels = new Map();
 
 const PAGE_CHROME = {
   import: { title: "Import", crumb: "Workspace", leaf: "Import" },
@@ -36,10 +36,8 @@ const PAGE_CHROME = {
 };
 
 function panelIdForTab(name) {
-  if (uiAgentWorkspace) {
-    if (name === "review") return "panel-workspace-review";
-    if (name === "import") return "panel-import";
-  }
+  if (name === "review") return "panel-workspace-review";
+  if (uiAgentWorkspace && name === "import") return "panel-import";
   return `panel-${name}`;
 }
 
@@ -259,10 +257,8 @@ function setTab(name, options = {}) {
   updatePageChrome(name);
 
   if (name === "review") {
-    if (uiAgentWorkspace) {
-      loadWorkspaceInbox().catch(() => {});
-      loadReviewAliasGroups().catch(() => {});
-    } else loadReview();
+    loadWorkspaceInbox().catch(() => {});
+    loadReviewAliasGroups().catch(() => {});
   }
   if (name === "settings") {
     loadSettings();
@@ -351,9 +347,9 @@ const ONBOARDING_STEPS = [
     demoProgress: true,
   },
   {
-    title: "Confirm Categories",
+    title: "Check labels",
     body:
-      "After processing, review AI-suggested labels per merchant here. Confirming saves rules so the next import is faster.",
+      "After processing, open Check labels — approve payees the AI wasn’t sure about, and combine duplicate store names when asked.",
     target: '.tab[data-tab="review"]',
     tab: "review",
     kicker: "Step 4 of 5",
@@ -811,26 +807,12 @@ function renderLabelStatusBadge(status) {
   return `<span class="label-status-badge ${cls}">${ic}${escapeHtml(formatLabelStatus(s))}</span>`;
 }
 
-function focusReviewMerchantIfRequested() {
-  const focus = sessionStorage.getItem("reviewFocusMerchant");
-  if (!focus) return;
-  sessionStorage.removeItem("reviewFocusMerchant");
-  const cards = document.querySelectorAll("#review-list .review-item");
-  for (const card of cards) {
-    if (card.dataset.merchantKey === focus) {
-      card.scrollIntoView({ behavior: "smooth", block: "start" });
-      card.classList.add("review-item-focus");
-      setTimeout(() => card.classList.remove("review-item-focus"), 2500);
-      break;
-    }
-  }
-}
-
 async function loadStatus() {
   const s = await api("/api/status");
   uiShowCadence = s.ui_show_cadence !== false;
   uiAgentWorkspace = s.ui_agent_workspace !== false;
   uiMode = resolveUiMode(s.ui_mode);
+  editInsightEnabled = s.edit_insight_enabled !== false;
   applyUiFeatureFlags();
   applyUiMode();
   const provider = s.llm_provider ? `${s.llm_provider} · ` : "";
@@ -2160,41 +2142,8 @@ function renderDatalistOptions(datalistEl, items) {
     .join("");
 }
 
-function ensureReviewDatalists(options, category = "") {
-  const host = $("#review-datalists");
-  if (!host) return;
-  const catId = "review-categories";
-  const subId = "review-subcategories";
-  host.innerHTML = `
-    <datalist id="${catId}">${options.categories.map((c) => `<option value="${escapeAttr(c)}"></option>`).join("")}</datalist>
-    <datalist id="${subId}"></datalist>
-  `;
-  renderDatalistOptions(document.getElementById(subId), orderedSubCategories(category, options));
-}
-
-function refreshReviewSubDatalist(category) {
-  if (!reviewOptionsCache) return;
-  renderDatalistOptions(
-    document.getElementById("review-subcategories"),
-    orderedSubCategories(category, reviewOptionsCache)
-  );
-}
-
 function populateSubCategorySelect(sel, options, category, allLabel, current) {
   populateEditSelect(sel, orderedSubCategories(category, options), allLabel, current);
-}
-
-function reviewField(name, label, tooltip, controlHtml, { fullWidth = false } = {}) {
-  const helpLabel = tooltip ? `Help: ${tooltip}` : "Help";
-  return `
-    <div class="review-field${fullWidth ? " review-field-full" : ""}">
-      <div class="review-field-head">
-        <label for="${name}">${escapeHtml(label)}</label>
-        <button type="button" class="field-tip" title="${escapeAttr(tooltip)}" aria-label="${escapeAttr(helpLabel)}">?</button>
-      </div>
-      ${controlHtml}
-    </div>
-  `;
 }
 
 function formatMoney(amount) {
@@ -2205,77 +2154,6 @@ function formatMoney(amount) {
     maximumFractionDigits: 2,
   });
   return n < 0 ? `-$${abs}` : `$${abs}`;
-}
-
-function renderTransactionRows(transactions) {
-  if (!transactions.length) {
-    return '<p class="review-tx-empty">No transactions found.</p>';
-  }
-  const rows = transactions
-    .map((tx) => {
-      const desc =
-        tx.simple_description ||
-        tx.user_description ||
-        tx.original_description ||
-        "—";
-      const extra = [
-        tx.ai_category ? `AI: ${tx.ai_category}${tx.ai_sub_category ? ` / ${tx.ai_sub_category}` : ""}` : "",
-        tx.source_category ? `Bank: ${tx.source_category}` : "",
-        tx.account_name ? `Account: ${tx.account_name}` : "",
-        tx.classification ? `Class: ${tx.classification}` : "",
-        tx.budget_month ? `Month: ${tx.budget_month}` : "",
-        tx.label_status ? `Status: ${tx.label_status}` : "",
-      ]
-        .filter(Boolean)
-        .join(" · ");
-      return `
-        <tr>
-          <td>${escapeHtml(tx.date || "")}</td>
-          <td class="amount">${escapeHtml(formatMoney(tx.amount))}</td>
-          <td>${escapeHtml(desc)}</td>
-          <td class="tx-extra">${escapeHtml(extra || "—")}</td>
-        </tr>
-      `;
-    })
-    .join("");
-  return `
-    <div class="review-tx-scroll">
-      <table class="review-tx-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Amount</th>
-            <th>Description</th>
-            <th>Details</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-  `;
-}
-
-async function toggleReviewTransactions(btn, merchantKey, panel) {
-  const expanded = btn.getAttribute("aria-expanded") === "true";
-  if (expanded) {
-    btn.setAttribute("aria-expanded", "false");
-    btn.title = "Show transactions in this group";
-    panel.classList.add("hidden");
-    return;
-  }
-  btn.setAttribute("aria-expanded", "true");
-  btn.title = "Hide transactions";
-  panel.classList.remove("hidden");
-  if (panel.dataset.loaded === "1") return;
-
-  panel.innerHTML = '<p class="review-tx-loading">Loading transactions…</p>';
-  try {
-    const txs = await api(`/api/review/${encodeURIComponent(merchantKey)}/transactions`);
-    panel.innerHTML = renderTransactionRows(txs);
-    panel.dataset.loaded = "1";
-  } catch (err) {
-    panel.innerHTML = `<p class="review-tx-empty">Error: ${escapeHtml(err.message)}</p>`;
-  }
 }
 
 function buildSelectOptions(values, selected, { allowEmpty = false } = {}) {
@@ -2504,7 +2382,6 @@ function wireCustomRuleBuilder() {
 }
 
 wireCustomRuleBuilder();
-let reviewSuggestBusy = false;
 
 function setReviewPanelBusy(busy, { title, hint } = {}) {
   const overlay = $("#app-busy-overlay");
@@ -2536,7 +2413,7 @@ function updateCustomRulesComposerMode() {
 
 function setCustomRulesBusy(busy, { title, hint } = {}) {
   customRulesBusy = busy;
-  setReviewPanelBusy(reviewSuggestBusy || customRulesBusy, busy ? { title, hint } : {});
+  setReviewPanelBusy(customRulesBusy, busy ? { title, hint } : {});
 
   [
     "#btn-custom-rule-save-apply",
@@ -2569,132 +2446,6 @@ function setCustomRulesBusy(busy, { title, hint } = {}) {
       ["#crb-set-category", "#crb-category"],
       ["#crb-set-sub-type", "#crb-sub-type"],
     ].forEach(([checkId, fieldId]) => syncCustomRuleSetFieldEnabled(checkId, fieldId));
-  }
-}
-
-function setReviewSuggestBusy(busy, { title, hint } = {}) {
-  reviewSuggestBusy = busy;
-  setReviewPanelBusy(reviewSuggestBusy || customRulesBusy, busy ? { title, hint } : {});
-
-  const batchBtn = $("#btn-review-suggest-batch");
-  const batchSelect = $("#review-suggest-batch");
-  if (batchBtn) batchBtn.disabled = busy || customRulesBusy;
-  if (batchSelect) batchSelect.disabled = busy || customRulesBusy;
-}
-
-function applyReviewSuggestionToCard(card, suggestion) {
-  if (!card || !suggestion) return;
-  const labels = suggestion.labels || {};
-  const key = card.dataset.merchantKey || card.dataset.transactionId || "";
-  if (key && labels.ai_category) {
-    reviewSuggestedLabels.set(key, { ...labels });
-  }
-  const idx = card.dataset.reviewIdx;
-  const setVal = (id, val) => {
-    const el = card.querySelector(`#review-${idx}-${id}`);
-    if (el && val != null && String(val).trim() !== "") el.value = val;
-  };
-  setVal("cat", labels.ai_category);
-  setVal("sub", labels.ai_sub_category);
-  setVal("flow", labels.flow_type);
-  setVal("type", labels.expense_type);
-  setVal("class", labels.classification);
-
-  let note = card.querySelector(".review-suggest-note");
-  if (!note) {
-    note = document.createElement("div");
-    note.className = "review-suggest-note";
-    const meta = card.querySelector(".meta");
-    if (meta) meta.after(note);
-    else card.querySelector(".review-item-title")?.appendChild(note);
-  }
-  const conf = suggestion.confidence || "medium";
-  const src = suggestion.source || "ai";
-  const rationale = suggestion.rationale || "Suggested labels applied.";
-  note.innerHTML = `${inlineIcon("sparkles", { size: 14 })} ${escapeHtml(rationale)} (${escapeHtml(conf)} · ${escapeHtml(src)})`;
-  note.dataset.confidence = conf;
-}
-
-function formatReviewGroupCount(count) {
-  const n = Number(count) || 0;
-  return `${n} group${n === 1 ? "" : "s"} to review`;
-}
-
-function updateReviewBulkCount(count) {
-  const toolbar = $("#review-bulk-toolbar");
-  const countEl = $("#review-bulk-count");
-  const n =
-    typeof count === "number"
-      ? count
-      : document.querySelectorAll("#review-list .review-item").length;
-  if (countEl) countEl.textContent = formatReviewGroupCount(n);
-  if (toolbar) toolbar.classList.toggle("hidden", n <= 0);
-  updateReviewWorkflow(n);
-  return n;
-}
-
-async function runReviewBulkSuggest() {
-  if (reviewSuggestBusy || customRulesBusy) return;
-
-  const limit = Number($("#review-suggest-batch")?.value || 10);
-  const cards = [...document.querySelectorAll(".review-item")].slice(0, limit);
-  const statusEl = $("#review-suggest-status");
-  if (!cards.length) {
-    if (statusEl) statusEl.textContent = "No groups to suggest.";
-    return;
-  }
-
-  setReviewSuggestBusy(true, {
-    title: "Suggesting labels…",
-    hint: `0 / ${cards.length} — starting`,
-  });
-  if (statusEl) statusEl.textContent = `Suggesting up to ${cards.length} group(s)…`;
-
-  let lookupCount = 0;
-  let llmCount = 0;
-  const errors = [];
-
-  for (let i = 0; i < cards.length; i++) {
-    const card = cards[i];
-    const merchantKey = card.dataset.merchantKey;
-    const transactionId = card.dataset.transactionId || null;
-    setReviewSuggestBusy(true, {
-      title: "Suggesting labels…",
-      hint: `${i + 1} / ${cards.length} — ${merchantKey}`,
-    });
-    if (statusEl) {
-      statusEl.textContent = `Suggesting ${i + 1} / ${cards.length}: ${merchantKey}`;
-    }
-    try {
-      const mk = encodeURIComponent(merchantKey);
-      const suggestion = await api(`/api/review/${mk}/suggest-labels`, {
-        method: "POST",
-        body: JSON.stringify({ transaction_id: transactionId }),
-      });
-      applyReviewSuggestionToCard(card, suggestion);
-      const src = suggestion.source || "";
-      if (
-        src === "MerchantCategories" ||
-        src === "BusinessCategoryRules" ||
-        src === "CustomRules" ||
-        src === "merchant_labels"
-      ) {
-        lookupCount += 1;
-      } else if (src === "llm") {
-        llmCount += 1;
-      }
-    } catch (err) {
-      errors.push(`${merchantKey}: ${err.message}`);
-    }
-  }
-
-  setReviewSuggestBusy(false);
-  if (statusEl) {
-    const errPart = errors.length ? ` · ${errors.length} error(s)` : "";
-    statusEl.textContent = `Done — ${lookupCount} from lookups, ${llmCount} from AI${errPart}. Review and confirm each group.`;
-  }
-  if (errors.length) {
-    console.warn("Bulk suggest errors:", errors);
   }
 }
 
@@ -2958,7 +2709,7 @@ async function runCustomRulesWorkflow(mode, { ruleText } = {}) {
     }
     updateCustomRulesComposerMode();
     await runCustomRulesPreview({ resetPage: true });
-    await loadReview();
+    await loadWorkspaceInbox().catch(() => {});
     loadStatus();
     reviewOptionsCache = null;
   } catch (err) {
@@ -3257,9 +3008,6 @@ $("#btn-custom-rules-preview-next")?.addEventListener("click", () => {
   }
 });
 
-$("#btn-review-suggest-batch")?.addEventListener("click", () => {
-  runReviewBulkSuggest();
-});
 
 let editOptionsCache = null;
 let editSourceTx = null;
@@ -3270,15 +3018,6 @@ const EDIT_PAGE_SIZE = 50;
 const EDIT_MERCHANT_PAGE_SIZE = 25;
 const EDIT_CLASSIFICATIONS = ["Personal", "Business"];
 const EDIT_FLOW_TYPES = ["Expense", "Income", "Transfer", "Adjustment"];
-const BUSINESS_AI_CATEGORIES = new Set(["Business Expenses", "Business"]);
-
-function alignReviewClassificationFromCategory(formEl) {
-  if (!formEl) return;
-  const category = String(formEl.querySelector('[name="category"]')?.value || "").trim();
-  const classEl = formEl.querySelector('[name="classification"]');
-  if (!classEl || !BUSINESS_AI_CATEGORIES.has(category)) return;
-  classEl.value = "Business";
-}
 let editPageOffset = 0;
 let editSearchTotal = 0;
 let editSortBy = "date";
@@ -4508,18 +4247,6 @@ async function loadCadenceScope({ resetPage = false } = {}) {
   ]);
 }
 
-function updateReviewWorkflow(itemCount) {
-  const empty = $("#review-empty-state");
-  const stepper = $("#review-stepper");
-  const n = Number(itemCount) || 0;
-  if (empty) empty.classList.toggle("hidden", n > 0);
-  if (n > 0) {
-    setWorkflowStepper(stepper, 2);
-  } else {
-    setWorkflowStepper(stepper, 1);
-  }
-}
-
 function updateCadenceBulkCount(count, filterLabels) {
   const countEl = $("#cadence-bulk-count");
   if (typeof count === "number") {
@@ -5304,6 +5031,17 @@ function renderEditInsight(insight) {
 
 async function fetchEditInsight(context) {
   openEditInsightModal();
+  const actions = $("#edit-insight-actions");
+  if (actions) actions.classList.add("hidden");
+  if (!editInsightEnabled) {
+    editInsightState = null;
+    const body = $("#edit-insight-body");
+    if (body) {
+      body.innerHTML =
+        `<p class="hint">AI insight is turned off. Set <code>EDIT_INSIGHT_ENABLED=1</code> in <code>config/.env</code> to enable post-edit analysis.</p>`;
+    }
+    return;
+  }
   try {
     const insight = await api("/api/transactions/edit-insight", {
       method: "POST",
@@ -5436,322 +5174,6 @@ $("#edit-label-form")?.addEventListener("submit", async (e) => {
   }
 });
 
-let reviewConfirmState = null;
-
-function closeReviewConfirmModal() {
-  reviewConfirmState = null;
-  const overlay = $("#review-confirm-overlay");
-  const errEl = $("#review-confirm-error");
-  if (overlay) {
-    overlay.classList.add("hidden");
-    overlay.setAttribute("aria-hidden", "true");
-  }
-  if (errEl) {
-    errEl.textContent = "";
-    errEl.classList.add("hidden");
-  }
-  const replaceWrap = $("#review-confirm-replace-wrap");
-  const replaceCb = $("#review-confirm-replace");
-  if (replaceWrap) replaceWrap.classList.add("hidden");
-  if (replaceCb) replaceCb.checked = false;
-}
-
-function renderReviewConfirmBody(preview, merchantKey) {
-  const parts = [];
-  parts.push(
-    `<p><strong>${escapeHtml(merchantKey)}</strong> — ${preview.pending_count} pending, ${preview.total_count} total transaction(s).</p>`
-  );
-
-  if (preview.differing_confirmed_count > 0) {
-    parts.push(
-      `<p><strong>${preview.differing_confirmed_count}</strong> already-confirmed transaction(s) have different labels than your choice.</p>`
-    );
-    if (preview.differing_breakdown?.length) {
-      const items = preview.differing_breakdown
-        .map(
-          (row) =>
-            `<li>${escapeHtml(row.ai_category || "—")}${row.ai_sub_category ? ` / ${escapeHtml(row.ai_sub_category)}` : ""} (${row.count})</li>`
-        )
-        .join("");
-      parts.push(`<ul class="review-confirm-breakdown">${items}</ul>`);
-    }
-  } else if (preview.pending_count === 0) {
-    parts.push("<p>No pending transactions; you can still update all rows to match this rule.</p>");
-  }
-
-  if (preview.suggest_custom_rule && preview.custom_rule_hint) {
-    parts.push(`<div class="review-confirm-warn">${escapeHtml(preview.custom_rule_hint)}</div>`);
-  }
-
-  const conflicts = preview.lookup_conflicts || [];
-  if (conflicts.length) {
-    const conflictLines = conflicts
-      .map((c) => {
-        const ex = c.existing || {};
-        return `<li><strong>${escapeHtml(c.source)}</strong>: ${escapeHtml(ex.ai_category || "—")}${ex.ai_sub_category ? ` / ${escapeHtml(ex.ai_sub_category)}` : ""}</li>`;
-      })
-      .join("");
-    parts.push(
-      `<p>Conflicting saved lookup rule:</p><ul class="review-confirm-breakdown">${conflictLines}</ul>`
-    );
-  }
-
-  parts.push(
-    "<p class=\"hint\">Saving updates merchant labels in the database and matching transaction rows.</p>"
-  );
-  return parts.join("");
-}
-
-function openReviewConfirmModal(preview, item, payload, cardEl) {
-  reviewConfirmState = { item, payload, preview, cardEl };
-  const overlay = $("#review-confirm-overlay");
-  const body = $("#review-confirm-body");
-  const title = $("#review-confirm-title");
-  const replaceWrap = $("#review-confirm-replace-wrap");
-  const replaceCb = $("#review-confirm-replace");
-  if (title) title.textContent = `Confirm — ${item.merchant_key}`;
-  if (body) body.innerHTML = renderReviewConfirmBody(preview, item.merchant_key);
-  if (replaceWrap) {
-    const conflicts = preview.lookup_conflicts || [];
-    replaceWrap.classList.toggle("hidden", !conflicts.length);
-  }
-  if (replaceCb) replaceCb.checked = false;
-  if (overlay) {
-    overlay.classList.remove("hidden");
-    overlay.setAttribute("aria-hidden", "false");
-  }
-}
-
-async function submitReviewConfirm(scope) {
-  if (!reviewConfirmState) return;
-  const { item, payload, cardEl } = reviewConfirmState;
-  const replaceRule = $("#review-confirm-replace")?.checked ?? false;
-  const errEl = $("#review-confirm-error");
-  const pendingBtn = $("#btn-review-confirm-pending");
-  const allBtn = $("#btn-review-confirm-all");
-  if (pendingBtn) pendingBtn.disabled = true;
-  if (allBtn) allBtn.disabled = true;
-  if (errEl) {
-    errEl.textContent = "";
-    errEl.classList.add("hidden");
-  }
-  try {
-    const mk = encodeURIComponent(item.merchant_key);
-    const suggestKey = item.transaction_id || item.merchant_key;
-    const res = await api(`/api/review/${mk}/confirm`, {
-      method: "POST",
-      body: JSON.stringify({
-        ...payload,
-        scope,
-        replace_conflicting_rule: replaceRule,
-        suggested_labels: reviewSuggestedLabels.get(suggestKey) || null,
-      }),
-    });
-    if (suggestKey) reviewSuggestedLabels.delete(suggestKey);
-    if (cardEl) cardEl.remove();
-    updateReviewBulkCount();
-    closeReviewConfirmModal();
-    loadStatus();
-    if (res.suggest_custom_rule && res.custom_rule_hint) {
-      const resultEl = $("#custom-rules-result");
-      if (resultEl) {
-        resultEl.textContent = `Confirmed. ${res.custom_rule_hint}`;
-        resultEl.classList.add("custom-rules-result-ok");
-        resultEl.dataset.sticky = "1";
-      }
-    }
-  } catch (err) {
-    if (errEl) {
-      errEl.textContent = err.message;
-      errEl.classList.remove("hidden");
-    }
-  } finally {
-    if (pendingBtn) pendingBtn.disabled = false;
-    if (allBtn) allBtn.disabled = false;
-  }
-}
-
-$("#btn-review-confirm-close")?.addEventListener("click", closeReviewConfirmModal);
-$("#btn-review-confirm-cancel")?.addEventListener("click", closeReviewConfirmModal);
-$("#review-confirm-overlay")?.addEventListener("click", (e) => {
-  if (e.target?.id === "review-confirm-overlay") closeReviewConfirmModal();
-});
-$("#btn-review-confirm-pending")?.addEventListener("click", () => submitReviewConfirm("pending"));
-$("#btn-review-confirm-all")?.addEventListener("click", () => submitReviewConfirm("all"));
-
-async function loadReview() {
-  const list = $("#review-list");
-  list.innerHTML = "<p>Loading…</p>";
-  try {
-    const [items, options] = await Promise.all([
-      api("/api/review"),
-      reviewOptionsCache ? Promise.resolve(reviewOptionsCache) : api("/api/review/options"),
-    ]);
-    reviewOptionsCache = options;
-    ensureReviewDatalists(options);
-    if (!list.dataset.subRerankReady) {
-      list.addEventListener("focusin", (e) => {
-        if (!e.target.matches('input[name="sub"]')) return;
-        const form = e.target.closest("form");
-        const cat = form?.querySelector('[name="category"]')?.value?.trim() || "";
-        refreshReviewSubDatalist(cat);
-      });
-      list.dataset.subRerankReady = "1";
-    }
-
-    const tips = options.tooltips || {};
-    const suggestStatus = $("#review-suggest-status");
-    if (!items.length) {
-      updateReviewBulkCount(0);
-      if (suggestStatus) suggestStatus.textContent = "";
-      list.innerHTML = "";
-      return;
-    }
-    updateReviewBulkCount(items.length);
-    if (suggestStatus && !reviewSuggestBusy) suggestStatus.textContent = "";
-    list.innerHTML = "";
-    items.forEach((item, idx) => {
-      const flow = item.flow_type || "Expense";
-      const expType = item.expense_type || "Variable";
-      const classification =
-        EDIT_CLASSIFICATIONS.includes(item.classification) ? item.classification : "Personal";
-      const classValues = [...EDIT_CLASSIFICATIONS];
-      const cat = item.ai_category || "";
-      const sub = item.ai_sub_category || "";
-      const uid = `review-${idx}`;
-      const isSingleTx = item.review_mode === "transaction" && item.transaction_id;
-      const title = isSingleTx
-        ? `${item.merchant_key} · ${formatMoney(item.amount)}`
-        : item.merchant_key;
-      const meta = isSingleTx
-        ? `${item.date || "—"} · ${item.sample_description || ""} · confidence ${(item.confidence || 0).toFixed(2)}`
-        : `${item.transaction_count} tx · confidence ${(item.confidence || 0).toFixed(2)} · ${item.sample_description || ""}`;
-      const confirmLabel = isSingleTx ? "Confirm this transaction" : "Confirm pending in this group";
-
-      const el = document.createElement("div");
-      el.className = `review-item${isSingleTx ? " review-item-single" : ""}`;
-      el.dataset.merchantKey = item.merchant_key;
-      el.dataset.reviewIdx = String(idx);
-      if (item.transaction_id) el.dataset.transactionId = item.transaction_id;
-      el.innerHTML = `
-        <div class="review-item-header${isSingleTx ? " review-item-header-single" : ""}">
-          <div class="review-item-title">
-            <h3>${escapeHtml(title)}</h3>
-            <div class="meta" title="${escapeAttr(tips.confidence || "")}">
-              ${meta}
-            </div>
-          </div>
-          ${isSingleTx ? "" : '<button type="button" class="review-expand" aria-expanded="false" aria-label="Show transactions" title="Show transactions in this group">▶</button>'}
-        </div>
-        ${isSingleTx ? "" : `<div class="review-tx-panel hidden" data-merchant="${escapeAttr(item.merchant_key)}"></div>`}
-        <form class="review-form">
-          ${reviewField(
-            `${uid}-cat`,
-            "Category",
-            tips.category || "Top-level category",
-            `<input id="${uid}-cat" name="category" list="review-categories" value="${escapeAttr(cat)}" placeholder="Select or type…" required title="${escapeAttr(tips.category || "")}" />`
-          )}
-          ${reviewField(
-            `${uid}-sub`,
-            "Sub-category",
-            tips.sub_category || "Specific label",
-            `<input id="${uid}-sub" name="sub" list="review-subcategories" value="${escapeAttr(sub)}" placeholder="Select or type…" title="${escapeAttr(tips.sub_category || "")}" />`
-          )}
-          <div class="review-form-row">
-            ${reviewField(
-              `${uid}-flow`,
-              "Transaction kind",
-              tips.flow_type || "How this row is counted in summaries",
-              `<select id="${uid}-flow" name="flow" title="${escapeAttr(tips.flow_type || "")}">${buildSelectOptions(options.flow_types, flow)}</select>`
-            )}
-            ${reviewField(
-              `${uid}-type`,
-              "Expense Type",
-              tips.expense_type || "Expense type",
-              `<select id="${uid}-type" name="type" title="${escapeAttr(tips.expense_type || "")}">${buildSelectOptions(options.expense_types, expType)}</select>`
-            )}
-            ${reviewField(
-              `${uid}-class`,
-              "Classification",
-              tips.classification || "Personal or Business",
-              `<select id="${uid}-class" name="classification" title="${escapeAttr(tips.classification || "")}">${buildSelectOptions(classValues, classification)}</select>`
-            )}
-          </div>
-          <button type="submit">${confirmLabel}</button>
-        </form>
-      `;
-      const expandBtn = el.querySelector(".review-expand");
-      const txPanel = el.querySelector(".review-tx-panel");
-      if (expandBtn && txPanel) {
-        expandBtn.addEventListener("click", () => {
-          toggleReviewTransactions(expandBtn, item.merchant_key, txPanel);
-        });
-      }
-
-      const reviewForm = el.querySelector("form");
-      const categoryInput = reviewForm?.querySelector('[name="category"]');
-      if (categoryInput) {
-        categoryInput.addEventListener("change", () => {
-          alignReviewClassificationFromCategory(reviewForm);
-          refreshReviewSubDatalist(categoryInput.value.trim());
-        });
-        categoryInput.addEventListener("input", () => {
-          alignReviewClassificationFromCategory(reviewForm);
-        });
-        alignReviewClassificationFromCategory(reviewForm);
-      }
-
-      const subInput = reviewForm?.querySelector('[name="sub"]');
-      if (subInput) {
-        subInput.addEventListener("focus", () => {
-          refreshReviewSubDatalist(categoryInput?.value?.trim() || "");
-        });
-      }
-
-      reviewForm.addEventListener("submit", async (ev) => {
-        ev.preventDefault();
-        const fd = new FormData(ev.target);
-        const payload = {
-          ai_category: String(fd.get("category") || "").trim(),
-          ai_sub_category: String(fd.get("sub") || "").trim(),
-          flow_type: fd.get("flow"),
-          expense_type: fd.get("type"),
-          classification: fd.get("classification") || "Personal",
-        };
-        if (isSingleTx) {
-          payload.transaction_id = item.transaction_id;
-          try {
-            const mk = encodeURIComponent(item.merchant_key);
-            await api(`/api/review/${mk}/confirm`, {
-              method: "POST",
-              body: JSON.stringify(payload),
-            });
-            el.remove();
-            updateReviewBulkCount();
-            loadStatus();
-          } catch (err) {
-            alert(err.message);
-          }
-          return;
-        }
-        try {
-          const mk = encodeURIComponent(item.merchant_key);
-          const preview = await api(`/api/review/${mk}/confirm-preview`, {
-            method: "POST",
-            body: JSON.stringify(payload),
-          });
-          openReviewConfirmModal(preview, item, payload, el);
-        } catch (err) {
-          alert(err.message);
-        }
-      });
-      list.appendChild(el);
-    });
-    focusReviewMerchantIfRequested();
-  } catch (err) {
-    list.innerHTML = `<p>Error: ${escapeHtml(err.message)}</p>`;
-  }
-}
 
 function escapeAttr(s) {
   return String(s).replace(/"/g, "&quot;");
@@ -6559,7 +5981,6 @@ function renderReviewAliasGroups(groups) {
 let reviewAliasGroups = [];
 
 async function loadReviewAliasGroups() {
-  if (!uiAgentWorkspace) return;
   try {
     const data = await api("/api/review/merchant-aliases?limit=15");
     reviewAliasGroups = data.groups || [];
@@ -6613,7 +6034,7 @@ async function mergeReviewAliasGroup(group, btn) {
 async function loadWorkspaceInbox() {
   const list = $("#workspace-inbox-list");
   const countEl = $("#workspace-inbox-count");
-  if (!list || !uiAgentWorkspace) return;
+  if (!list) return;
   bindWorkspaceInboxAccordion(list);
   try {
     const data = await api("/api/pending-confirmations");

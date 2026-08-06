@@ -47,7 +47,7 @@ Start here to find the right doc. **Product decisions** always defer to the char
 
 | Doc | Purpose | Status |
 |-----|---------|--------|
-| [classification/CONFIRM_CATEGORIES.md](./classification/CONFIRM_CATEGORIES.md) | Confirm Categories review queue | Shipped |
+| [classification/CONFIRM_CATEGORIES.md](./classification/CONFIRM_CATEGORIES.md) | Check labels confirm flow | Shipped |
 | [classification/CLASSIFICATION_TAXONOMY.md](./classification/CLASSIFICATION_TAXONOMY.md) | Vocabulary hint + normalize from DB | Shipped; auto-merge future |
 | [classification/CLASSIFICATION_AUDIT.md](./classification/CLASSIFICATION_AUDIT.md) | Sampled post-import quality audit | Shipped |
 | [classification/AI_TAXONOMY_RULES.md](./classification/AI_TAXONOMY_RULES.md) | AI Rules tab — taxonomy merge proposals | Shipped |

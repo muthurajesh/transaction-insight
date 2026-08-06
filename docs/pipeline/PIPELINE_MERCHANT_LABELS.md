@@ -5,7 +5,7 @@
 
 ## Problem
 
-User edits labels in **Edit Transactions** or **Confirm Categories**. On later **Run processing**, pipeline-generated merchant labels must not override those explicit decisions.
+User edits labels in **Edit Transactions** / **Find & edit** or **Check labels**. On later **Run processing**, pipeline-generated merchant labels must not override those explicit decisions.
 
 ## Current behavior
 

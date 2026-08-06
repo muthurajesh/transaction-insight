@@ -8,7 +8,7 @@
 
 Custom Rules are plain-English **if/then** patterns. The LLM compiles each rule to JSON once; Python applies that JSON on every **Run processing** (final pipeline pass) or when you **Apply** from the tab.
 
-Use Custom Rules when one merchant needs **different labels by amount or description**, or when you need **monthly split** logic — cases Confirm Categories cannot express (one label per merchant).
+Use Custom Rules when one merchant needs **different labels by amount or description**, or when you need **monthly split** logic — cases Check labels cannot express (one label per merchant).
 
 ## Tab workflow
 
@@ -24,7 +24,7 @@ Composer hint shows **Editing saved rule #N** vs **New rule — not saved yet**.
 
 Storage: SQLite `pipeline_custom_rules` (stable numeric `id` per rule). Export files do not include DB ids; import assigns new ids.
 
-**Apply behavior:** matching rows get `label_status = confirmed` and drop off **Confirm Categories**, even when labels were already correct before apply.
+**Apply behavior:** matching rows get `label_status = confirmed` and drop off **Check labels**, even when labels were already correct before apply.
 
 ## Rule types (compiled JSON)
 

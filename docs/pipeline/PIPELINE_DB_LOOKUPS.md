@@ -60,7 +60,7 @@
 
 1. Fresh DB + CSV → Run processing completes with no workbook on disk
 2. Second run on same merchant text skips description LLM (cache hit from DB)
-3. Confirm Categories + CustomRules persist across re-process
+3. Check labels + CustomRules persist across re-process
 
 ## Open decisions
 

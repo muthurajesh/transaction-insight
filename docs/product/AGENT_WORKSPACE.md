@@ -6,7 +6,7 @@
 **Default UI (Simple):** Left **sidebar** — **Import**, **Ask**, **Check labels**, **Settings**.  
 **Expert adds:** **Find & edit**, **Automate** (and legacy Cadence / AI Rules when those flags allow).
 
-Legacy horizontal tabs (**Import & Categorize**, **Confirm Categories**, **AI Rules**, **Cadence**) stay hidden when `UI_AGENT_WORKSPACE=1`.
+Legacy horizontal tabs (**Import & Categorize**, **AI Rules**, **Cadence**) stay hidden when `UI_AGENT_WORKSPACE=1`. (Legacy **Confirm Categories** was removed; use **Check labels**.)
 
 ## User workflow (Simple)
 
@@ -47,7 +47,6 @@ After import Done, user chooses Check labels or Ask (wizard step 3).
 
 ## Hidden tabs (legacy, still in DOM)
 
-- Confirm Categories
 - AI Rules
 - Import & Categorize
 - Cadence (`UI_SHOW_CADENCE=0` default with workspace)
@@ -58,6 +57,7 @@ After import Done, user chooses Check labels or Ask (wizard step 3).
 UI_AGENT_WORKSPACE=1
 UI_MODE=simple   # or expert
 UI_SHOW_CADENCE=0
+EDIT_INSIGHT_ENABLED=1   # 0 = skip post-edit AI insight LLM
 ```
 
 Settings → **Display mode** stores a browser override in `localStorage` (`ti_ui_mode`).
@@ -128,6 +128,6 @@ When `UI_SHOW_CADENCE=0` (default with workspace): no Cadence tab and no cadence
 
 **Expert:** same plus **Find & edit** and **Automate**; cadence when `UI_SHOW_CADENCE=1`.
 
-**Legacy tabs (`UI_AGENT_WORKSPACE=0`):** Import & Categorize → Confirm Categories → AI Rules → Cadence → Edit → Chat.
+**Legacy tabs (`UI_AGENT_WORKSPACE=0`):** Import & Categorize → Check labels → AI Rules → Cadence → Edit → Chat.
 
 Chat dollar amounts use the same spend rules as the pipeline (negative outflows only). Label queue detail → [classification/CONFIRM_CATEGORIES.md](../classification/CONFIRM_CATEGORIES.md).

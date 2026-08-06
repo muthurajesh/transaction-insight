@@ -86,12 +86,12 @@ AI proposal → user accept | edit | reject | defer
   Learning Agent (scheduled, opt-in) → ai_insights → Workspace inbox
         │
         ▼
-  Accepted insights → prompt context for review_suggest (still HITL)
+  Accepted insights → prompt context for chat / Learning Agent (still HITL)
 ```
 
 | Action surface | Logged when |
 |----------------|-------------|
-| Confirm Categories | User confirms with optional AI suggestion snapshot |
+| Check labels | User confirms (Looks good) |
 | Classification audit | User dismisses a finding |
 | AI Rules | User applies taxonomy proposals |
 | Edit Transactions | User changes labels (correction vs prior row) |
@@ -167,8 +167,8 @@ Default posture: **AI proposes → you confirm → then data is saved**. Nothing
 |------|----------------|-------------------|------------------------|
 | **Run processing** | Workspace import strip or Import & Categorize | **Descriptions** — bank text → merchant label. **Classification** — category, sub-category, fixed/variable for unknown merchants. **Business rules** — personal vs business nuance. **Custom Rules** — compiles Pending rules to JSON, then applies. | Yes — pipeline writes to `finance.db` and lookup tables. Re-run improves as cache grows. |
 | **Classification audit** | Import & Categorize (alerts) or inbox (`quality_flag`) | Sampled re-check: heuristics + stronger audit model vs pipeline labels; shows audit-time vs live DB labels. | No — **View in Edit Transactions** or dismiss; stale alerts auto-clear when labels match. |
-| **Review queue** | Check labels inbox (`merchant_label`) or Confirm Categories → Suggest labels | Proposes labels for payees still needing a look (lookup-first, then LLM). | No — you confirm (**Looks good**). |
-| **After an edit** | Edit Transactions → Apply → AI insight modal | Explains the pattern; may suggest a **Custom Rule** (plain English). | No — save rule is optional. |
+| **Review queue** | Check labels inbox (`merchant_label`) | Approve payees still needing a look. | No — you confirm (**Looks good**). |
+| **After an edit** | Find & edit → Apply → AI insight modal (`EDIT_INSIGHT_ENABLED`) | Explains the pattern; may suggest a **Custom Rule** (plain English). When flag is off, shows “AI insight is turned off.” | No — save rule is optional. |
 | **Cadence** | Cadence tab → ✨ Suggest cadence (AI); Chat | Proposes recurring vs lump vs one-time from merchant history + your hint. | No — Review & save in modal or cadence queue. |
 | **Label cleanup** | **AI Rules** tab | **Analyze** (heuristics only) or **Suggest with AI** — duplicate categories, sub-categories, merchant spellings. | No — you select proposals, preview, then Apply. |
 | **Analytics & intelligence** | Ask (Chat) | Plain-English questions → LLM **`query_sql`**; review-pending intent → Check labels (not charts). Saved custom reports — see [chat/CHAT_CUSTOM_REPORTS.md](../chat/CHAT_CUSTOM_REPORTS.md). | Saved reports in `custom_reports`; insights/rules after you confirm. |

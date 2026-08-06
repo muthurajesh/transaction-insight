@@ -38,7 +38,8 @@ Coarse log with `run_type=learning_agent`.
 
 | Flow | When logged |
 |------|-------------|
-| Confirm Categories | `POST /api/review/{merchant}/confirm` with optional `suggested_labels` |
+| Confirm / Check labels | `POST /api/review/{merchant}/confirm` |
+
 | Audit dismiss | `POST /api/classification-audit/findings/{id}/dismiss` |
 | AI Rules apply | `POST /api/taxonomy-rules/apply` |
 | Edit Transactions | `bulk_update_labels` when category/sub/type/classification changes |
@@ -66,6 +67,6 @@ LEARNING_AGENT_USE_LLM=1
 LEARNING_AGENT_MAX_TOOL_ROUNDS=8
 ```
 
-## Review suggest feedback loop
+## Review feedback loop
 
-Accepted insights are included in `review_suggest` prompt context as `recent_user_corrections`.
+Accepted insights feed Learning Agent / chat context. The legacy bulk **Suggest labels** path (`review_suggest`) was removed with Confirm Categories; Check labels no longer calls that LLM.

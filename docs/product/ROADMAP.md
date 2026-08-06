@@ -25,7 +25,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | Project layout (`webapp/`, SQLite lookups, config) | Phase 0 |
 | [x] | Scan inbox + ingest CSV → `transactions` | |
 | [x] | Run processing (shared pipeline in web) | Descriptions, lookups, LLM, custom rules |
-| [x] | Confirm Categories tab (label queue) | → [CONFIRM_CATEGORIES.md](../classification/CONFIRM_CATEGORIES.md); bulk AI suggest (10/25/50/100) |
+| [x] | Check labels (label queue) | → [CONFIRM_CATEGORIES.md](../classification/CONFIRM_CATEGORIES.md); legacy Confirm Categories + bulk Suggest labels removed |
 | [x] | Chat agent + SQL / analytics tools | `webapp/agent/` |
 | [x] | Import & Categorize UI (tabs) | |
 | [x] | **Choose CSV files & scan** | Upload → `input/` → scan; see Import section below |
@@ -64,7 +64,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | **Custom Rules tab** — preview matches, compiled JSON, Flow Type, apply one/all | [CUSTOM_RULES.md](../rules/CUSTOM_RULES.md) |
 | [x] | **Custom Rules builder** — “Build a Simple Rule” helper + “What can I use?” cheatsheet (plain English → composer) | [CUSTOM_RULES.md](../rules/CUSTOM_RULES.md) |
 | [~] | **Complex custom rules** — amount sign + amount ops (`=`, `!=`, `>`, `>=`, `<`, `<=`) shipped; still open: between-ranges, date/month filters, multi-pattern AND on text, boolean OR across conditions | → [CUSTOM_RULES.md](../rules/CUSTOM_RULES.md) |
-| [x] | **Edit insights (post-apply)** — AI pattern + suggested CustomRule | EDIT_INSIGHTS |
+| [x] | **Edit insights (post-apply)** — AI pattern + suggested CustomRule (`EDIT_INSIGHT_ENABLED`) | EDIT_INSIGHTS |
 | [x] | **AI Rules tab** — taxonomy merge proposals (heuristic + LLM), user confirm apply | [AI_TAXONOMY_RULES.md](../classification/AI_TAXONOMY_RULES.md) |
 | [ ] | **Minimal category vocabulary** — broad AI Category + few sub-categories; reduce Salary vs Paychecks/Salary drift | → [CLASSIFICATION_TAXONOMY.md](../classification/CLASSIFICATION_TAXONOMY.md) (vocab hint + normalize shipped; auto-merge future) |
 | [x] | **Classification audit** — post-import + scheduled sampled re-check (14b vs audit model); in-app alerts | [CLASSIFICATION_AUDIT.md](../classification/CLASSIFICATION_AUDIT.md) |
@@ -194,7 +194,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | Learning Agent (opt-in scheduler + CLI) | `ai_insights`, `POST /api/learning-agent/run` |
 | [x] | Agent Workspace UI (`UI_AGENT_WORKSPACE`) | Sidebar shell: Import / Chat / Review + Transactions, Rules, Settings |
 | [x] | Cadence tab hidden; cadence proposals respect `UI_SHOW_CADENCE` | Hidden from inbox/chat proposals when `0` (default with workspace) |
-| [x] | Accepted insights → `review_suggest` context | `recent_user_corrections` in prompt |
+| [~] | Accepted insights → prompt context | Was `review_suggest`; Check labels no longer runs bulk AI suggest |
 | [x] | LLM Decision Analyst (`LEARNING_AGENT_MODEL`, `query_sql` loop) | DECISION_MEMORY § Learning Agent |
 | [x] | Chat `query_sql` cheat sheet includes decision memory tables | DATA_CHEATSHEET.md |
 | [x] | Chat tools: `propose_custom_rule`, insights, `run_decision_analysis` | AGENT_WORKSPACE.md |

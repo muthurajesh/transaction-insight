@@ -15,7 +15,7 @@
 
   <nav class="tabs legacy-chrome">
     <button type="button" class="tab active" data-tab="chat" id="tab-chat">Chat</button>
-    <button type="button" class="tab tab-legacy-workspace" data-tab="review">Confirm Categories</button>
+    <button type="button" class="tab tab-legacy-workspace" data-tab="review">Check labels</button>
     <button type="button" class="tab" data-tab="edit">Edit Transactions</button>
     <button type="button" class="tab" data-tab="custom-rules">Custom Rules</button>
     <button type="button" class="tab tab-legacy-workspace" id="tab-cadence" data-tab="cadence">Cadence</button>
@@ -237,43 +237,6 @@
       </div>
       <ul id="edit-columns-list" class="edit-columns-list"></ul>
     </div>
-
-    <section id="panel-review" class="panel">
-      <p class="hint panel-subtitle">Review and confirm AI label suggestions.</p>
-      <ol class="workflow-stepper" id="review-stepper" aria-label="Confirm workflow">
-        <li class="workflow-step" data-step="1"><span class="workflow-step-num">1</span> Suggest</li>
-        <li class="workflow-step" data-step="2"><span class="workflow-step-num">2</span> Confirm</li>
-      </ol>
-      <div id="review-datalists" class="sr-only" aria-hidden="true"></div>
-      <div id="review-bulk-toolbar" class="review-bulk-toolbar hidden">
-        <div class="review-bulk-row">
-          <span class="review-bulk-label">Bulk suggest</span>
-          <span id="review-bulk-count" class="review-bulk-count" aria-live="polite"></span>
-          <label class="review-bulk-groups-label" for="review-suggest-batch">Groups</label>
-          <select id="review-suggest-batch" class="review-bulk-select" aria-label="Batch size">
-            <option value="10" selected>10</option>
-            <option value="25">25</option>
-            <option value="50">50</option>
-            <option value="100">100</option>
-          </select>
-          <button type="button" id="btn-review-suggest-batch" class="review-bulk-action btn-icon-label">
-            <span data-icon="sparkles" data-icon-size="16" aria-hidden="true"></span>
-            <span>Suggest labels (AI)</span>
-          </button>
-        </div>
-        <span id="review-suggest-status" class="review-suggest-status" aria-live="polite"></span>
-      </div>
-      <div id="review-empty-state" class="empty-state-card hidden">
-        <span class="empty-state-icon" data-icon="circle-check" data-icon-size="40" aria-hidden="true"></span>
-        <h2 class="empty-state-title">All caught up</h2>
-        <p>No merchants waiting for label confirmation.</p>
-        <ul class="empty-state-steps">
-          <li>Upload a CSV and run processing on <button type="button" class="btn-link tab-jump" data-tab="actions">Import &amp; Categorize</button></li>
-          <li>Repeating patterns → <button type="button" class="btn-link tab-jump" data-tab="custom-rules">Custom Rules</button></li>
-        </ul>
-      </div>
-      <div id="review-list"></div>
-    </section>
 
     <section id="panel-edit" class="panel">
       <p class="hint panel-subtitle">Search and edit labels by merchant group or individual transaction.</p>
@@ -1015,36 +978,6 @@
         <div class="modal-action-row">
           <button type="button" id="btn-edit-insight-dismiss" class="btn-secondary">Dismiss</button>
           <button type="button" id="btn-edit-insight-save" class="btn-primary">Save as custom rule</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div id="review-confirm-overlay" class="modal-overlay hidden" role="presentation" aria-hidden="true">
-    <div
-      id="review-confirm-modal"
-      class="modal-card"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="review-confirm-title"
-    >
-      <div class="modal-header">
-        <h2 id="review-confirm-title">Confirm labels</h2>
-        <button type="button" id="btn-review-confirm-close" class="btn-edit-close btn-icon" aria-label="Close" data-icon="x" data-icon-size="18"></button>
-      </div>
-      <div id="review-confirm-body" class="modal-body">
-        <p class="hint">Loading…</p>
-      </div>
-      <div id="review-confirm-actions" class="modal-actions">
-        <label id="review-confirm-replace-wrap" class="review-confirm-replace hidden">
-          <input type="checkbox" id="review-confirm-replace" />
-          Replace conflicting saved lookup rule
-        </label>
-        <p id="review-confirm-error" class="review-confirm-error hidden" role="alert"></p>
-        <div class="modal-action-row">
-          <button type="button" id="btn-review-confirm-cancel" class="btn-secondary">Cancel</button>
-          <button type="button" id="btn-review-confirm-pending" class="btn-secondary">Update pending only</button>
-          <button type="button" id="btn-review-confirm-all" class="btn-primary">Update all transactions</button>
         </div>
       </div>
     </div>
