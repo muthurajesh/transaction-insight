@@ -13,7 +13,7 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 pip install -e ".[dev]"     # pytest
 
-cp config/.env.ollama.beginner config/.env
+cp config/.env.ollama config/.env
 ```
 
 Run the app: `./start.sh` → http://127.0.0.1:8000  

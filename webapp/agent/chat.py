@@ -23,6 +23,7 @@ from webapp.agent.tools import chat_tool_definitions, available_months, run_tool
 from webapp.agent.workspace_proposals import workspace_items_from_trace
 from webapp.agent.chat_history import list_llm_chat_context
 from webapp.agent.chat_context import (
+    estimate_message_tokens,
     estimate_messages_tokens,
     estimate_tokens,
     get_context_token_limit,

@@ -8,24 +8,59 @@ That is the goal of this project. Export transactions from your bank, drop them 
 - What were my top 3 spending categories?
 - Why was last month higher than usual?
 
-It is not finished. Chat and import work today; better answers and anomaly-style “why” questions are still evolving. Everything runs on your machine by default (local LLM via [Ollama](https://ollama.com)).
+It is not finished. Chat and import work today; better answers and anomaly-style “why” questions are still evolving. Everything runs on your machine by default (local LLM via [Ollama](https://ollama.com)), or you can use OpenAI cloud.
 
 ## Requirements
 
-- Python 3.11+
-- [Ollama](https://ollama.com) (for the local model)
+- macOS (recommended one-liner below) or any OS with Python 3.11+ for manual setup
+- [Ollama](https://ollama.com) (local model) **or** an OpenAI API key (cloud)
 - A bank CSV with at least **Date**, **Amount**, **Category**, and a description column  
   (or use [`samples/sample_transactions.csv`](samples/sample_transactions.csv))
 
-## Setup
+## Setup (macOS — one-liner)
 
-### 1. Pull a model
+After this work is on the branch you install from (e.g. `develop`, or a release tag that includes `install.sh`):
 
 ```bash
-ollama pull qwen2.5:14b
+INSTALL_REF=develop curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/develop/install.sh | bash
 ```
 
-On a smaller machine (~8–16GB RAM), use `qwen2.5:7b` instead, then set `OLLAMA_MODEL`, `PIPELINE_MODEL`, and `CHAT_MODEL` to that name in `config/.env` after step 2.
+Or, once you cut a release that includes the installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/v0.2.0/install.sh | bash
+```
+
+(Replace `v0.2.0` with the actual tag.)
+
+The installer clones into `~/transaction-insight` (override with `INSTALL_DIR=`), creates a Python venv, then asks **1 = Local LLM** (Ollama, default `qwen2.5:7b`) or **2 = Cloud LLM** (OpenAI — paste a key, or skip and edit `config/.env` later).
+
+Overrides: `INSTALL_DIR=…`, `INSTALL_REF=…`, `LLM_MODE=local|cloud`, `FORCE_ENV=1`.
+
+From an existing clone:
+
+```bash
+bash scripts/install_macos.sh
+```
+
+Then:
+
+```bash
+cd ~/transaction-insight   # or your INSTALL_DIR / clone
+./start.sh
+```
+
+Open http://127.0.0.1:8000
+
+## Manual setup
+
+### 1. Pull a model (local only)
+
+```bash
+ollama pull qwen2.5:7b
+```
+
+For higher quality on 16GB+ RAM machines, use `qwen2.5:14b` and set `OLLAMA_MODEL`, `PIPELINE_MODEL`, and `CHAT_MODEL` in `config/.env`.
 
 Check Ollama is up:
 
@@ -43,7 +78,9 @@ python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-cp config/.env.ollama.beginner config/.env
+cp config/.env.ollama config/.env
+# Or cloud: cp config/.env.openai config/.env  # then set OPENAI_API_KEY
+# Or LM Studio: cp config/.env.lmstudio config/.env
 ```
 
 ### 3. Run it

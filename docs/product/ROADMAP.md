@@ -29,7 +29,11 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | Chat agent + SQL / analytics tools | `webapp/agent/` |
 | [x] | Import & Categorize UI (tabs) | |
 | [x] | **Choose CSV files & scan** | Upload → `input/` → scan; see Import section below |
-| [x] | **Beginner onboarding** — one-model Ollama preset, hardware table, sample CSV, MIT license | README + [LLM_SETUP.md](../setup/LLM_SETUP.md); `config/.env.ollama.beginner`; `samples/` |
+| [x] | **Beginner onboarding** — one-model Ollama preset, hardware table, sample CSV, MIT license | README + [LLM_SETUP.md](../setup/LLM_SETUP.md); `config/.env.ollama`; `samples/` |
+| [x] | **macOS curl installer** — clone tag, venv, local Ollama `qwen2.5:7b` or OpenAI stub/key | `install.sh` + `scripts/install_macos.sh`; presets `config/.env.ollama` / `.env.openai` |
+| [x] | **Config preset cleanup** — one full preset per provider; drop `*.beginner`; `.env.example` = Ollama-active supersets | `.env.ollama` / `.env.lmstudio` / `.env.openai` / `.env.example` |
+| [ ] | **Windows PowerShell installer** | Follow-up to macOS one-liner |
+| [ ] | **Settings → LLM tab** — manage local/cloud provider, models, API key without editing `.env` | First-run remains installer; in-app setup later |
 
 ---
 
@@ -150,7 +154,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 
 **Monthly workflow (web):** Upload CSV(s) in **Import & Categorize** — files copy to `input/` and processing runs automatically. Use **Run processing** to re-run files already in the inbox.
 
-**Models:** **Beginners** pull one model (`qwen2.5:14b`, or `qwen2.5:7b` on 8–16GB RAM) via `config/.env.ollama.beginner`. **Experts** may split roles (e.g. seed/audit `qwen2.5-coder:32b`, routine `7b`, chat `14b`) — see [LLM_SETUP.md](../setup/LLM_SETUP.md).
+**Models:** **Beginners** pull one model (`qwen2.5:7b` via installer / `config/.env.ollama`; optional `qwen2.5:14b` on 16GB+ RAM). **Experts** may split roles (e.g. seed/audit `qwen2.5-coder:32b`, routine `7b`, chat `14b`) — see [LLM_SETUP.md](../setup/LLM_SETUP.md).
 
 ---
 

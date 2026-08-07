@@ -27,8 +27,8 @@ Full charter: [PRODUCT_CHARTER.md](PRODUCT_CHARTER.md).
 | DB | `data/finance.db` |
 | Inbox | `input/` CSVs |
 | Sample CSV | `samples/sample_transactions.csv` |
-| Config | Beginners: `cp config/.env.ollama.beginner config/.env` — see [LLM_SETUP.md](../setup/LLM_SETUP.md) |
-| **Default (beginner)** | One model: `qwen2.5:14b` (or `7b` on smaller RAM) for pipeline + chat |
+| Config | Beginners: macOS `install.sh` / `scripts/install_macos.sh`, or `cp config/.env.ollama` / `.env.openai` / `.env.lmstudio` — see [LLM_SETUP.md](../setup/LLM_SETUP.md) |
+| **Default (beginner)** | Local: one Ollama model `qwen2.5:7b` (optional `14b` upgrade); cloud: OpenAI `gpt-4o-mini` |
 | **Expert roles** | Optional: seed/audit `qwen2.5-coder:32b`; routine `7b`; chat `14b` |
 
 ---

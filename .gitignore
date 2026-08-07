@@ -7,7 +7,7 @@ config/.env
 !config/.env.example
 !config/.env.ollama
 !config/.env.lmstudio
-!config/.env.ollama.beginner
+!config/.env.openai
 __pycache__/
 .pytest_cache/
 *.pyc

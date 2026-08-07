@@ -64,6 +64,13 @@ class ChatContextTests(unittest.TestCase):
         self.assertGreater(full["meter_tokens"], empty["meter_tokens"])
         self.assertEqual(full["history_message_count"], 2)
 
+    def test_context_usage_with_draft_user_message(self):
+        conn = _conn()
+        usage = estimate_chat_context_usage(conn, user_message="can you categorize expenses")
+        self.assertGreater(usage["next_user_tokens"], 0)
+        self.assertGreater(usage["meter_tokens"], 0)
+        self.assertIn("usage_percent", usage)
+
     def test_clear_resets_active_anchor(self):
         conn = _conn()
         _insert_message(conn, "user", "one")

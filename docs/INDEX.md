@@ -14,7 +14,7 @@ Start here to find the right doc. **Product decisions** always defer to the char
 | [../README.md](../README.md) | Beginner quick start (one Ollama model), sample CSV | Active |
 | [setup/LLM_SETUP.md](./setup/LLM_SETUP.md) | Beginner vs expert LLM (Ollama, LM Studio, roles) | Active |
 | [../samples/sample_transactions.csv](../samples/sample_transactions.csv) | First-run Import fixture (fictional merchants) | Active |
-| [../config/.env.ollama.beginner](../config/.env.ollama.beginner) | Minimal one-model Ollama preset | Active |
+| [../config/.env.ollama](../config/.env.ollama) | Local Ollama preset (`qwen2.5:7b`) | Active |
 
 ---
 
@@ -101,7 +101,7 @@ Start here to find the right doc. **Product decisions** always defer to the char
 | Decide if a feature fits the product | [product/PRODUCT_CHARTER.md](./product/PRODUCT_CHARTER.md) |
 | See what’s done / next | [product/ROADMAP.md](./product/ROADMAP.md) |
 | Start a new AI coding session | `@docs/product/AI_SESSION_CONTEXT.md` + `@docs/product/PRODUCT_CHARTER.md` |
-| Install and run locally (beginner) | Root [README.md](../README.md) Quick start → `config/.env.ollama.beginner` |
+| Install and run locally (beginner) | Root [README.md](../README.md) Quick start → `config/.env.ollama` |
 | Expert LLM / multi-model | [setup/LLM_SETUP.md](./setup/LLM_SETUP.md) |
 | Understand where AI runs | [product/PRODUCT_CHARTER.md](./product/PRODUCT_CHARTER.md) §5.5 |
 | CSV import & output columns | [pipeline/IMPORT_PROCESS_UPLOAD.md](./pipeline/IMPORT_PROCESS_UPLOAD.md) |

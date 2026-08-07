@@ -2,15 +2,31 @@
 
 Configure a local or cloud LLM for pipeline import and Workspace chat.
 
-**Most people only need the [Beginner (Ollama)](#beginner-ollama--one-model) section.** You pull **one** model; role-specific overrides are optional.
+**macOS beginners:** use the [README one-liner installer](../../README.md#setup-macos--one-liner) — it sets up Python and asks for **Local LLM** (Ollama `qwen2.5:7b`) or **Cloud LLM** (OpenAI).
 
-**Prerequisites:** Python venv and `pip install -r requirements.txt` from the [README Quick start](../../README.md#quick-start-beginner).
+**Most people only need the [Ollama](#ollama--one-model) section.** You pull **one** model; role-specific overrides are optional.
+
+**Prerequisites:** Python venv and `pip install -r requirements.txt` from the [README](../../README.md) (or run `bash scripts/install_macos.sh` on macOS).
 
 Back to [Documentation index](../INDEX.md).
 
 ---
 
-## Beginner (Ollama — one model)
+## Config presets (one file per provider)
+
+| File | Who it’s for |
+|------|----------------|
+| [`config/.env.ollama`](../../config/.env.ollama) | **Local (default)** — Ollama `qwen2.5:7b`; common app settings; extras off |
+| [`config/.env.lmstudio`](../../config/.env.lmstudio) | LM Studio — same common block; LM Studio LLM vars only |
+| [`config/.env.openai`](../../config/.env.openai) | OpenAI cloud — same common block; set `OPENAI_API_KEY` |
+| [`config/.env.example`](../../config/.env.example) | Superset reference — Ollama active; LM Studio / OpenAI commented |
+| `config/.env` | Active file the app reads (copy a preset; do not commit secrets) |
+
+Each provider preset shares the same common app settings; only the LLM section differs (no `LM_STUDIO_*` in `.env.ollama`, no `OLLAMA_*` in `.env.openai`, etc.).
+
+---
+
+## Ollama — one model
 
 You do **not** need five models. One Ollama model powers import, classification, and chat.
 
@@ -23,23 +39,23 @@ You do **not** need five models. One Ollama model powers import, classification,
 
 | Your machine | Command | Notes |
 |--------------|---------|--------|
-| **16GB+ RAM** (recommended) | `ollama pull qwen2.5:14b` | Best quality/speed balance |
-| **8–16GB RAM** | `ollama pull qwen2.5:7b` | Faster; slightly less nuanced labels |
+| **Default (installer + `.env.ollama`)** | `ollama pull qwen2.5:7b` | Works on most laptops |
+| **16GB+ RAM** (optional upgrade) | `ollama pull qwen2.5:14b` | Better quality; set all three model vars in `.env` |
 
-### 3. Copy the beginner config
+### 3. Copy the Ollama preset
 
 ```bash
-cp config/.env.ollama.beginner config/.env
+cp config/.env.ollama config/.env
 ```
 
-That preset sets `LLM_PROVIDER=ollama` and uses the **same** model for pipeline and chat. Advanced features (Learning Agent, classification audit) stay **off**.
+That preset sets `LLM_PROVIDER=ollama` and uses **`qwen2.5:7b`** for pipeline and chat. Learning Agent and classification audit stay **off** (uncomment / set to `1` when you want them).
 
-If you pulled `qwen2.5:7b`, edit `config/.env` and set all three to `qwen2.5:7b`:
+If you pulled `qwen2.5:14b`, edit `config/.env`:
 
 ```env
-OLLAMA_MODEL=qwen2.5:7b
-PIPELINE_MODEL=qwen2.5:7b
-CHAT_MODEL=qwen2.5:7b
+OLLAMA_MODEL=qwen2.5:14b
+PIPELINE_MODEL=qwen2.5:14b
+CHAT_MODEL=qwen2.5:14b
 ```
 
 ### 4. Verify
@@ -56,14 +72,26 @@ Upload [`samples/sample_transactions.csv`](../../samples/sample_transactions.csv
 
 ---
 
+## OpenAI cloud
+
+```bash
+cp config/.env.openai config/.env
+```
+
+Set `OPENAI_API_KEY` in that file (the macOS installer can prompt for it). Default model is `gpt-4o-mini` (OpenAI has no local 7B equivalent).
+
+---
+
 ## Expert: which model?
 
 | Model | Verdict |
 |-------|---------|
-| **qwen2.5:14b** (Ollama) | Default for beginners and most machines. |
-| **qwen2.5:7b** / **qwen2.5:7b-instruct** | Faster for repeat runs once the description cache is warm. |
+| **qwen2.5:7b** (Ollama) | Default for local / macOS installer. |
+| **qwen2.5:14b** (Ollama) | Optional upgrade on 16GB+ RAM. |
+| **qwen2.5:7b-instruct** | Alternate 7B tag if the base pull name differs. |
 | **qwen2.5-14b-instruct-mlx** (LM Studio) | Best speed/quality on Apple Silicon via LM Studio. |
 | **qwen2.5-coder-32b-instruct** | Optional stronger model for audit / learning — **not required** for day-to-day use. |
+| **gpt-4o-mini** (OpenAI) | Default cloud model in `.env.openai`. |
 
 ---
 
@@ -73,14 +101,14 @@ Optional. If unset, each role falls back to `OLLAMA_MODEL` / `LM_STUDIO_MODEL` /
 
 Precedence: role var → `LLM_MODEL` → provider `*_MODEL`.
 
-| Variable | Role | Beginner need? |
-|----------|------|----------------|
+| Variable | Role | Needed by default? |
+|----------|------|---------------------|
 | `PIPELINE_MODEL` | Import descriptions + classification | No — same as base |
 | `CHAT_MODEL` | Workspace chat, review suggest, edit insights | No — same as base |
-| `CLASSIFICATION_AUDIT_MODEL` | Sampled audit spot-check | No — feature off in beginner preset |
-| `LEARNING_AGENT_MODEL` | Decision Analyst scheduler | No — feature off in beginner preset |
+| `CLASSIFICATION_AUDIT_MODEL` | Sampled audit spot-check | No — feature off in presets |
+| `LEARNING_AGENT_MODEL` | Decision Analyst scheduler | No — feature off in presets |
 
-Example (expert): keep routine work on 14B, use a larger model only when you enable Learning Agent:
+Example: keep routine work on 14B, use a larger model only when you enable Learning Agent:
 
 ```env
 PIPELINE_MODEL=qwen2.5:14b
@@ -88,8 +116,6 @@ CHAT_MODEL=qwen2.5:14b
 LEARNING_AGENT_ENABLED=1
 LEARNING_AGENT_MODEL=qwen2.5-coder:32b
 ```
-
-Full Ollama preset with audit/vocabulary tuning: `cp config/.env.ollama config/.env`
 
 ---
 
@@ -99,28 +125,17 @@ The pipeline uses LM Studio’s **OpenAI-compatible API**.
 
 1. Start LM Studio and load a model.
 2. Enable **Serve on Local Network** (e.g. port `1234`).
-3. Copy the preset or set:
+3. Copy the preset:
+
+```bash
+cp config/.env.lmstudio config/.env
+```
 
 | Setting | Example |
 |---------|---------|
 | `LLM_PROVIDER` | `lmstudio` |
 | `LM_STUDIO_BASE_URL` | `http://127.0.0.1:1234/v1` |
 | `LM_STUDIO_MODEL` | `qwen2.5-14b-instruct-mlx` |
-
-```bash
-cp config/.env.lmstudio config/.env
-```
-
----
-
-## Expert: OpenAI cloud (optional)
-
-```env
-LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-...
-```
-
-See [config/.env.example](../../config/.env.example) for optional `OPENAI_MODEL` and base URL overrides.
 
 ---
 
@@ -133,14 +148,3 @@ See [config/.env.example](../../config/.env.example) for optional `OPENAI_MODEL`
 | **Batch size** | Override with `LOCAL_BATCH_SIZE` / `DESCRIPTION_BATCH_SIZE` in `.env` on large-RAM machines |
 
 Restart `./start.sh` (or uvicorn) after changing LLM settings.
-
----
-
-## Config file cheat sheet
-
-| File | Who it’s for |
-|------|----------------|
-| [`config/.env.ollama.beginner`](../../config/.env.ollama.beginner) | **Start here** — one model, extras off |
-| [`config/.env.ollama`](../../config/.env.ollama) | Ollama + audit/tuning knobs |
-| [`config/.env.lmstudio`](../../config/.env.lmstudio) | LM Studio |
-| [`config/.env.example`](../../config/.env.example) | Full commented reference (all providers) |
