@@ -37,7 +37,7 @@ curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/dev
 OR
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/develop/install.sh | INSTALL_REF=develop bash
+curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/develop/install.sh | INSTALL_REF=main bash
 ```
 
 Overrides (all passed to `bash` the same way): `INSTALL_DIR=…`, `INSTALL_REF=…`, `DEFAULT_REF=…`, `LLM_MODE=local|cloud`, `FORCE_ENV=1`.
