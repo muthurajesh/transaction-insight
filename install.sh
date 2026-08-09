@@ -9,13 +9,15 @@
 #
 # Env overrides:
 #   INSTALL_DIR  — clone destination (default: ~/transaction-insight)
-#   INSTALL_REF  — git tag/branch (default: latest v* tag, else v0.1.0)
+#   INSTALL_REF  — git tag/branch (default: latest v* tag, else DEFAULT_REF)
+#   DEFAULT_REF  — branch used when no usable tag exists (default: develop)
 #   LLM_MODE     — local|cloud (passed through to scripts/install_macos.sh)
 #   FORCE_ENV=1  — overwrite config/.env
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/muthurajesh/transaction-insight.git}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/transaction-insight}"
+DEFAULT_REF="${DEFAULT_REF:-develop}"
 
 log()  { printf '\n==> %s\n' "$*"; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -38,10 +40,13 @@ resolve_ref() {
   if [[ -n "$latest" ]]; then
     echo "$latest"
   else
-    echo "v0.1.0"
+    echo "$DEFAULT_REF"
   fi
 }
 
+# A pinned ref is honoured exactly; an auto-detected one may be superseded below.
+REF_PINNED=0
+[[ -n "${INSTALL_REF:-}" ]] && REF_PINNED=1
 INSTALL_REF="$(resolve_ref)"
 log "Installing Transaction Insight ($INSTALL_REF) → $INSTALL_DIR"
 
@@ -66,8 +71,17 @@ else
   git clone --branch "$INSTALL_REF" --depth 1 "$REPO_URL" "$INSTALL_DIR"
 fi
 
+# The newest tag can predate the installer (e.g. v0.1.0). Auto-detected refs move
+# to DEFAULT_REF rather than failing; a pinned INSTALL_REF still errors out.
+if [[ ! -f "$INSTALL_DIR/scripts/install_macos.sh" && "$REF_PINNED" == "0" && "$INSTALL_REF" != "$DEFAULT_REF" ]]; then
+  log "Ref $INSTALL_REF predates the installer — using $DEFAULT_REF instead…"
+  git -C "$INSTALL_DIR" fetch --depth 1 origin "$DEFAULT_REF"
+  git -C "$INSTALL_DIR" checkout -q FETCH_HEAD
+  INSTALL_REF="$DEFAULT_REF"
+fi
+
 [[ -f "$INSTALL_DIR/scripts/install_macos.sh" ]] \
-  || die "Missing scripts/install_macos.sh in $INSTALL_DIR (ref $INSTALL_REF may predate the installer)."
+  || die "Missing scripts/install_macos.sh in $INSTALL_DIR (ref $INSTALL_REF predates the installer). Retry with: INSTALL_REF=$DEFAULT_REF"
 
 chmod +x "$INSTALL_DIR/scripts/install_macos.sh" "$INSTALL_DIR/start.sh" 2>/dev/null || true
 export INSTALL_DIR

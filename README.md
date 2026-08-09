@@ -19,23 +19,26 @@ It is not finished. Chat and import work today; better answers and anomaly-style
 
 ## Setup (macOS — one-liner)
 
-After this work is on the branch you install from (e.g. `develop`, or a release tag that includes `install.sh`):
-
 ```bash
-INSTALL_REF=develop curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/develop/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/develop/install.sh | bash
 ```
 
-Or, once you cut a release that includes the installer:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/v0.2.0/install.sh | bash
-```
-
-(Replace `v0.2.0` with the actual tag.)
+This picks the newest `v*` release tag, and falls back to `develop` when that tag predates the installer.
 
 The installer clones into `~/transaction-insight` (override with `INSTALL_DIR=`), creates a Python venv, then asks **1 = Local LLM** (Ollama, default `qwen2.5:7b`) or **2 = Cloud LLM** (OpenAI — paste a key, or skip and edit `config/.env` later).
 
-Overrides: `INSTALL_DIR=…`, `INSTALL_REF=…`, `LLM_MODE=local|cloud`, `FORCE_ENV=1`.
+To pin a tag or branch, pass the variable to `bash` — not to `curl`, which would never see it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/develop/install.sh | INSTALL_REF=v0.2.0 bash
+```
+OR
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/develop/install.sh | INSTALL_REF=develop bash
+```
+
+Overrides (all passed to `bash` the same way): `INSTALL_DIR=…`, `INSTALL_REF=…`, `DEFAULT_REF=…`, `LLM_MODE=local|cloud`, `FORCE_ENV=1`.
 
 From an existing clone:
 
