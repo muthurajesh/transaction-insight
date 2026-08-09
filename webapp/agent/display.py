@@ -158,10 +158,9 @@ def _sql_result_display(
     if grand_total is not None:
         summary_parts.append(f"Grand total: ${grand_total:,.2f}")
 
+    # Tables are the default for ad-hoc SQL results; charts only when a saved
+    # report explicitly asks for one.
     use_chart = chart_enabled and label_col and value_col and len(rows) <= 15
-    if not chart_enabled and label_col and value_col and 2 <= len(rows) <= 12:
-        cat_like = label_col.lower() in ("category", "ai_category", "merchant_key")
-        use_chart = cat_like
 
     if use_chart and label_col and value_col:
         chart_rows = [

@@ -49,10 +49,13 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | Tier 2 — Chart.js, CSV export, chat history restore | CHAT_RICH_UI § Tier 2 |
 | [x] | **Multi-turn chat memory** — prior turns sent to LLM (`CHAT_HISTORY_MESSAGES`) | CHAT_RICH_UI § Tier 2 |
 | [x] | **Context usage meter** — toolbar estimate; Clear screen resets LLM anchor | CHAT_RICH_UI § Tier 2 |
-| [~] | Tier 3 — **Save as report** from table replies | Shipped in chat — [CHAT_CUSTOM_REPORTS.md](../chat/CHAT_CUSTOM_REPORTS.md); [CHAT_TIER3_SAVE_REPORT.md](../chat/CHAT_TIER3_SAVE_REPORT.md) |
-| [ ] | Tier 3 — **Multiline composer** (Shift+Enter) | CHAT_RICH_UI § Tier 3 |
+| [x] | Tier 3 — **Save as report** from table replies | Shipped in chat — [CHAT_CUSTOM_REPORTS.md](../chat/CHAT_CUSTOM_REPORTS.md); [CHAT_TIER3_SAVE_REPORT.md](../chat/CHAT_TIER3_SAVE_REPORT.md) |
+| [x] | Tier 3 — **Multiline composer** — auto-grows to 3 lines, Enter sends, Shift+Enter newline | CHAT_RICH_UI § Tier 3 |
 | [ ] | Tier 3 — Streaming tokens (optional) | CHAT_RICH_UI § Tier 3; defer unless latency hurts |
 | [x] | **Chat routing fix** — “top N categories” must not hit `list_transactions` shortcut | → [CHAT_ROUTING.md](../chat/CHAT_ROUTING.md) |
+| [x] | **Reply render fix + progress UX** — mount tables/charts after DOM attach; “Thinking” dots with live timer; “Answered in Ns” | CHAT_RICH_UI § Reply rendering & progress |
+| [x] | **Tables by default** — ad-hoc `query_sql` results no longer auto-promote to a chart | CHAT_RICH_UI § Tier 2 |
+| [x] | **Tool trace hidden in Simple mode** — SQL/tool details are an Expert-mode debugging aid | CHAT_RICH_UI § Tier 1 |
 
 ---
 
@@ -165,7 +168,7 @@ Single index for planned and completed work. Use this file to pick **what to do 
 | [x] | `custom_reports` table + chat save/run/list | |
 | [x] | Add `:expense_view` to allowed report parameters | EXPENSE_CADENCE_PHASE_B § Custom reports (metadata; SQL stays cash) |
 | [x] | Conversational build + save in Chat (prompt + SQL, rename/delete/version) | → [CHAT_CUSTOM_REPORTS.md](../chat/CHAT_CUSTOM_REPORTS.md) |
-| [~] | Chat Tier 3 save-as-report button | Shipped in chat; multiline composer still open |
+| [x] | Chat Tier 3 save-as-report button | Shipped in chat |
 | [ ] | UI to manage saved reports (non-chat Settings tab) | → [CUSTOM_REPORTS_UI.md](../chat/CUSTOM_REPORTS_UI.md) |
 
 ---
@@ -235,11 +238,10 @@ Single index for planned and completed work. Use this file to pick **what to do 
 ## Suggested order (next work)
 
 1. **Pipeline lookup save hardening** — pure in-memory merge on save; keep confirmed user/web merchant labels authoritative ([PIPELINE_DB_LOOKUPS.md](../pipeline/PIPELINE_DB_LOOKUPS.md))
-2. **Chat Tier 3 — multiline composer** (save-as-report shipped — [CHAT_CUSTOM_REPORTS.md](../chat/CHAT_CUSTOM_REPORTS.md))
-3. **Classification vocabulary / auto-merge** — reduce category drift ([CLASSIFICATION_TAXONOMY.md](../classification/CLASSIFICATION_TAXONOMY.md))
-4. **Phase D2–D3 — report layers** + layered reports ([REPORT_LAYERS.md](../reporting/REPORT_LAYERS.md))
-5. **Optional:** cadence AI tuning (D1 polish); import file-picker for re-run ([IMPORT_PROCESS_UPLOAD.md](../pipeline/IMPORT_PROCESS_UPLOAD.md))
-6. **When ready:** Transaction Intelligence Phase 0 benchmark ([TRANSACTION_INTELLIGENCE_ARCHITECTURE.md](TRANSACTION_INTELLIGENCE_ARCHITECTURE.md)) — after Layer 1 scrub is stable on new imports; no classifier pipeline code until go/no-go passes
+2. **Classification vocabulary / auto-merge** — reduce category drift ([CLASSIFICATION_TAXONOMY.md](../classification/CLASSIFICATION_TAXONOMY.md))
+3. **Phase D2–D3 — report layers** + layered reports ([REPORT_LAYERS.md](../reporting/REPORT_LAYERS.md))
+4. **Optional:** cadence AI tuning (D1 polish); import file-picker for re-run ([IMPORT_PROCESS_UPLOAD.md](../pipeline/IMPORT_PROCESS_UPLOAD.md))
+5. **When ready:** Transaction Intelligence Phase 0 benchmark ([TRANSACTION_INTELLIGENCE_ARCHITECTURE.md](TRANSACTION_INTELLIGENCE_ARCHITECTURE.md)) — after Layer 1 scrub is stable on new imports; no classifier pipeline code until go/no-go passes
 
 ---
 

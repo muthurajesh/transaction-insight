@@ -159,7 +159,7 @@ To call a tool, respond with ONLY:
 {{"tool": "<name>", "args": {{ ... }}}}
 
 When query results are validated and sufficient, respond with ONLY:
-{{"answer": "<1–3 sentences summarizing results — amounts, filters, time range. **Do NOT include markdown tables**; the UI renders query rows as an interactive table below your text.>"}}
+{{"answer": "<1–3 short sentences: time range, grand total or top highlight, and an offer to dig into one category. **Do NOT** list every category/row or paste amounts line-by-line — the UI already shows an interactive table under your text. **Do NOT** include markdown tables.>"}}
 """
 
 
@@ -214,6 +214,23 @@ def _parse_action(text: str) -> dict[str, Any]:
         if m:
             return json.loads(m.group(0))
     return {"answer": text}
+
+
+_SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*([\s\S]+?)```", re.IGNORECASE)
+_SELECT_RE = re.compile(r"\bSELECT\b[\s\S]+?(?:;|\Z)", re.IGNORECASE)
+
+
+def _select_statement_in_text(text: str) -> str:
+    """Pull a SELECT out of prose when the model wrote SQL instead of calling the tool."""
+    candidates = [m.group(1) for m in _SQL_FENCE_RE.finditer(text or "")]
+    match = _SELECT_RE.search(text or "")
+    if match:
+        candidates.append(match.group(0))
+    for candidate in candidates:
+        sql = candidate.split("```")[0].strip().rstrip(";").strip()
+        if sql.lower().startswith("select"):
+            return sql
+    return ""
 
 
 # Tools that return immediately (UI workflow); all other tools feed results back to the LLM.
@@ -859,9 +876,7 @@ def _synthesize_answer_from_trace(
         caller="chat.synthesize_answer",
     )
     parsed = _parse_action(summary)
-    if "answer" in parsed:
-        return str(parsed["answer"])
-    return None
+    return str(parsed.get("answer") or "").strip() or None
 
 
 def _tool_call_signature(tool_name: str, args: dict[str, Any]) -> str:
@@ -886,8 +901,11 @@ def _finalize_answer(
     raw: str,
 ) -> str:
     action = _parse_action(raw)
-    if "answer" in action and not action.get("tool"):
-        return str(action["answer"])
+    if not action.get("tool"):
+        parsed_answer = str(action.get("answer") or "").strip()
+        # An empty parsed answer must fall through — returning it blanks the chat bubble.
+        if parsed_answer:
+            return parsed_answer
 
     synthesized = _synthesize_answer_from_trace(messages, trace)
     if synthesized:
@@ -936,20 +954,27 @@ def chat(conn: sqlite3.Connection, user_message: str, *, max_tool_rounds: int = 
 
         if "answer" in action and not action.get("tool"):
             if needs_database_answer(user_message) and not trace_has_successful_query(trace):
-                messages.append({"role": "assistant", "content": raw})
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            "You must call query_sql and use real database results before answering. "
-                            "Do not guess dollar amounts."
-                        ),
-                    }
-                )
-                continue
-            answer = str(action["answer"])
-            _save_message(conn, "assistant", answer, json.dumps(trace) if trace else None)
-            return _chat_payload(answer, trace, context_usage=_usage_after_turn(conn))
+                # Smaller local models often answer in prose with the SQL in a code fence
+                # instead of emitting the tool call. Run their query rather than nudging
+                # again — repeated nudges burn rounds and end with no answer at all.
+                recovered_sql = _select_statement_in_text(raw)
+                if not recovered_sql:
+                    messages.append({"role": "assistant", "content": raw})
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "You must call query_sql and use real database results before answering. "
+                                "Do not guess dollar amounts."
+                            ),
+                        }
+                    )
+                    continue
+                action = {"tool": "query_sql", "args": {"sql": recovered_sql}}
+            else:
+                answer = str(action["answer"])
+                _save_message(conn, "assistant", answer, json.dumps(trace) if trace else None)
+                return _chat_payload(answer, trace, context_usage=_usage_after_turn(conn))
 
         tool_name = action.get("tool")
         if not tool_name:

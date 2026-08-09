@@ -99,6 +99,17 @@ Insert in `_maybe_direct_answer` **before** `_maybe_list_transactions_answer`.
 3. Insurance ~$1,200, Groceries ~$800 — not $450 total
 4. Mark `[x]` in `docs/product/ROADMAP.md` §2
 
+## Blank-answer guard (`needs_database_answer` enforcement)
+
+When a question needs the database, `chat()` refuses an answer until the trace has a successful `query_sql`. Two failure modes came out of that:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Empty assistant bubble | Loop exhausted its rounds, then `_finalize_answer(raw="")` parsed to `{"answer": ""}` and returned it before the fallbacks ran | Blank parsed answers fall through to synthesize → trace → error summary → "I could not complete that question" |
+| Six wasted rounds, ~25s, no data | Model answered in prose with the SQL in a ```` ```sql ```` fence instead of emitting the tool call; each round just re-sent the same nudge | `_select_statement_in_text()` lifts the `SELECT` out of the prose and runs it as `query_sql` (still validated by `validate_query_sql`) |
+
+Prior turns in context make this worse: once the thread contains assistant messages that quoted dollar amounts, the model tends to answer from history rather than query again. **Clear screen** resets that anchor.
+
 ## Context source
 
 Discussed in project chat when user saw wrong April analysis; bug confirmed via `curl` and `_maybe_direct_answer` reproduction.

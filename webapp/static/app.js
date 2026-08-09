@@ -940,6 +940,7 @@ function mountTableDisplay(container, display) {
     placeholder: "No rows",
   });
   wrap._tabulator = table;
+  table.on("tableBuilt", scrollChatLogToBottom);
   csvBtn.addEventListener("click", () => {
     table.download("csv", `${slug || "data"}.csv`);
   });
@@ -1415,10 +1416,19 @@ function appendChat(role, text, toolTrace, display, cadenceProposal, workspacePr
 
   const body = document.createElement("div");
   body.className = "msg-body";
+  div.appendChild(body);
+  // Attach before mounting widgets: Tabulator and Chart.js size themselves from the
+  // container, and render empty when built while detached from the document.
+  log.appendChild(div);
+
   if (role === "assistant") {
     body.classList.add("markdown-body");
     body.innerHTML = renderMarkdown(text);
-    if (display) mountDisplay(body, display);
+    try {
+      if (display) mountDisplay(body, display);
+    } catch (err) {
+      console.error("Chat display failed to render", err);
+    }
     if (cadenceProposal) appendCadenceProposalAction(body, cadenceProposal);
     if (workspaceProposals) appendWorkspaceProposalActions(body, workspaceProposals);
     appendReportActions(body, toolTrace, div);
@@ -1426,11 +1436,34 @@ function appendChat(role, text, toolTrace, display, cadenceProposal, workspacePr
   } else {
     body.textContent = text;
   }
-  div.appendChild(body);
-  log.scrollTop = log.scrollHeight;
-  log.appendChild(div);
-  log.scrollTop = log.scrollHeight;
+  scrollChatLogToBottom();
   return div;
+}
+
+function scrollChatLogToBottom() {
+  const log = $("#chat-log");
+  if (!log) return;
+  log.scrollTop = log.scrollHeight;
+  // Tables and charts grow after mount; re-pin once layout settles.
+  requestAnimationFrame(() => {
+    log.scrollTop = log.scrollHeight;
+  });
+}
+
+function formatChatDuration(seconds) {
+  const s = Number(seconds) || 0;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const mins = Math.floor(s / 60);
+  return `${mins}m ${String(Math.round(s % 60)).padStart(2, "0")}s`;
+}
+
+function appendChatDuration(messageEl, seconds) {
+  const body = messageEl?.querySelector(".msg-body");
+  if (!body) return;
+  const el = document.createElement("div");
+  el.className = "chat-duration";
+  el.textContent = `Answered in ${formatChatDuration(seconds)}`;
+  body.appendChild(el);
 }
 
 function appendChatPending() {
@@ -1438,18 +1471,54 @@ function appendChatPending() {
   const div = document.createElement("div");
   div.className = "msg assistant pending";
   div.dataset.pending = "1";
-  div.innerHTML = "<strong>Assistant</strong><div class=\"msg-body\">Thinking…</div>";
+
+  const strong = document.createElement("strong");
+  strong.textContent = "Assistant";
+
+  const body = document.createElement("div");
+  body.className = "msg-body chat-pending-body";
+  body.setAttribute("role", "status");
+  body.setAttribute("aria-live", "polite");
+
+  const word = document.createElement("span");
+  word.className = "chat-typing-label";
+  word.textContent = "Thinking";
+
+  const dots = document.createElement("span");
+  dots.className = "chat-typing";
+  dots.setAttribute("aria-hidden", "true");
+  dots.append(
+    document.createElement("span"),
+    document.createElement("span"),
+    document.createElement("span")
+  );
+
+  const elapsed = document.createElement("span");
+  elapsed.className = "chat-pending-elapsed";
+  elapsed.textContent = "0s";
+
+  body.append(word, dots, elapsed);
+  div.append(strong, body);
   log.appendChild(div);
-  log.scrollTop = log.scrollHeight;
+  scrollChatLogToBottom();
+
+  const startedAt = performance.now();
+  clearInterval(chatPendingTimer);
+  chatPendingTimer = setInterval(() => {
+    elapsed.textContent = `${Math.round((performance.now() - startedAt) / 1000)}s`;
+  }, 1000);
   return div;
 }
 
 function removeChatPending() {
+  clearInterval(chatPendingTimer);
+  chatPendingTimer = null;
   const el = $("#chat-log .msg.pending[data-pending='1']");
   if (el) el.remove();
 }
 
 let chatBusy = false;
+let chatPendingTimer = null;
 let chatHistoryLoaded = false;
 let chatHistoryPromise = null;
 let chatHistoryModalPage = 1;
@@ -1804,12 +1873,21 @@ const CHAT_HELP_COMMANDS = [
   },
 ];
 
+function autoGrowChatInput() {
+  const input = $("#chat-input");
+  if (!input) return;
+  input.style.height = "auto";
+  // CSS max-height caps this at 3 lines and switches to scrolling.
+  input.style.height = `${input.scrollHeight}px`;
+}
+
 function insertChatCommand(text) {
   const input = $("#chat-input");
   if (!input || chatBusy) return;
   input.value = text;
   input.focus();
   input.setSelectionRange(text.length, text.length);
+  autoGrowChatInput();
 }
 
 function setChatHelpOpen(open) {
@@ -1898,18 +1976,20 @@ $("#chat-form").addEventListener("submit", async (e) => {
   const msg = input.value.trim();
   if (!msg) return;
   input.value = "";
+  autoGrowChatInput();
   chatBusy = true;
   if (sendBtn) sendBtn.disabled = true;
   syncChatHelpInsertButtons();
   appendChat("user", msg);
   appendChatPending();
+  const startedAt = performance.now();
   try {
     const res = await api("/api/chat", {
       method: "POST",
       body: JSON.stringify({ message: msg }),
     });
     removeChatPending();
-    appendChat(
+    const messageEl = appendChat(
       "assistant",
       res.answer,
       res.tool_trace,
@@ -1917,6 +1997,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
       res.cadence_proposal,
       res.workspace_proposals
     );
+    appendChatDuration(messageEl, (performance.now() - startedAt) / 1000);
     if (res.context_usage) renderChatContextMeter(res.context_usage);
     else refreshChatContextMeter("").catch(() => {});
     if (uiAgentWorkspace && res.workspace_proposals?.length) {
@@ -1933,7 +2014,18 @@ $("#chat-form").addEventListener("submit", async (e) => {
   }
 });
 
-$("#chat-input")?.addEventListener("input", scheduleChatContextMeterRefresh);
+$("#chat-input")?.addEventListener("input", () => {
+  autoGrowChatInput();
+  scheduleChatContextMeterRefresh();
+});
+
+$("#chat-input")?.addEventListener("keydown", (e) => {
+  // Enter sends, Shift+Enter adds a line — matches the composer in most chat UIs.
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    $("#chat-form")?.requestSubmit();
+  }
+});
 
 (function initChatMic() {
   const micBtn = $("#btn-chat-mic");
@@ -1982,6 +2074,7 @@ $("#chat-input")?.addEventListener("input", scheduleChatContextMeterRefresh);
 
   function updateTranscript(interim = "") {
     input.value = (finalTranscript + interim).trim();
+    autoGrowChatInput();
     focusInputAtEnd();
   }
 

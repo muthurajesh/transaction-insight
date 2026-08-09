@@ -33,8 +33,8 @@ User → Chat UI (app.js) → POST /api/chat → chat.py (agent + tools) → SQL
 | Interactive tables | [Tabulator](https://tabulator.info/) | Sort, filter, scroll when `display.type === "table"` |
 | Wider layout | CSS | Chat panel matches review width (~1280px) |
 | Voice input | Web Speech API | Mic — continuous listen; 3s silence or 30s cap; auto-send when done (Chrome / Edge) |
-| Tool trace | Collapsible `<details>` | Show which tools ran without clutter |
-| Loading state | UI only | “Thinking…” while waiting for Ollama |
+| Tool trace | Collapsible `<details>` | Show which tools and SQL ran — **Expert mode only** (`.ui-mode-simple` hides it) |
+| Loading state | UI only | “Thinking” dots + elapsed timer while waiting for the LLM |
 
 **Backend:** `display` payload attached when the last tool returns tabular data (`list_transactions`, `query_sql`, `run_custom_report`).
 
@@ -53,13 +53,15 @@ User → Chat UI (app.js) → POST /api/chat → chat.py (agent + tools) → SQL
 
 **Backend:** `display.type === "chart"` with `{ labels, datasets, chartType }`.
 
+Ad-hoc `query_sql` results always render as a **table**. Charts come from the analytics tools that are inherently a time series or ranking (`flow_totals_by_month`, `category_average`, `top_categories`) or from a saved report whose `report_config.chart.enabled` is true.
+
 ### Tier 3 — Workflow polish
 
 | Item | Purpose | Status |
 |------|---------|--------|
 | “Save as report” button | On table messages → REST `/api/custom-reports` | **Done** (Chat toolbar) |
 | ~~Suggested prompts~~ | ~~Chips in composer~~ | **Superseded by Help panel** (labels, descriptions, insert) |
-| Multiline composer | Shift+Enter; taller input for long questions | **Still needed** |
+| Multiline composer | Shift+Enter; auto-grows to 3 lines then scrolls; Enter sends | **Done** |
 | Stream tokens | SSE from `/api/chat` (optional; needs backend streaming) | **Optional** — nice-to-have, not required for finance Q&A |
 
 ### Tier 4 — Only if vanilla JS becomes painful
@@ -124,6 +126,14 @@ Option A Tier 1–3 is the right default for an integrated local finance app on 
 - Stops automatically after **3 seconds** of silence or **30 seconds** of continuous listening (whichever comes first). Click **Listening…** to stop early without sending.
 - When listening ends on its own and there is transcribed text, the message is sent automatically (same as **Send**).
 - Audio may be processed by the browser vendor’s speech service when using Web Speech API.
+
+## Reply rendering & progress
+
+- `appendChat()` attaches the message element to `#chat-log` **before** mounting a `display`. Tabulator and Chart.js size themselves from their container, so building them while detached produced a blank reply that only appeared after a tab switch forced a redraw.
+- `mountDisplay()` is wrapped in `try`/`catch` so a widget failure cannot swallow the answer text; the error goes to the console.
+- The chat log re-pins to the bottom on the next animation frame and again on Tabulator's `tableBuilt`, since tables grow after mount.
+- While waiting, the pending bubble shows **Thinking** with dots that light up one at a time (`.` → `..` → `...`) plus a live seconds counter (`role="status"`, honours `prefers-reduced-motion`).
+- Each answer ends with **Answered in Ns**, measured client-side from submit to response.
 
 ## Verification
 

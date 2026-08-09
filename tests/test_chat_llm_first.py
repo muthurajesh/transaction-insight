@@ -211,6 +211,35 @@ class ChatAgentLoopTests(unittest.TestCase):
         self.assertIn("Yes please", first_messages[-1]["content"])
         self.assertIn("allview rental income", first_messages[1]["content"].lower())
 
+    @patch("webapp.agent.chat.chat_completion")
+    def test_prose_with_sql_fence_runs_the_query(self, mock_llm):
+        conn = _conn()
+        _seed_dining(conn)
+        mock_llm.side_effect = [
+            "Here are the top spending categories for April 2026:\n\n"
+            "```sql\n"
+            "SELECT ai_category, ROUND(SUM(-amount), 2) AS spend\n"
+            "FROM transactions\n"
+            "WHERE flow_type = 'Expense' AND amount < 0 AND budget_month = '2026-04'\n"
+            "GROUP BY ai_category ORDER BY spend DESC;\n"
+            "```\n\n"
+            "- **Dining**: $9,999.00\n",
+            json.dumps({"answer": "Dining was $224.00 in April 2026."}),
+        ]
+        result = chat(conn, "What are my top spending categories for April 2026?")
+        self.assertEqual(result["tool_trace"][0]["tool"], "query_sql")
+        self.assertIn("2026-04", result["tool_trace"][0]["args"]["sql"])
+        self.assertTrue(result["answer"].strip())
+
+    @patch("webapp.agent.chat.chat_completion")
+    def test_answer_never_blank_when_model_will_not_call_tool(self, mock_llm):
+        conn = _conn()
+        _seed_dining(conn)
+        mock_llm.return_value = "I think you spent a lot on food last month."
+        result = chat(conn, "What are my top spending categories for April 2026?")
+        self.assertTrue(result["answer"].strip())
+        self.assertEqual(result["tool_trace"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

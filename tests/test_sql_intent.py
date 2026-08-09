@@ -2,6 +2,7 @@ import unittest
 
 from webapp.agent.answer_format import coalesce_answer_with_display, strip_markdown_tables
 from webapp.agent.db_query import execute_readonly_sql
+from webapp.agent.display import display_from_tool_result
 from webapp.agent.sql_intent import (
     detect_compare_intent,
     extract_budget_months,
@@ -149,6 +150,70 @@ class SqlIntentTests(unittest.TestCase):
         )
         self.assertNotIn("| A |", answer)
         self.assertIn("Summary text here", answer)
+
+    def test_coalesce_strips_category_amount_dump(self):
+        display = {
+            "type": "table",
+            "title": "Query results",
+            "summary": "22 row(s) · Grand total: $25,649.98",
+            "rows": [{"c": i} for i in range(22)],
+        }
+        answer = coalesce_answer_with_display(
+            "Here is the breakdown of expenses for July 2026:\n\n"
+            "Income: $6,602.79 (likely payroll)\n"
+            "Shopping: $5,166.80\n"
+            "Utilities: $3,054.93\n"
+            "Insurance: $2,889.37\n"
+            "Restaurants/Dining: $1,526.94\n"
+            "Would you like to review any specific category in more detail?",
+            display,
+        )
+        self.assertIn("July 2026", answer)
+        self.assertIn("more detail", answer)
+        self.assertNotIn("Shopping:", answer)
+        self.assertNotIn("$5,166.80", answer)
+
+    def test_coalesce_keeps_short_top_highlights(self):
+        display = {
+            "type": "table",
+            "title": "Query results",
+            "rows": [{"c": i} for i in range(10)],
+            "summary": "10 row(s)",
+        }
+        answer = coalesce_answer_with_display(
+            "Top categories in July: Shopping at $5,166.80 and Utilities at $3,054.93.",
+            display,
+        )
+        self.assertIn("Shopping", answer)
+        self.assertIn("$5,166.80", answer)
+
+    def test_query_sql_display_defaults_to_table(self):
+        result = {
+            "columns": ["ai_category", "spend"],
+            "rows": [
+                {"ai_category": "Category A", "spend": 120.0},
+                {"ai_category": "Category B", "spend": 80.0},
+            ],
+            "row_count": 2,
+        }
+        display = display_from_tool_result("query_sql", result, {})
+        self.assertEqual(display["type"], "table")
+        self.assertEqual([c["field"] for c in display["columns"]], ["ai_category", "spend"])
+
+    def test_saved_report_can_opt_into_chart(self):
+        result = {
+            "columns": ["ai_category", "spend"],
+            "rows": [
+                {"ai_category": "Category A", "spend": 120.0},
+                {"ai_category": "Category B", "spend": 80.0},
+            ],
+            "row_count": 2,
+            "name": "Saved report",
+            "report_config": {"chart": {"enabled": True, "type": "bar"}},
+        }
+        display = display_from_tool_result("run_custom_report", result, {})
+        self.assertEqual(display["type"], "chart")
+        self.assertEqual(display["chartType"], "bar")
 
 
 if __name__ == "__main__":
