@@ -7,8 +7,11 @@
 # Or from a local clone / after download:
 #   bash install.sh
 #
+# Installs into the folder you run it from when that folder is empty; otherwise
+# into ./transaction-insight under it.
+#
 # Env overrides:
-#   INSTALL_DIR  — clone destination (default: ~/transaction-insight)
+#   INSTALL_DIR  — clone destination (default: see above)
 #   INSTALL_REF  — git tag/branch (default: latest v* tag, else DEFAULT_REF)
 #   DEFAULT_REF  — branch used when no usable tag exists (default: develop)
 #   LLM_MODE     — local|cloud (passed through to scripts/install_macos.sh)
@@ -16,11 +19,29 @@
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/muthurajesh/transaction-insight.git}"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/transaction-insight}"
 DEFAULT_REF="${DEFAULT_REF:-develop}"
 
 log()  { printf '\n==> %s\n' "$*"; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+# Finder leaves .DS_Store behind in folders the user considers empty.
+dir_has_content() {
+  [[ -n "$(ls -A "$1" 2>/dev/null | grep -v '^\.DS_Store$')" ]]
+}
+
+is_ti_clone() {
+  [[ -d "$1/.git" ]] || return 1
+  [[ "$(git -C "$1" remote get-url origin 2>/dev/null || true)" == *transaction-insight* ]]
+}
+
+# Install where the user is standing — updating in place when it is already a
+# clone. Fall back to a subfolder so a stray run in a working folder never mixes
+# the repo into their files.
+if is_ti_clone "$PWD" || ! dir_has_content "$PWD"; then
+  INSTALL_DIR="${INSTALL_DIR:-$PWD}"
+else
+  INSTALL_DIR="${INSTALL_DIR:-$PWD/transaction-insight}"
+fi
 
 [[ "$(uname -s)" == "Darwin" ]] || die "This installer supports macOS only."
 
@@ -63,8 +84,16 @@ if [[ -d "$INSTALL_DIR/.git" ]]; then
   git fetch --tags --depth 1 origin "$INSTALL_REF" 2>/dev/null \
     || git fetch --tags origin
   git checkout "$INSTALL_REF"
-elif [[ -e "$INSTALL_DIR" ]]; then
-  die "$INSTALL_DIR exists but is not a git clone. Remove it or set INSTALL_DIR to another path."
+elif [[ -e "$INSTALL_DIR" ]] && dir_has_content "$INSTALL_DIR"; then
+  die "$INSTALL_DIR is not empty and is not a Transaction Insight clone. Empty it or set INSTALL_DIR to another path."
+elif [[ -d "$INSTALL_DIR" ]]; then
+  # git clone refuses any existing destination, so stage the clone and move it in.
+  log "Cloning repository into ${INSTALL_DIR}…"
+  tmp_clone="$(mktemp -d "${TMPDIR:-/tmp}/ti-clone.XXXXXX")"
+  rm -rf "$tmp_clone"
+  git clone --branch "$INSTALL_REF" --depth 1 "$REPO_URL" "$tmp_clone"
+  (shopt -s dotglob nullglob; mv "$tmp_clone"/* "$INSTALL_DIR"/)
+  rmdir "$tmp_clone" 2>/dev/null || true
 else
   log "Cloning repository…"
   mkdir -p "$(dirname "$INSTALL_DIR")"

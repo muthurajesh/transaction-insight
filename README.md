@@ -25,7 +25,9 @@ curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/dev
 
 This picks the newest `v*` release tag, and falls back to `develop` when that tag predates the installer.
 
-The installer clones into `~/transaction-insight` (override with `INSTALL_DIR=`), creates a Python venv, then asks **1 = Local LLM** (Ollama, default `qwen2.5:7b`) or **2 = Cloud LLM** (OpenAI — paste a key, or skip and edit `config/.env` later).
+It installs **into the folder you run it from**, so `mkdir transaction-insight && cd transaction-insight` first if you want it somewhere specific. If that folder already has files in it, the repo goes into a `transaction-insight/` subfolder instead; if it is already a clone, it updates in place. Override with `INSTALL_DIR=`.
+
+The installer creates a Python venv, then asks **1 = Local LLM** (Ollama, default `qwen2.5:7b`) or **2 = Cloud LLM** (OpenAI — paste a key, or skip and edit `config/.env` later).
 
 To pin a tag or branch, pass the variable to `bash` — not to `curl`, which would never see it:
 
