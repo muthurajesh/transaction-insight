@@ -17,45 +17,43 @@ It is not finished. Chat and import work today; better answers and anomaly-style
 - A bank CSV with at least **Date**, **Amount**, **Category**, and a description column  
   (or use [`samples/sample_transactions.csv`](samples/sample_transactions.csv))
 
-## Setup (macOS — one-liner)
+## Setup (macOS)
+
+Install Transaction Insight with one command. The script clones the repo, creates a Python environment, and asks whether you want a local LLM (Ollama) or OpenAI cloud.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/develop/install.sh | bash
+mkdir -p ~/transaction-insight && cd ~/transaction-insight
+curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/main/install.sh | bash
 ```
 
-This picks the newest `v*` release tag, and falls back to `develop` when that tag predates the installer.
-
-It installs **into the folder you run it from**, so `mkdir transaction-insight && cd transaction-insight` first if you want it somewhere specific. If that folder already has files in it, the repo goes into a `transaction-insight/` subfolder instead; if it is already a clone, it updates in place. Override with `INSTALL_DIR=`.
-
-The installer creates a Python venv, then asks **1 = Local LLM** (Ollama, default `qwen2.5:7b`) or **2 = Cloud LLM** (OpenAI — paste a key, or skip and edit `config/.env` later).
-
-To pin a tag or branch, pass the variable to `bash` — not to `curl`, which would never see it:
+When prompted, choose **1 = Local** (Ollama, default `qwen2.5:7b`) or **2 = Cloud** (OpenAI — paste a key, or skip and edit `config/.env` later). Then:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/develop/install.sh | INSTALL_REF=v0.2.0 bash
-```
-OR
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/develop/install.sh | INSTALL_REF=main bash
-```
-
-Overrides (all passed to `bash` the same way): `INSTALL_DIR=…`, `INSTALL_REF=…`, `DEFAULT_REF=…`, `LLM_MODE=local|cloud`, `FORCE_ENV=1`.
-
-From an existing clone:
-
-```bash
-bash scripts/install_macos.sh
-```
-
-Then:
-
-```bash
-cd ~/transaction-insight   # or your INSTALL_DIR / clone
 ./start.sh
 ```
 
 Open http://127.0.0.1:8000
+
+### Where it installs
+
+- Empty folder → installs in that folder
+- Already a Transaction Insight clone → updates in place
+- Folder has other files → creates a `transaction-insight/` subfolder
+- Override the path: `… | INSTALL_DIR=~/my-path bash`
+
+### Advanced options
+
+Pass overrides to `bash` — not to `curl`, which would never see them:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/muthurajesh/transaction-insight/main/install.sh | INSTALL_REF=v0.2.0 bash
+```
+
+Other overrides (same pattern): `INSTALL_DIR=…`, `INSTALL_REF=…`, `DEFAULT_REF=…`, `LLM_MODE=local|cloud`, `FORCE_ENV=1`.
+
+Already cloned: `bash scripts/install_macos.sh`
+
+Not on macOS, or want full control → [Manual setup](#manual-setup) · [LLM setup](docs/setup/LLM_SETUP.md)
 
 ## Manual setup
 
